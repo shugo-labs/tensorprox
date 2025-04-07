@@ -139,32 +139,36 @@ class ChallengeRewardModel(BaseModel):
             label_counts_results = response_event.challenge_status_by_uid[uid]["label_counts_results"]
             default_count = {label: 0 for label in label_hashes.keys()}
 
-            attack_counts = next((counts for machine, counts, _ in label_counts_results if machine == "attacker"), default_count)
-            benign_counts = next((counts for machine, counts, _ in label_counts_results if machine == "benign"), default_count)
             king_counts = next((counts for machine, counts, _ in label_counts_results if machine == "king"), default_count)
+            tgen_entries = [(machine, counts, avg_rtt) for machine, counts, avg_rtt in label_counts_results if machine.startswith("tgen-")]
 
-            attack_avg_rtt = next((avg_rtt for machine, _, avg_rtt in label_counts_results if machine == "attacker"), 0)
-            benign_avg_rtt = next((avg_rtt for machine, _, avg_rtt in label_counts_results if machine == "benign"), 0)
-
-            if all(value == 0 for value in attack_counts.values()) and \
-            all(value == 0 for value in benign_counts.values()) and \
+            # If all counts are the default (i.e., zero), skip this user
+            if all(all(value == 0 for value in counts.values()) for _, counts, _ in tgen_entries) and \
             all(value == 0 for value in king_counts.values()):
                 continue
 
-            rtt = max((attack_avg_rtt + benign_avg_rtt) / 2, 0)
-
+            # Attack labels
             attack_labels = ["TCP_SYN_FLOOD", "UDP_FLOOD"]
 
-            total_attacks_from_attacker, total_benign_from_attacker = self.calculate_traffic_counts(attack_counts, attack_labels)
-            total_attacks_from_benign, total_benign_from_benign = self.calculate_traffic_counts(benign_counts, attack_labels)
+            # Aggregate total attacks/benign from all tgens
+            total_attacks_sent = 0
+            total_benign_sent = 0
+            rtt_list = []
 
-            total_attacks_sent = total_attacks_from_attacker + total_attacks_from_benign
-            total_benign_sent = total_benign_from_attacker + total_benign_from_benign
+            # Calculate total attacks and benign packets sent from all tgens
+            for _, counts, avg_rtt in tgen_entries:
+                rtt_list.append(avg_rtt)
+                attacks, benign = self.calculate_traffic_counts(counts, attack_labels)
+                total_attacks_sent += attacks
+                total_benign_sent += benign
 
-            total_reaching_attacks = sum(king_counts.get(label, 0) for label in attack_labels)
-            total_reaching_benign = king_counts.get("BENIGN", 0)
-            total_reaching_packets = total_reaching_benign + total_reaching_attacks
-            max_reaching_benign = max(max_reaching_benign, total_reaching_benign)
+            # Average RTT across tgens
+            rtt = max(sum(rtt_list) / len(rtt_list), 0) if rtt_list else 10000000
+
+            total_reaching_attacks = sum(king_counts.get(label, 0) for label in attack_labels) # total attacks reaching King
+            total_reaching_benign = king_counts.get("BENIGN", 0) # total benign reaching King
+            total_reaching_packets = total_reaching_benign + total_reaching_attacks # total packets reaching King
+            max_reaching_benign = max(max_reaching_benign, total_reaching_benign) # max benign reaching for this round across all miners 
 
             packet_data[uid] = {
                 "total_attacks_sent": total_attacks_sent,
