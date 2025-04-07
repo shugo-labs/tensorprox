@@ -6,13 +6,13 @@
 
 The Miner machine acts as a real-time traffic firewall during challenge rounds:
 
-    - 🕵️‍♂️ Sniffs live traffic using tools like libpcap, AF_PACKET, nfqueue, or raw sockets
+🕵️‍♂️ Sniffs live traffic using tools like libpcap, AF_PACKET, nfqueue, or raw sockets
 
-    - 🤖 Analyzes packets on the fly using a lightweight ML or rule-based DDoS detection model
+🤖 Analyzes packets on the fly using a lightweight ML or rule-based DDoS detection model
 
-    - 🚦 Makes immediate decisions to allow, block, or drop traffic
+🚦 Makes immediate decisions to allow, block, or drop traffic
 
-    - 🔌 Listens on multiple interfaces (e.g., gre-tgen-0, gre-tgen-1, ...) — one per traffic generator
+🔌 Listens on multiple interfaces (e.g., gre-tgen-0, gre-tgen-1, ...) — one per traffic generator
 
 | Resource  | Requirement   |
 |-----------|---------------|
@@ -79,10 +79,13 @@ PRIVATE_KEY_PATH = # Private key generated for the machines' creation (king, att
 
 1. After setting up the environment file, create a new CSV file named "trafficgen_machines.csv" and populate it with the details of your traffic generator machines. The CSV format should include the following columns:
 
-public_ip,username,private_ip
-141.95.103.227,ubuntu,10.1.3.71
-141.95.110.186,ubuntu,10.1.2.86
-...
+    public_ip,username,private_ip
+
+    141.95.103.227,ubuntu,10.1.3.71
+
+    141.95.110.186,ubuntu,10.1.2.86
+    ...
+    
 
 2. Start your miner instance with sudo privileges to ensure it has the necessary permissions to forward packets to the King machine:
 
