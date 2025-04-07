@@ -40,24 +40,30 @@ Tensorprox introduces a novel approach to **DDoS protection** with a distributed
 
 # Core Conceptual Design
 
+Tensorprox redefines distributed DDoS mitigation by simulating complex network environments and evaluating miner performance in high-stress scenarios.
 The subnet operates on a unique distributed network architecture where:
 - **Validators** challenge miners by simulating real-world DDoS scenarios
 - **Miners** provide DDoS protection services
 - Performance is evaluated through comprehensive **traffic analysis**
 
-Tensorprox employs a novel architectural design to build a robust and adaptable DDoS mitigation system. This design strategically positions key components to ensure comprehensive protection of the target server, referred to as the "King."
+It employs a novel architectural design to build a robust and adaptable mitigation system. This design strategically positions key components to ensure comprehensive protection of the target server, referred to as the "King".
 
 **King**: It represents the target server requiring protection.
 
-**Attacker & Benign**: These are traffic generator machines simulating real-world network conditions. "Attacker" generates malicious traffic, mimicking DDoS attacks, while "Benign" generates legitimate traffic.
+**Traffic generators**: These machines (tgens) generate a blend of traffic, dynamically configured per round to simulate varying network conditions, including DDoS spikes and legitimate traffic flows.
 
 **Moat**: It is run by miners and acts as a routing firewall. The Moat leverages Advanced Forwarding eXpress Data Path (AF_XDP) for high-performance packet processing.
 
-The system works by positioning the Moat strategically between the traffic generators (Attacker and Benign) and the King. All traffic must pass through the Moat, which analyzes and filters it based on pre-defined rules and dynamically learned patterns. 
+The system works by positioning the Moat strategically between the traffic generators and the King. All traffic must pass through the Moat, which analyzes and filters it based on pre-defined rules and dynamically learned patterns. 
 
 ![Tensorprox Architecture](./assets/tensorprox-architecture.svg)
 
-**Note**: For scalability reasons, access to the Attacker, Benign, and King machines must be provided by the miner to the validator via SSH connections.
+**Note**: For scalability reasons, access to the tgen machines and King machines must be provided by the miner to the validator via SSH connections.
+
+# Scalable and Balanced Network Growth 
+
+Tensorprox enables progressive scalability through competitive bandwidth handling, allowing miners to gradually increase the number of tgen machines over time. This design incentivizes miners to process higher volumes of network traffic (see Reward Mechanism), promoting scale and performance. To prevent abuse and ensure quality, the multi-factor reward function balances throughput with traffic filtering accuracy and latency efficiency. Miners must maintain a high mitigation ratio and low response times to benefit from additional tgen deployments, fostering a natural equilibrium between scale and effectiveness.
+
 
 # Validation Round Lifecycle
 
