@@ -2,12 +2,26 @@
 
 ## Compute Requirements
 
-| Resource      | Requirement       |
-|---------------|-------------------|
-| VRAM      | 62 GB             |
-| vCPU      | 24 vCPU           |
-| RAM       | 60 GB             |
-| Storage   | 150 GB            |
+⚙️ Assumptions
+    - Validators: 1–16 (scalable based on deployment)
+
+    - Miners: 256 total, evenly distributed across active validators
+
+    - Machines per Miner: At least 3 (2 traffic generators + 1 king)
+
+    - Active Validator Scenario: Only 1 validator is active
+
+➡️ Resulting Load:
+1 validator × 256 miners × 3 machines = 768 simultaneous SSH connections
+
+| Resource  | Requirement   |
+|-----------|---------------|
+| VRAM      | None          |
+| vCPU      | 32 vCPU       |
+| RAM       | 96 GB         |
+| Storage   | 150 GB        |
+| Network   | >= 1 Gbps     |
+
 
 ## Installation
 
@@ -32,7 +46,7 @@ python3 -m venv tp && source tp/bin/activate
 Clone the repository and install the required pip dependencies :
 
 ```bash
-git clone https://github.com/borgg-dev/tensorprox.git
+git clone https://github.com/shugo-io/tensorprox.git
 cd tensorprox
 pip install -r requirements.txt
 ```
@@ -46,8 +60,8 @@ NETUID = # The subnet UID (integer)
 SUBTENSOR_NETWORK = # The network name [test, finney, local]
 SUBTENSOR_CHAIN_ENDPOINT = # The chain endpoint [test if running on test, finney if running on main, custom endpoint if running on local]
 WALLET_NAME = # Name of your wallet (coldkey)
-VALIDATOR_HOTKEY = # Name of your hotkey associated with above wallet
-VALIDATOR_AXON_PORT = # TCP Port Number. The port must be open
+HOTKEY = # Name of your hotkey associated with above wallet
+AXON_PORT = # TCP Port Number. The port must be open
 ```
 
 ## Running
