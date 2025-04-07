@@ -6,18 +6,18 @@
       <stop offset="100%" style="stop-color:#E4E7EB;stop-opacity:1" />
     </linearGradient>
     
-    <!-- Arrow markers with updated colors -->
+    <!-- Arrow markers -->
     <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L0,6 L9,3 z" fill="#0288D1"/>
+      <path d="M0,0 L0,6 L9,3 z" fill="#1E88E5"/>
     </marker>
     <marker id="arrowRed" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L0,6 L9,3 z" fill="#D81B60"/>
+      <path d="M0,0 L0,6 L9,3 z" fill="#E53935"/>
     </marker>
     <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,0 L0,6 L9,3 z" fill="#2E7D32"/>
+      <path d="M0,0 L0,6 L9,3 z" fill="#43A047"/>
     </marker>
     
-    <!-- Shadow filter -->
+    <!-- Enhanced Shadow filter -->
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
       <feGaussianBlur in="SourceAlpha" stdDeviation="4" />
       <feOffset dx="3" dy="3" result="offsetblur" />
@@ -30,7 +30,7 @@
       </feMerge>
     </filter>
     
-    <!-- Node gradients -->
+    <!-- Node gradients with modern colors -->
     <linearGradient id="tgenGradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#42A5F5;stop-opacity:1" />
       <stop offset="100%" style="stop-color:#1976D2;stop-opacity:1" />
@@ -40,8 +40,8 @@
       <stop offset="100%" style="stop-color:#388E3C;stop-opacity:1" />
     </linearGradient>
     <linearGradient id="kingGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#FFD54F;stop-opacity:1" />
-      <stop offset="100%" style="stop-color:#FFA000;stop-opacity:1" />
+      <stop offset="0%" style="stop-color:#E3F2FD;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#90CAF9;stop-opacity:1" />
     </linearGradient>
   </defs>
   
@@ -91,42 +91,42 @@
   <text x="560" y="395" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" fill="white">GRE: 192.168.114.2/30</text>
   
   <!-- King Node -->
-  <rect x="720" y="250" width="140" height="160" rx="15" ry="15" fill="url(#kingGradient)" stroke="#F57F17" stroke-width="2" filter="url(#shadow)"/>
-  <text x="790" y="285" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="600" text-anchor="middle" fill="#3E2723">KING</text>
-  <text x="790" y="310" font-family="Arial, Helvetica, sans-serif" font-size="14" text-anchor="middle" fill="#3E2723">(Protected Server)</text>
-  <text x="790" y="335" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" fill="#3E2723">10.1.3.23</text>
-  <text x="790" y="360" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" fill="#3E2723">IPIP: 10.0.0.1/32</text>
-  <text x="790" y="380" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" fill="#3E2723">GRE: 192.168.101.1/30</text>
+  <rect x="720" y="250" width="140" height="160" rx="15" ry="15" fill="url(#kingGradient)" stroke="#0288D1" stroke-width="2" filter="url(#shadow)"/>
+  <text x="790" y="285" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="600" text-anchor="middle" fill="#0D47A1">KING</text>
+  <text x="790" y="310" font-family="Arial, Helvetica, sans-serif" font-size="14" text-anchor="middle" fill="#0D47A1">(Protected Server)</text>
+  <text x="790" y="335" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" fill="#0D47A1">10.1.3.23</text>
+  <text x="790" y="360" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" fill="#0D47A1">IPIP: 10.0.0.1/32</text>
+  <text x="790" y="380" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" fill="#0D47A1">GRE: 192.168.101.1/30</text>
   
   <!-- Connections and Traffic Flow -->
   <!-- Benign and Malicious Traffic from tgen 1 -->
-  <path d="M270 235 Q 350 235, 490 280" fill="none" stroke="#0288D1" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowBlue)"/>
-  <path d="M270 235 Q 380 255, 490 290" fill="none" stroke="#D81B60" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowRed)"/>
+  <path d="M270 235 Q 350 235, 490 280" fill="none" stroke="#1E88E5" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowBlue)"/>
+  <path d="M270 235 Q 380 255, 490 290" fill="none" stroke="#E53935" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowRed)"/>
   
   <!-- Benign and Malicious Traffic from tgen 2 -->
-  <path d="M410 235 Q 450 235, 490 270" fill="none" stroke="#0288D1" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowBlue)"/>
-  <path d="M410 235 Q 450 250, 490 300" fill="none" stroke="#D81B60" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowRed)"/>
+  <path d="M410 235 Q 450 235, 490 270" fill="none" stroke="#1E88E5" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowBlue)"/>
+  <path d="M410 235 Q 450 250, 490 300" fill="none" stroke="#E53935" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowRed)"/>
   
   <!-- Benign and Malicious Traffic from tgen 3 -->
-  <path d="M270 325 Q 350 315, 490 310" fill="none" stroke="#0288D1" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowBlue)"/>
-  <path d="M270 325 Q 380 335, 490 320" fill="none" stroke="#D81B60" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowRed)"/>
+  <path d="M270 325 Q 350 315, 490 310" fill="none" stroke="#1E88E5" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowBlue)"/>
+  <path d="M270 325 Q 380 335, 490 320" fill="none" stroke="#E53935" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowRed)"/>
   
   <!-- Benign and Malicious Traffic from tgen n -->
-  <path d="M410 325 Q 450 325, 490 340" fill="none" stroke="#0288D1" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowBlue)"/>
-  <path d="M410 325 Q 450 340, 490 350" fill="none" stroke="#D81B60" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowRed)"/>
+  <path d="M410 325 Q 450 325, 490 340" fill="none" stroke="#1E88E5" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowBlue)"/>
+  <path d="M410 325 Q 450 340, 490 350" fill="none" stroke="#E53935" stroke-width="2.5" stroke-dasharray="6,4" marker-end="url(#arrowRed)"/>
   
   <!-- GRE Tunnel from Moat to King -->
-  <path d="M630 330 Q 675 330, 720 330" fill="none" stroke="#2E7D32" stroke-width="2.5" marker-end="url(#arrowGreen)"/>
-  <text x="675" y="315" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#2E7D32">GRE Tunnel</text>
-  <text x="675" y="350" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#2E7D32">Filtered Traffic</text>
+  <path d="M630 330 Q 675 330, 720 330" fill="none" stroke="#43A047" stroke-width="2.5" marker-end="url(#arrowGreen)"/>
+  <text x="675" y="315" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="600" fill="#43A047">GRE Tunnel</text>
+  <text x="675" y="350" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#43A047">Filtered Traffic</text>
   
   <!-- Legend (Top Right) -->
   <rect x="680" y="110" width="180" height="90" rx="8" ry="8" fill="white" stroke="#CFD8DC" stroke-width="1.5"/>
   <text x="770" y="130" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="600" text-anchor="middle" fill="#37474F">Legend</text>
-  <line x1="700" y1="145" x2="740" y2="145" stroke="#0288D1" stroke-width="2.5" stroke-dasharray="6,4"/>
+  <line x1="700" y1="145" x2="740" y2="145" stroke="#1E88E5" stroke-width="2.5" stroke-dasharray="6,4"/>
   <text x="750" y="150" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="start" fill="#37474F">Benign Traffic</text>
-  <line x1="700" y1="165" x2="740" y2="165" stroke="#D81B60" stroke-width="2.5" stroke-dasharray="6,4"/>
+  <line x1="700" y1="165" x2="740" y2="165" stroke="#E53935" stroke-width="2.5" stroke-dasharray="6,4"/>
   <text x="750" y="170" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="start" fill="#37474F">Attack Traffic</text>
-  <line x1="700" y1="185" x2="740" y2="185" stroke="#2E7D32" stroke-width="2.5"/>
+  <line x1="700" y1="185" x2="740" y2="185" stroke="#43A047" stroke-width="2.5"/>
   <text x="750" y="190" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="start" fill="#37474F">Filtered Traffic</text>
 </svg>
