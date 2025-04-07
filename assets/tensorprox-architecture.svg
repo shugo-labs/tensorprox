@@ -45,13 +45,12 @@
     </linearGradient>
   </defs>
   
-  
   <!-- Background -->
   <rect width="1000" height="600" fill="url(#bg-gradient)"/>
   
   <!-- Physical Network Border -->
-  <rect x="100" y="100" width="800" height="450" fill="none" stroke="#888" stroke-width="2" stroke-dasharray="5,5" rx="15" ry="15"/>
-  <text x="160" y="125" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#555">Physical Network (10.0.0.0/24)</text>
+  <rect x="100" y="80" width="800" height="450" fill="none" stroke="#888" stroke-width="2" stroke-dasharray="5,5" rx="15" ry="15"/>
+  <text x="160" y="105" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#555">Physical Network (10.0.0.0/24)</text>
   
   <!-- Traffic Generators Section -->
   <rect x="130" y="160" width="300" height="350" rx="10" ry="10" fill="rgba(224, 231, 255, 0.2)" stroke="#2D5082" stroke-width="1" stroke-dasharray="3,3"/>
@@ -122,20 +121,22 @@
   <text x="675" y="315" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="bold" fill="#009E73">GRE Tunnel</text>
   <text x="675" y="350" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#009E73">Filtered Traffic</text>
   
-  <!-- Legend -->
-  <rect x="700" y="440" width="180" height="90" rx="5" ry="5" fill="white" stroke="#888" stroke-width="1"/>
-  <text x="790" y="460" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">Legend</text>
+  <!-- Legend (Top Right) -->
+  <rect x="680" y="110" width="180" height="90" rx="5" ry="5" fill="white" stroke="#888" stroke-width="1"/>
+  <text x="770" y="130" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#333">Legend</text>
 
   <!-- Benign Traffic -->
-  <line x1="750" y1="480" x2="730" y2="480" stroke="#0072B2" stroke-width="2" stroke-dasharray="5,3"/>
-  <text x="770" y="484" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="start" fill="#333">Benign Traffic</text>
+  <line x1="700" y1="145" x2="740" y2="145" stroke="#0072B2" stroke-width="2" stroke-dasharray="5,3"/>
+  <text x="750" y="149" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="start" fill="#333">Benign Traffic</text>
 
   <!-- Attack Traffic -->
-  <line x1="750" y1="500" x2="730" y2="500" stroke="#D55E00" stroke-width="2" stroke-dasharray="5,3"/>
-  <text x="770" y="504" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="start" fill="#333">Attack Traffic</text>
+  <line x1="700" y1="165" x2="740" y2="165" stroke="#D55E00" stroke-width="2" stroke-dasharray="5,3"/>
+  <text x="750" y="169" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="start" fill="#333">Attack Traffic</text>
 
   <!-- Filtered Traffic -->
-  <line x1="750" y1="520" x2="730" y2="520" stroke="#009E73" stroke-width="2"/>
-  <text x="770" y="524" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="start" fill="#333">Filtered Traffic</text>
+  <line x1="700" y1="185" x2="740" y2="185" stroke="#009E73" stroke-width="2"/>
+  <text x="750" y="189" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="start" fill="#333">Filtered Traffic</text>
+
+
 
 </svg>
