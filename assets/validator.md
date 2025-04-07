@@ -3,13 +3,12 @@
 ## Compute Requirements
 
 ⚙️ Assumptions
-    - Validators: 1–16 (scalable based on deployment)
 
-    - Miners: 256 total, evenly distributed across active validators
+Miners: 256 total, evenly distributed across active validators
 
-    - Machines per Miner: At least 3 (2 traffic generators + 1 king)
+Machines per Miner: At least 3 (2 traffic generators + 1 king)
 
-    - Active Validator Scenario: Only 1 validator is active
+Active Validator Scenario: Only 1 validator is active
 
 ➡️ Resulting Load:
 1 validator × 256 miners × 3 machines = 768 simultaneous SSH connections
