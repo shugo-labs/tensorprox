@@ -246,9 +246,9 @@ def create_random_playlist(total_seconds, label_hashes, role=None, seed=None):
 
     # Role-specific weight calculation using a dictionary
     weights = {
-        "attacker": (0.8, 0.2),
-        "benign": (0.2, 0.8)
-    }.get(role, (0.5, 0.5))  # Default to (0.5, 0.5) if role is neither 'attacker' nor 'benign'
+        "aggressive": (0.8, 0.2),
+        "soft": (0.2, 0.8)
+    }.get(role, (0.5, 0.5))  # Default to (0.5, 0.5) if machine is hybrid
 
     attack_weight, benign_weight = weights
 
@@ -265,7 +265,7 @@ def create_random_playlist(total_seconds, label_hashes, role=None, seed=None):
         duration = min(random.randint(60, 180), total_seconds - current_total)
 
         # If role is "Benign" and label "BENIGN" is chosen, output a grouped unit with two class_vectors.
-        if role == "Benign" and name == "BENIGN":
+        if role == "soft" and name == "BENIGN":
             
             benign_unit = {
                 "name": "BENIGN",

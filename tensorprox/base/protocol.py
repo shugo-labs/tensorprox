@@ -1,6 +1,6 @@
-from pydantic import Field, BaseModel
+from pydantic import BaseModel, Field, model_validator
 import bittensor as bt
-from typing import Dict, Tuple
+from typing import List, Tuple, Any
 from tensorprox import *
 from tensorprox import settings
 settings.settings = settings.Settings.load(mode="validator")
@@ -10,70 +10,65 @@ class MachineDetails(BaseModel):
     ip: str | None = None
     username: str | None = None
     private_ip: str | None = None
-    
+    index: str | None = None
+
     def get(self, key, default=None):
         return getattr(self, key, default)
-    
+
+
 class MachineConfig(BaseModel):
     key_pair: Tuple[str, str] = ("", "")
-    machine_config: Dict[str, MachineDetails] = {name: MachineDetails() for name in NODE_TYPES}
+    traffic_generators: List[MachineDetails] = Field(default_factory=list)
+    king: MachineDetails = Field(default_factory=MachineDetails)
+    moat_private_ip: str = ""
 
-
-class AvailabilitySynapse(bt.Synapse):
-    """AvailabilitySynapse is a specialized implementation of the `Synapse` class used to allow miners to let validators know
-    about their status/availability to serve certain tasks"""
-    task_availabilities: dict[str, bool]
-
+    @model_validator(mode='before')
+    def truncate_traffic_generators(cls, values):
+        # Truncate the traffic_generators to MAX_TGENS
+        traffic_generators = values.get('traffic_generators', [])
+        values['traffic_generators'] = traffic_generators[:MAX_TGENS]
+        return values
+    
 class PingSynapse(bt.Synapse):
-    """
-    Synapse for miners to report machine availability and corresponding details.
-    """
+
+    # Adding MAX_TGENS as an immutable attribute
+    max_tgens: int = Field(
+        default_factory=lambda: MAX_TGENS,
+        title="Max Traffic Generators", 
+        description="Maximum number of traffic generators", 
+        allow_mutation=False
+    )
 
     machine_availabilities: MachineConfig = Field(
         default_factory=MachineConfig,
         title="Machine's Availabilities",
-        description="A dictionary where keys are machine names and values are MachineDetails instances. Miners populate this field.",
+        description="Contains all machines' details for setup and challenge processing",
         allow_mutation=True,
     )
 
-    def serialize(self) -> dict:
-        """
-        Serializes the `PingSynapse` into a dictionary.
-
-        Converts `MachineDetails` instances to dictionaries for external usage.
-        Also, properly includes the SSH key pair and ssh_user for validation purposes.
-        """
+    def serialize(self) -> dict[str, Any]:
         return {
             "machine_availabilities": {
                 "key_pair": self.machine_availabilities.key_pair,
-                "machine_config": {
-                    key: details.dict() 
-                    for key, details in self.machine_availabilities.machine_config.items()
-                }
+                "traffic_generators": [m.model_dump() for m in self.machine_availabilities.traffic_generators],
+                "king": self.machine_availabilities.king.model_dump(),
+                "moat_private_ip": self.machine_availabilities.moat_private_ip,
             },
         }
 
-
     @classmethod
     def deserialize(cls, data: dict) -> "PingSynapse":
-        """
-        Deserializes a dictionary into an `PingSynapse`.
-
-        Converts nested dictionaries into `MachineDetails` instances.
-        Properly handles the SSH key pair and machine availability details.
-        """
-        machine_availabilities = {
-            key: MachineDetails(**details)
-            for key, details in data.get("machine_availabilities", {}).items()
-        }
-        
+        avail_data = data.get("machine_availabilities", {})
+        max_tgens = avail_data.get("max_tgens", MAX_TGENS)  # Ensure max_tgens is obtained from the data or default to MAX_TGENS
+        traffic_gens = avail_data.get("traffic_generators", [])[:max_tgens]  # truncate here
         return cls(
             machine_availabilities=MachineConfig(
-                key_pair=tuple(data.get("machine_availabilities", {}).get("key_pair", ("", ""))),
-                machine_config=machine_availabilities,
+                key_pair=tuple(avail_data.get("key_pair", ("", ""))),
+                traffic_generators=[MachineDetails(**m) for m in traffic_gens],
+                king=MachineDetails(**avail_data.get("king", {})),
+                moat_private_ip=avail_data.get("moat_private_ip", ""),
             ),
         )
-
 
 class ChallengeSynapse(bt.Synapse):
     """
@@ -109,3 +104,7 @@ class ChallengeSynapse(bt.Synapse):
             state=data["state"],
         )
 
+class AvailabilitySynapse(bt.Synapse):
+    """AvailabilitySynapse is a specialized implementation of the `Synapse` class used to allow miners to let validators know
+    about their status/availability to serve certain tasks"""
+    task_availabilities: dict[str, bool]

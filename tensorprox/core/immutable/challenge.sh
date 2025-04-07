@@ -31,21 +31,18 @@ tcp_syn_flood_count=0
 # Default RTT value
 rtt_avg=10000000
 
-# Define the traffic filtering and interface based on machine_name
+# Define the traffic filtering
+filter_traffic="(tcp or udp) and dst host $king_ip"
+
+# Add 2 second buffer to ensure late packets are counted 
 if [ "$machine_name" == "king" ]; then
-    # For King machine, monitor traffic on ipip-king interface
-    filter_traffic="(tcp or udp) and dst host $king_ip and not (tcp[tcpflags] & tcp-ack != 0)"
-    interface="ipip-king"
-    timeout_duration=$((challenge_duration + 2))  # Add 2 second buffer to ensure late packets are counted 
+    timeout_duration=$((challenge_duration + 2))
 else
-    # For non-king machines, monitor traffic on gre-moat interface
-    filter_traffic="(tcp or udp) and dst host $king_ip"
-    interface="gre-moat"
     timeout_duration=$challenge_duration
 fi
 
-# Traffic generation for attacker and benign
-if [[ "$machine_name" == "attacker" || "$machine_name" == "benign" ]]; then
+# Traffic generation for tgen machines
+if [[ "$machine_name" == tgen* ]]; then
 
     # Install Python3 and pip if not installed
     if ! command -v python3 &>/dev/null; then
@@ -70,7 +67,7 @@ if [[ "$machine_name" == "attacker" || "$machine_name" == "benign" ]]; then
 
 fi
 
-sudo timeout "$timeout_duration" tcpdump -A -l -nn -i "$interface" "$filter_traffic" 2>/dev/null | \
+sudo timeout "$timeout_duration" tcpdump -A -l -i "gre-moat" "$filter_traffic" 2>/dev/null | \
     awk 'BEGIN { benign=0; udp_flood=0; tcp_syn_flood=0 } 
     {
         if ($0 ~ /'"$udp_flood_pattern"'/) udp_flood++;
@@ -84,8 +81,8 @@ wait  # Ensure tcpdump finishes before reading counts
 # Read counts from /tmp/counts.txt
 counts=$(cat /tmp/counts.txt)
 
-# Measure RTT if the machine is attacker or benign
-if [[ "$machine_name" == "attacker" || "$machine_name" == "benign" ]]; then
+# Measure RTT if the machine is tgen
+if [[ "$machine_name" == tgen* ]]; then
 
     # Extract average RTT from the ping output (assuming the ping command ran successfully)
     extracted_rtt=$(grep -oP 'rtt min/avg/max/mdev = \d+\.\d+/(\d+\.\d+)' /tmp/rtt.txt | awk -F'/' '{print $5}')
@@ -98,7 +95,7 @@ if [[ "$machine_name" == "attacker" || "$machine_name" == "benign" ]]; then
     # Output the counts along with the average RTT
     echo "$counts, AVG_RTT:$rtt_avg"
 else
-    # Output just the counts if the machine is neither attacker nor benign
+    # Output just the counts if the machine is king
     echo "$counts"
 fi
 
