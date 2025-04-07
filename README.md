@@ -58,7 +58,7 @@ The system works by positioning the Moat strategically between the traffic gener
 
 ![Tensorprox Architecture](./assets/tensorprox-architecture.svg)
 
-**Note**: For scalability reasons, access to the tgen machines and King machines must be provided by the miner to the validator via SSH connections.
+**Note**: For scalability reasons, access to the traffic generator and King machines must be provided by the miner to the validator via SSH connections.
 
 # Scalable and Balanced Network Growth 
 
