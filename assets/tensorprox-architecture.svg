@@ -118,8 +118,7 @@
   
   <!-- GRE Tunnel from Moat to King -->
   <path d="M630 330 Q 675 330, 720 330" fill="none" stroke="#009E73" stroke-width="2" marker-end="url(#arrowGreen)"/>
-  <text x="675" y="315" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="bold" fill="#009E73">GRE Tunnel</text>
-  <text x="675" y="350" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#009E73">Filtered Traffic</text>
+  <text x="640" y="315" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="bold" fill="#009E73">GRE Tunnel</text>
   
   <!-- Legend (Top Right) -->
   <rect x="680" y="110" width="180" height="90" rx="5" ry="5" fill="white" stroke="#888" stroke-width="1"/>
