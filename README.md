@@ -65,6 +65,89 @@ The system works by positioning the Moat strategically between the traffic gener
 Tensorprox enables progressive scalability through competitive bandwidth handling, allowing miners to gradually increase the number of tgen machines over time. This design incentivizes miners to process higher volumes of network traffic (see Reward Mechanism), promoting scale and performance. To prevent abuse and ensure quality, the multi-factor reward function balances throughput with traffic filtering accuracy and latency efficiency. Miners must maintain a high mitigation ratio and low response times to benefit from additional tgen deployments, fostering a natural equilibrium between scale and effectiveness.
 
 
+
+# GRE/IPIP Tunnel Architecture
+
+
+![Network Topology](./assets/architecture.svg)
+
+
+
+## Network Architecture Overview
+
+The Tensorprox system employs a sophisticated network topology utilizing GRE tunnels to create a secure, flexible overlay network. The architecture consists of four interconnected nodes within the 10.0.0.0/24 physical network, establishing a complex tunnel infrastructure.
+
+### Network Nodes
+
+1. **Benign Node (10.0.0.4)**
+   - Physical interface on 10.0.0.0/24 network
+   - GRE tunnel to Moat (gre-moat: 192.168.100.1/30)
+   - IPIP tunnel (ipip-benign) with overlay IP: 10.200.77.102/32
+
+2. **Attacker Node (10.0.0.2)**
+   - Physical interface on 10.0.0.0/24 network
+   - GRE tunnel to Moat (gre-moat: 192.168.102.1/30)
+   - IPIP tunnel (ipip-attacker) with overlay IP: 10.200.77.103/32
+
+3. **Moat Node (10.0.0.6)**
+   - Physical interface on 10.0.0.0/24 network
+   - Multiple GRE tunnels:
+     * To Benign (gre-benign: 192.168.100.2/30)
+     * To Attacker (gre-attacker: 192.168.102.2/30)
+     * To King (gre-king: 192.168.101.1/30)
+   - IPIP tunnel to King for encapsulation
+
+4. **King Node (10.0.0.5)**
+   - Physical interface on 10.0.0.0/24 network
+   - GRE tunnel to Moat (gre-moat: 192.168.101.2/30)
+   - IPIP tunnel (ipip-king) with overlay IP: 10.200.77.1/32
+
+## Traffic Flow Mechanics
+
+### Benign to King Traffic Flow
+1. Traffic originates from Benign (10.200.77.102) to King (10.200.77.1)
+2. Routed via gre-moat interface
+3. Encapsulated in GRE and sent to Moat
+4. Moat receives on gre-benign interface
+5. Forwarded through gre-king to King
+6. King processes packet through ipip-king interface
+
+### Attacker to King Traffic Flow
+1. Traffic originates from Attacker (10.200.77.103) to King (10.200.77.1)
+2. Routed via gre-moat interface
+3. Encapsulated in GRE and sent to Moat
+4. Moat receives on gre-attacker interface
+5. Forwarded through gre-king to King
+6. King processes packet through ipip-king interface
+
+## Key Architectural Features
+
+1. **Multi-level Encapsulation**
+   - IPIP tunnels provide custom overlay network addressing
+   - GRE tunnels secure and direct traffic between nodes
+
+2. **Advanced Routing Priorities**
+   - Specific routes for known endpoints (10.200.77.x) with metric 100
+   - Flexible overlay network routing (10.0.0.0/8)
+
+3. **Security Isolation**
+   - GRE keys ensure traffic separation and authentication
+   - Distinct IP subnets for tunnel pairs
+
+4. **Network Flexibility**
+   - 10.0.0.0/8 routing allows dynamic IP additions
+   - Scalable overlay network configuration
+
+## Kernel Optimization Techniques
+
+To maximize network performance, the system implements:
+- IP forwarding enablement
+- Reverse path filtering disablement
+- Increased TCP buffer sizes
+- BBR congestion control
+- MTU optimization to minimize fragmentation
+
+
 # Validation Round Lifecycle
 
 <img src="./assets/round_lifecycle.png"/>
@@ -202,89 +285,6 @@ Always conduct thorough security audits and testing in controlled environments b
 SHA-256 Checksum Validation: Ensures script authenticity before execution
 
 
-
-# ANNEX
-
-## GRE/IPIP Tunnel Architecture
-
-
-![Network Topology](./assets/architecture.svg)
-
-
-
-### Network Architecture Overview
-
-The Tensorprox system employs a sophisticated network topology utilizing GRE tunnels to create a secure, flexible overlay network. The architecture consists of four interconnected nodes within the 10.0.0.0/24 physical network, establishing a complex tunnel infrastructure.
-
-#### Network Nodes
-
-1. **Benign Node (10.0.0.4)**
-   - Physical interface on 10.0.0.0/24 network
-   - GRE tunnel to Moat (gre-moat: 192.168.100.1/30)
-   - IPIP tunnel (ipip-benign) with overlay IP: 10.200.77.102/32
-
-2. **Attacker Node (10.0.0.2)**
-   - Physical interface on 10.0.0.0/24 network
-   - GRE tunnel to Moat (gre-moat: 192.168.102.1/30)
-   - IPIP tunnel (ipip-attacker) with overlay IP: 10.200.77.103/32
-
-3. **Moat Node (10.0.0.6)**
-   - Physical interface on 10.0.0.0/24 network
-   - Multiple GRE tunnels:
-     * To Benign (gre-benign: 192.168.100.2/30)
-     * To Attacker (gre-attacker: 192.168.102.2/30)
-     * To King (gre-king: 192.168.101.1/30)
-   - IPIP tunnel to King for encapsulation
-
-4. **King Node (10.0.0.5)**
-   - Physical interface on 10.0.0.0/24 network
-   - GRE tunnel to Moat (gre-moat: 192.168.101.2/30)
-   - IPIP tunnel (ipip-king) with overlay IP: 10.200.77.1/32
-
-### Traffic Flow Mechanics
-
-#### Benign to King Traffic Flow
-1. Traffic originates from Benign (10.200.77.102) to King (10.200.77.1)
-2. Routed via gre-moat interface
-3. Encapsulated in GRE and sent to Moat
-4. Moat receives on gre-benign interface
-5. Forwarded through gre-king to King
-6. King processes packet through ipip-king interface
-
-#### Attacker to King Traffic Flow
-1. Traffic originates from Attacker (10.200.77.103) to King (10.200.77.1)
-2. Routed via gre-moat interface
-3. Encapsulated in GRE and sent to Moat
-4. Moat receives on gre-attacker interface
-5. Forwarded through gre-king to King
-6. King processes packet through ipip-king interface
-
-### Key Architectural Features
-
-1. **Multi-level Encapsulation**
-   - IPIP tunnels provide custom overlay network addressing
-   - GRE tunnels secure and direct traffic between nodes
-
-2. **Advanced Routing Priorities**
-   - Specific routes for known endpoints (10.200.77.x) with metric 100
-   - Flexible overlay network routing (10.0.0.0/8)
-
-3. **Security Isolation**
-   - GRE keys ensure traffic separation and authentication
-   - Distinct IP subnets for tunnel pairs
-
-4. **Network Flexibility**
-   - 10.0.0.0/8 routing allows dynamic IP additions
-   - Scalable overlay network configuration
-
-### Kernel Optimization Techniques
-
-To maximize network performance, the system implements:
-- IP forwarding enablement
-- Reverse path filtering disablement
-- Increased TCP buffer sizes
-- BBR congestion control
-- MTU optimization to minimize fragmentation
 
 # Contribution
 
