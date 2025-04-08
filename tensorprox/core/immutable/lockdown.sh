@@ -1,14 +1,12 @@
 #!/bin/bash
 
-# Lock down the system while maintaining core functionality for gre_setup
+# Faster lockdown script that avoids common hang issues
 #
 # Arguments:
 #   ssh_user - The SSH username (e.g., 'user').
 #   ssh_dir  - The SSH directory path (e.g., '/home/user/.ssh').
 #   validator_ip - The IP address allowed for SSH access (e.g., '192.168.1.100').
 #   authorized_keys_path - The path to the authorized_keys file (e.g., '/home/user/.ssh/authorized_keys').
-
-set -e  # Exit on error
 
 # Set variables based on script arguments
 ssh_user="$1"
@@ -21,6 +19,18 @@ if [ -z "$ssh_user" ] || [ -z "$ssh_dir" ] || [ -z "$validator_ip" ] || [ -z "$a
     exit 1
 fi
 
+# Helper function to execute commands with a timeout
+# Usage: run_cmd "command description" timeout_seconds command arg1 arg2...
+run_cmd() {
+    description=$1
+    timeout=$2
+    shift 2
+    
+    echo "Starting: $description"
+    timeout $timeout "$@" &>/dev/null || echo "Warning: $description may not have completed successfully"
+    echo "Completed: $description"
+}
+
 # Log file for debugging
 LOCKDOWN_LOG="/tmp/lockdown_$(date +%s).log"
 exec > >(tee -a "$LOCKDOWN_LOG") 2>&1
@@ -31,132 +41,92 @@ echo "Parameters: ssh_user=$ssh_user, ssh_dir=$ssh_dir, validator_ip=$validator_
 ############################################################
 # 0) Create backup files for restoration
 ############################################################
-echo "Creating backup files for later restoration"
-# Backup authorized_keys
-cp "$authorized_keys_path" "${authorized_keys_path}.bak" || echo "Failed to backup authorized_keys"
-# Backup sshd_config
-cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak || echo "Failed to backup sshd_config"
+echo "Creating backup files"
+cp "$authorized_keys_path" "${authorized_keys_path}.bak" 2>/dev/null || echo "Warning: Could not backup authorized_keys"
+cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak 2>/dev/null || echo "Warning: Could not backup sshd_config"
 
 ############################################################
-# 1) Minimal services - avoid stopping critical networking services
+# 1) Lock non-system accounts but keep root accessible
 ############################################################
-echo "Limiting services to essential ones only"
-essential_services="apparmor.service dbus.service networkd-dispatcher.service polkit.service rsyslog.service ssh.service systemd-journald.service systemd-logind.service systemd-networkd.service systemd-resolved.service systemd-timesyncd.service systemd-udevd.service atd.service cron.service"
-
-for s in $(systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}'); do
-    if echo "$essential_services" | grep -wq "$s"; then
-        echo "Keeping essential service: $s"
-    else
-        # Only disable non-essential services, don't mask them
-        echo "Stopping+disabling $s"
-        systemctl stop "$s" 2>/dev/null || echo "Failed to stop $s"
-        systemctl disable "$s" 2>/dev/null || echo "Failed to disable $s"
-    fi
-done
+echo "Securing user accounts"
+passwd -l root 2>/dev/null || echo "Warning: Could not lock root account"
 
 ############################################################
-# 2) Disable console TTY but keep serial access for debugging
+# 2) Set up minimal firewall rules (focus on SSH access)
 ############################################################
-echo "Restricting console access"
-if [ -f "/etc/securetty" ]; then
-    sed -i '/^tty[0-9]/d' "/etc/securetty" 2>/dev/null || echo "Failed to modify /etc/securetty"
-    sed -i '/^ttyS/d' "/etc/securetty" 2>/dev/null || echo "Failed to modify /etc/securetty"
-fi
-
-# Stop but don't mask these services (to allow restoration)
-systemctl stop console-getty.service 2>/dev/null || echo "Failed to stop console-getty"
-systemctl disable console-getty.service 2>/dev/null || echo "Failed to disable console-getty"
-systemctl stop serial-getty@ttyS0.service 2>/dev/null || echo "Failed to stop serial-getty@ttyS0"
-systemctl disable serial-getty@ttyS0.service 2>/dev/null || echo "Failed to disable serial-getty@ttyS0"
-
-############################################################
-# 3) Secure root account but don't lock completely
-############################################################
-echo "Securing root account"
-passwd -l root 2>/dev/null || echo "Failed to lock root account"
-
-############################################################
-# 4) Configure Firewall => allow validator_ip and established connections
-############################################################
-echo "Setting up firewall rules"
-NIC=$(ip route | grep default | awk '{print $5}' | head -1)
-echo "Detected network interface: $NIC"
+echo "Setting up firewall"
 
 # Save current iptables rules for restoration
-iptables-save > /tmp/iptables.bak
+iptables-save > /tmp/iptables.bak 2>/dev/null || echo "Warning: Could not backup iptables rules"
 
-# Set up new rules
-iptables -F
-iptables -X
+# Get primary interface
+NIC=$(ip route | grep default | awk '{print $5}' | head -1)
+[ -z "$NIC" ] && NIC="eth0" # Fallback if detection fails
+
+echo "Using network interface: $NIC"
+
+# Fast firewall setup focused only on essential rules
+iptables -F 2>/dev/null
+iptables -X 2>/dev/null
+
+# Only allow SSH from validator IP and allow all tunnel traffic
+iptables -A INPUT -i "$NIC" -p tcp --dport 22 -s "$validator_ip" -j ACCEPT 2>/dev/null
+iptables -A OUTPUT -o "$NIC" -p tcp --sport 22 -d "$validator_ip" -j ACCEPT 2>/dev/null
 
 # Allow established connections
-iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null
+iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null
 
-# Allow localhost traffic
-iptables -A INPUT -i lo -j ACCEPT
-iptables -A OUTPUT -o lo -j ACCEPT
+# Allow localhost
+iptables -A INPUT -i lo -j ACCEPT 2>/dev/null
+iptables -A OUTPUT -o lo -j ACCEPT 2>/dev/null
 
-# Allow SSH from validator IP
-iptables -A INPUT -i "$NIC" -p tcp --dport 22 -s "$validator_ip" -j ACCEPT
-iptables -A OUTPUT -o "$NIC" -p tcp --sport 22 -d "$validator_ip" -j ACCEPT
+# Allow GRE and IPIP tunneling protocols
+iptables -A INPUT -p gre -j ACCEPT 2>/dev/null
+iptables -A OUTPUT -p gre -j ACCEPT 2>/dev/null
+iptables -A INPUT -p ipip -j ACCEPT 2>/dev/null
+iptables -A OUTPUT -p ipip -j ACCEPT 2>/dev/null
 
-# Allow DNS for hostname resolution (needed for some tools)
-iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
-iptables -A INPUT -p udp --sport 53 -j ACCEPT
+# Allow ICMP for diagnostics
+iptables -A INPUT -p icmp -j ACCEPT 2>/dev/null
+iptables -A OUTPUT -p icmp -j ACCEPT 2>/dev/null
 
-# Allow common network protocols needed for tunnel setup
-iptables -A INPUT -p gre -j ACCEPT
-iptables -A OUTPUT -p gre -j ACCEPT
-iptables -A INPUT -p ipip -j ACCEPT
-iptables -A OUTPUT -p ipip -j ACCEPT
-iptables -A INPUT -p icmp -j ACCEPT
-iptables -A OUTPUT -p icmp -j ACCEPT
-
-# Default policies - reject rather than drop (more friendly for debugging)
-iptables -P INPUT DROP
-iptables -P FORWARD DROP
-iptables -P OUTPUT DROP
+# Set default policies
+iptables -P INPUT DROP 2>/dev/null
+iptables -P FORWARD DROP 2>/dev/null
+iptables -P OUTPUT DROP 2>/dev/null
 
 ############################################################
-# 5) Keep only session keys in authorized_keys file
+# 3) Configure SSH to allow only validator access
 ############################################################
-echo "Configuring SSH keys"
+echo "Configuring SSH"
+
+# Only keep session keys in authorized_keys file
 if [ -f "$authorized_keys_path" ]; then
-    echo "Cleaning authorized_keys to keep only session keys"
+    echo "Processing authorized_keys"
     TMPDIR=$(mktemp -d)
-    trap 'rm -rf "$TMPDIR"' EXIT
     
     # Extract session key block
-    awk '/# START SESSION KEY/,/# END SESSION KEY/' "$authorized_keys_path" > "$TMPDIR/session_only" || {
-        echo "Error extracting session keys. Keeping original file."
-        cp "$authorized_keys_path" "$TMPDIR/session_only"
-    }
+    awk '/# START SESSION KEY/,/# END SESSION KEY/' "$authorized_keys_path" > "$TMPDIR/session_only" 2>/dev/null
     
     # If extraction succeeded and file is not empty
     if [ -s "$TMPDIR/session_only" ]; then
-        cp "$TMPDIR/session_only" "$authorized_keys_path"
-        echo "Session key extraction successful"
+        cp "$TMPDIR/session_only" "$authorized_keys_path" 2>/dev/null
     else
-        echo "WARNING: No session keys found or extraction failed. Keeping original keys."
+        echo "Warning: No session keys found"
     fi
     
     # Set proper permissions
-    chown -R "$ssh_user:$ssh_user" "$ssh_dir"
-    chmod 700 "$ssh_dir"
-    chmod 600 "$authorized_keys_path"
+    chown -R "$ssh_user:$ssh_user" "$ssh_dir" 2>/dev/null
+    chmod 700 "$ssh_dir" 2>/dev/null
+    chmod 600 "$authorized_keys_path" 2>/dev/null
+    
+    rm -rf "$TMPDIR" 2>/dev/null
 fi
 
-############################################################
-# 6) Configure SSH server securely
-############################################################
-echo "Hardening SSH configuration"
-# Backup original config if not already done
-cp -n /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
-
-# Update SSH config
+# Update SSH config with minimal changes
 cat > /etc/ssh/sshd_config << EOF
-# SSH Server Configuration
+# Minimal SSH Server Configuration
 Protocol 2
 PubkeyAuthentication yes
 PasswordAuthentication no
@@ -167,15 +137,10 @@ AllowTcpForwarding yes
 PermitTunnel yes
 AllowUsers $ssh_user
 PermitRootLogin no
-StrictModes yes
-UsePrivilegeSeparation yes
-PermitEmptyPasswords no
-ClientAliveInterval 300
-ClientAliveCountMax 2
 EOF
 
-# Restart SSH service to apply changes
-systemctl restart sshd || echo "Failed to restart sshd"
+# Restart SSH service with timeout
+run_cmd "Restarting SSH" 10 systemctl restart sshd
 
 echo "Lockdown procedure completed at $(date)"
 echo "Log saved to $LOCKDOWN_LOG"
