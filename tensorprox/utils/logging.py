@@ -17,45 +17,6 @@ from tensorprox.settings import settings
 WANDB: Run
 
 
-@dataclass
-class Log:
-    validator_model_id: str
-    challenge: str
-    challenge_prompt: str
-    reference: str
-    miners_ids: list[str]
-    responses: list[str]
-    miners_time: list[float]
-    challenge_time: float
-    reference_time: float
-    rewards: list[float]
-    task: dict
-
-
-def export_logs(logs: list[Log]):
-    logger.info("📝 Exporting logs...")
-
-    # Create logs folder if it doesn't exist
-    if not os.path.exists("logs"):
-        os.makedirs("logs")
-
-    # Get the current date and time for logging purposes
-    date_string = datetime.now().strftime("%Y-%m-%d_%H:%M")
-
-    all_logs_dict = [asdict(log) for log in logs]
-
-    for logs in all_logs_dict:
-        task_dict = logs.pop("task")
-        prefixed_task_dict = {f"task_{k}": v for k, v in task_dict.items()}
-        logs.update(prefixed_task_dict)
-
-    log_file = f"./logs/{date_string}_output.json"
-    with open(log_file, "w") as file:
-        json.dump(all_logs_dict, file)
-
-    return log_file
-
-
 def should_reinit_wandb():
     """Checks if 24 hours have passed since the last wandb initialization."""
     # Get the start time from the wandb config
@@ -139,8 +100,18 @@ class RewardLoggingEvent(BaseEvent):
     step: int
     uids: list[int]
     rewards: list[float]
+    bdr: list[float]
+    ama: list[float]
+    sps: list[float]
+    exp_bdr: list[float]
+    exp_ama: list[float]
+    exp_sps: list[float]
+    rtc: list[float]
+    rtt_value: list[float]
+    lf: list[float]
     response_event: DendriteResponseEvent
 
+    
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __str__(self):
@@ -159,8 +130,6 @@ class RewardLoggingEvent(BaseEvent):
 
 class MinerLoggingEvent(BaseEvent):
     epoch_time: float
-    challenges: int
-    prediction: int
     validator_uid: int
     validator_ip: str
     validator_coldkey: str

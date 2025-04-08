@@ -49,7 +49,6 @@ import numpy as np
 from typing import ClassVar, Dict, List, Union
 from tensorprox.base.dendrite import DendriteResponseEvent
 from pydantic import BaseModel, ConfigDict
-import os
 import logging
 import math
 
@@ -64,6 +63,15 @@ class ChallengeRewardEvent(BaseModel):
     """
     response: DendriteResponseEvent
     rewards: list[float]
+    bdr: list[float]
+    ama: list[float]
+    sps: list[float]
+    exp_bdr: list[float]
+    exp_ama: list[float]
+    exp_sps: list[float]
+    rtc: list[float]
+    rtt_value: list[float]
+    lf: list[float]
     uids: list[int]
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -78,6 +86,15 @@ class ChallengeRewardEvent(BaseModel):
         return {
             "response_event": self.response,
             "rewards": self.rewards,
+            "bdr": self.bdr,
+            "ama": self.ama,
+            "sps": self.sps,
+            "exp_bdr": self.exp_bdr,
+            "exp_ama": self.exp_ama,
+            "exp_sps": self.exp_sps,
+            "rtc": self.rtc,
+            "rtt_value": self.rtt_value,
+            "lf": self.lf,
             "uids": self.uids,
         }
 
@@ -89,6 +106,15 @@ class BatchRewardOutput(BaseModel):
         rewards (np.ndarray): An array of computed reward values.
     """
     rewards: np.ndarray
+    bdr: np.ndarray
+    ama: np.ndarray
+    sps: np.ndarray
+    exp_bdr: np.ndarray
+    exp_ama: np.ndarray
+    exp_sps: np.ndarray
+    rtc: np.ndarray
+    rtt_value: np.ndarray
+    lf: np.ndarray 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 class ChallengeRewardModel(BaseModel):
@@ -122,7 +148,11 @@ class ChallengeRewardModel(BaseModel):
             BatchRewardOutput: Rewards for each UID.
         """
 
+
+        #Initialize metrics lists
         scores = []
+        bdr, ama, sps, exp_bdr, exp_ama, exp_sps, rtc, lf = [[0]*len(uids) for _ in range(8)]
+        rtt_value = [1e9]*len(uids)
 
         # Reward weights
         alpha = 0.25  # Benign Delivery Rate (BDR)
@@ -163,7 +193,7 @@ class ChallengeRewardModel(BaseModel):
                 total_benign_sent += benign
 
             # Average RTT across tgens
-            rtt = max(sum(rtt_list) / len(rtt_list), 0) if rtt_list else 10000000
+            rtt = max(sum(rtt_list) / len(rtt_list), 0) if rtt_list else 1e9
 
             total_reaching_attacks = sum(king_counts.get(label, 0) for label in attack_labels) # total attacks reaching King
             total_reaching_benign = king_counts.get("BENIGN", 0) # total benign reaching King
@@ -219,11 +249,28 @@ class ChallengeRewardModel(BaseModel):
             logging.info(f"Average RTT for UID {uid} : {rtt} ms")
             logging.info(f"LF for UID {uid} : {LF}")
 
+            for arr, val in zip(
+                [bdr, ama, sps, exp_bdr, exp_ama, exp_sps, rtc, lf, rtt_value],
+                [BDR, AMA, SPS, reward_BDR, reward_AMA, reward_SPS, RTC, LF, rtt]
+            ):
+                arr[uid] = val
+                
             reward = alpha * reward_BDR + beta * reward_AMA + gamma * reward_SPS + delta * RTC + epsilon * LF
+         
             scores.append(reward)
 
-        return BatchRewardOutput(rewards=np.array(scores))
-        
+        return BatchRewardOutput(
+            rewards=np.array(scores),
+            bdr=np.array(bdr),
+            ama=np.array(ama),
+            sps=np.array(sps),
+            exp_bdr=np.array(exp_bdr),
+            exp_ama=np.array(exp_ama),
+            exp_sps=np.array(exp_sps),
+            rtc=np.array(rtc),
+            rtt_value=np.array(rtt_value),
+            lf=np.array(lf)
+        )
 
 class BaseRewardConfig(BaseModel):
     """
@@ -261,5 +308,14 @@ class BaseRewardConfig(BaseModel):
         return ChallengeRewardEvent(
             response=response_event,
             rewards=batch_rewards_output.rewards.tolist(),
+            bdr=batch_rewards_output.bdr.tolist(),
+            ama=batch_rewards_output.ama.tolist(),
+            sps=batch_rewards_output.sps.tolist(),
+            exp_bdr=batch_rewards_output.exp_bdr.tolist(),
+            exp_ama=batch_rewards_output.exp_ama.tolist(),
+            exp_sps=batch_rewards_output.exp_sps.tolist(),
+            rtc=batch_rewards_output.rtc.tolist(),
+            rtt_value=batch_rewards_output.rtt_value.tolist(),                        
+            lf=batch_rewards_output.lf.tolist(),                        
             uids=uids,
         )

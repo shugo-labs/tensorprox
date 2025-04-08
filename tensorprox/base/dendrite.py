@@ -18,8 +18,7 @@ class DendriteResponseEvent(BaseModel):
     gre_status: list[Dict[str, Union[int, str]]] = []
     challenge_status: list[Dict[str, Union[int, str, list]]] = []
     revert_status: list[Dict[str, Union[int, str]]] = []
-    ping_status_messages: list[str] = []
-    ping_status_codes: list[int] = []
+    ping_status_by_uid: dict[int, Dict[str, Union[int, str]]] = {}
     setup_status_by_uid: dict[int, Dict[str, Union[int, str]]] = {}
     lockdown_status_by_uid: dict[int, Dict[str, Union[int, str]]] = {}
     gre_status_by_uid: dict[int, Dict[str, Union[int, str]]] = {}
@@ -35,18 +34,22 @@ class DendriteResponseEvent(BaseModel):
         """
 
         # Reset all lists and dictionaries to start fresh
-        self.ping_status_messages = []
-        self.ping_status_codes = []
+        self.ping_status_by_uid = {}
         self.setup_status_by_uid = {}
         self.lockdown_status_by_uid = {}
         self.gre_status_by_uid = {}
         self.challenge_status_by_uid = {}
         self.revert_status_by_uid = {}
         
+        #Check availability Step
         if self.all_miners_availability:
             for avail in self.all_miners_availability:
-                self.ping_status_messages.append(avail.get("ping_status_message", ""))
-                self.ping_status_codes.append(avail.get("ping_status_code", 0))
+                uid = avail.get("uid")
+                if uid is not None:
+                    self.ping_status_by_uid[uid] = {
+                        "ping_status_message": avail.get("ping_status_message", f"UID {uid} not available."),
+                        "ping_status_code": avail.get("ping_status_code", 400),
+                    }
 
         # Setup Step
         if self.setup_status:
