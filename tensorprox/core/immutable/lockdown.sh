@@ -60,8 +60,22 @@ passwd -l root || echo "Failed to lock root account"
 NIC=$(ip route | grep default | awk '{print $5}' | head -1)
 iptables -F
 iptables -X
-iptables -A INPUT -i "$NIC" -p tcp -s "$validator_ip" -j ACCEPT
-iptables -A OUTPUT -o "$NIC" -p tcp -d "$validator_ip" -j ACCEPT
+
+# Allow SSH from validator
+iptables -A INPUT -i "$NIC" -p tcp -s "$validator_ip" --dport 22 -j ACCEPT
+iptables -A OUTPUT -o "$NIC" -p tcp --sport 22 -d "$validator_ip" -j ACCEPT
+
+# Allow ICMP (ping) for debugging GRE/IPIP later
+iptables -A INPUT -p icmp -j ACCEPT
+iptables -A OUTPUT -p icmp -j ACCEPT
+
+# Allow GRE and IPIP protocols
+iptables -A INPUT -p 47 -j ACCEPT  # GRE
+iptables -A OUTPUT -p 47 -j ACCEPT
+iptables -A INPUT -p 4 -j ACCEPT   # IPIP
+iptables -A OUTPUT -p 4 -j ACCEPT
+
+# Drop everything else
 iptables -A INPUT -i "$NIC" -j DROP
 iptables -A OUTPUT -o "$NIC" -j DROP
 
