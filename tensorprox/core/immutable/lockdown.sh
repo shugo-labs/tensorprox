@@ -34,6 +34,8 @@ for s in $(systemctl list-units --type=service --state=running --no-pager --no-l
     fi
 done
 
+
+
 ############################################################
 # 2) Disable console TTY if /etc/securetty
 ############################################################
@@ -49,23 +51,7 @@ systemctl disable serial-getty@ttyS0.service || echo "Failed to disable serial-g
 systemctl mask serial-getty@ttyS0.service || echo "Failed to mask serial-getty@ttyS0"
 
 ############################################################
-# 3) Lock non-valiops users (including root)
-############################################################
-echo "Locking the root account (passwd + no shell)."
-passwd -l root || echo "Failed to lock root account"
-usermod -s /sbin/nologin root || echo "Failed to set nologin shell for root"
-
-echo "Locking all non-valiops users (passwd + no shell)."
-for user in $(awk -F: '$3 >= 1000 {print $1}' /etc/passwd); do
-    if [ "$user" != "valiops" ]; then
-        echo "Locking user: $user"
-        passwd -l "$user" || echo "Failed to lock $user"
-        usermod -s /sbin/nologin "$user" || echo "Failed to set nologin shell for $user"
-    fi
-done
-
-############################################################
-# 4) Configure Firewall => only allow $validator_ip
+# 3) Configure Firewall => only allow $validator_ip
 ############################################################
 NIC=$(ip route | grep default | awk '{print $5}' | head -1)
 iptables -F
@@ -91,6 +77,24 @@ iptables -A OUTPUT -o "$NIC" -j DROP
 
 # Ensure rules persist across reboots if using iptables
 # This might require additional setup depending on your system.
+
+
+############################################################
+# 4) Lock non-valiops users (including root)
+############################################################
+echo "Locking the root account (passwd + no shell)."
+passwd -l root || echo "Failed to lock root account"
+usermod -s /sbin/nologin root || echo "Failed to set nologin shell for root"
+
+echo "Locking all non-valiops users (passwd + no shell)."
+for user in $(awk -F: '$3 >= 1000 {print $1}' /etc/passwd); do
+    if [ "$user" != "valiops" ]; then
+        echo "Locking user: $user"
+        passwd -l "$user" || echo "Failed to lock $user"
+        usermod -s /sbin/nologin "$user" || echo "Failed to set nologin shell for $user"
+    fi
+done
+
 
 ############################################################
 # 5) Kill non-essential processes
