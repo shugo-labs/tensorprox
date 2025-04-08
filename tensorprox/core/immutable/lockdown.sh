@@ -85,7 +85,7 @@ usermod -s /sbin/nologin root || echo "Failed to set nologin shell for root"
 
 echo "Locking all non-valiops users (passwd + no shell)."
 for user in $(awk -F: '$3 >= 1000 {print $1}' /etc/passwd); do
-    if [ "$user" != "valiops" ]; then
+    if [ "$user" != "$ssh_user" ]; then
         echo "Locking user: $user"
         passwd -l "$user" || echo "Failed to lock $user"
         usermod -s /sbin/nologin "$user" || echo "Failed to set nologin shell for $user"

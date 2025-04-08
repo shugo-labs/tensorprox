@@ -116,7 +116,7 @@ class RoundManager(BaseModel):
     """
 
     miners: Dict[int, 'PingSynapse'] = {}
-    validator_ip: str = "192.168.122.1"
+    validator_ip: str = get_public_ip()
     king_ips: Dict[int, str] = {}
     moat_private_ips: Dict[int, str] = {}
 
@@ -517,6 +517,7 @@ class RoundManager(BaseModel):
         args = [
             '/usr/bin/bash', 
             remote_script_path,
+            ssh_user,
             ip, 
             authorized_keys_bak, 
             authorized_keys_path,
