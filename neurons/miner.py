@@ -633,7 +633,7 @@ async def clone_or_update_repository(
     initial_private_key_path: str = INITIAL_PK_PATH,
     repo_path: str = f"/home/{RESTRICTED_USER}/tensorprox",
     repo_url: str = "github.com/shugo-io/tensorprox.git",
-    branch: str = "scalable-trafficgen",
+    branch: str = "main",
     sparse_folder: str = "tensorprox/core/immutable",
     timeout: int = 5,
     retries: int = 3,
@@ -857,11 +857,11 @@ if __name__ == "__main__":
     traffic_generators = load_trafficgen_machine_tuples()
     machines = traffic_generators + [(KING_PUBLIC_IP, KING_USERNAME, KING_PRIVATE_IP)]
 
-    run_gre_setup(traffic_generators)
+    # run_gre_setup(traffic_generators)
     
     # Run the repository cloning setup first, wait for it to complete
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(setup_machines("", machines))
+    loop.run_until_complete(setup_machines("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", machines))
 
     with Miner(traffic_generators=traffic_generators, machines=machines) as miner:
         while not miner.should_exit:

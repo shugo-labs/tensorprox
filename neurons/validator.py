@@ -374,67 +374,67 @@ class Validator(BaseValidatorNeuron):
 
         logger.debug(f"Initial setup phase completed in {setup_timer.elapsed_time:.2f} seconds")
 
-        # # Step 3: Lockdown
-        # with Timer() as lockdown_timer:
-        #     logger.info(f"🔒 Locking down miners : {setup_completed_uids}")
-        #     try:
-                
-        #         lockdown_results = await round_manager.execute_task(
-        #             task="lockdown",
-        #             miners=setup_completed_miners,
-        #             subset_miners=subset_miners,
-        #             timeout=LOCKDOWN_TIMEOUT
-        #         )
-
-        #     except Exception as e:
-        #         logger.error(f"Error during lockdown phase: {e}")
-        #         lockdown_results = []
-        #         return False
-            
-        # logger.debug(f"Lockdown phase completed in {lockdown_timer.elapsed_time:.2f} seconds")
-
-        # locked_miners = [
-        #     (uid, synapse) for uid, synapse in setup_completed_miners
-        #     if any(entry["uid"] == uid and entry["lockdown_status_code"] == 200 for entry in lockdown_results)
-        # ]
-
-        # if not locked_miners:
-        #     logger.warning("No miners are available for challenge phase.")
-        #     return False
-
-        locked_miners = setup_completed_miners
-        locked_uids = [uid for uid, _ in locked_miners]
-
-        # Step 4: GRE Setup
-        with Timer() as gre_timer:
-
-            logger.info(f"⚙️ Starting GRE configuration phase for miners: {locked_uids}")
-
+        # Step 3: Lockdown
+        with Timer() as lockdown_timer:
+            logger.info(f"🔒 Locking down miners : {setup_completed_uids}")
             try:
-
-                gre_results = await round_manager.execute_task(
-                    task="gre_setup",
-                    miners=locked_miners,
+                
+                lockdown_results = await round_manager.execute_task(
+                    task="lockdown",
+                    miners=setup_completed_miners,
                     subset_miners=subset_miners,
-                    timeout=GRE_SETUP_TIMEOUT
+                    timeout=LOCKDOWN_TIMEOUT
                 )
 
             except Exception as e:
-                logger.error(f"Error during GRE configuration phase: {e}")
-                gre_results = []
+                logger.error(f"Error during lockdown phase: {e}")
+                lockdown_results = []
+                return False
+            
+        logger.debug(f"Lockdown phase completed in {lockdown_timer.elapsed_time:.2f} seconds")
 
-        logger.debug(f"GRE configuration completed in {gre_timer.elapsed_time:.2f} seconds")
-        
-        ready_miners = [
-            (uid, synapse) for uid, synapse in locked_miners
-            if any(entry["uid"] == uid and entry["gre_setup_status_code"] == 200 for entry in gre_results)
+        locked_miners = [
+            (uid, synapse) for uid, synapse in setup_completed_miners
+            if any(entry["uid"] == uid and entry["lockdown_status_code"] == 200 for entry in lockdown_results)
         ]
 
-        if not ready_miners:
+        if not locked_miners:
             logger.warning("No miners are available for challenge phase.")
             return False
+
+        # locked_miners = setup_completed_miners
+        locked_uids = [uid for uid, _ in locked_miners]
+
+        # # Step 4: GRE Setup
+        # with Timer() as gre_timer:
+
+        #     logger.info(f"⚙️ Starting GRE configuration phase for miners: {locked_uids}")
+
+        #     try:
+
+        #         gre_results = await round_manager.execute_task(
+        #             task="gre_setup",
+        #             miners=locked_miners,
+        #             subset_miners=subset_miners,
+        #             timeout=GRE_SETUP_TIMEOUT
+        #         )
+
+        #     except Exception as e:
+        #         logger.error(f"Error during GRE configuration phase: {e}")
+        #         gre_results = []
+
+        # logger.debug(f"GRE configuration completed in {gre_timer.elapsed_time:.2f} seconds")
         
-        # ready_miners = locked_miners
+        # ready_miners = [
+        #     (uid, synapse) for uid, synapse in locked_miners
+        #     if any(entry["uid"] == uid and entry["gre_setup_status_code"] == 200 for entry in gre_results)
+        # ]
+
+        # if not ready_miners:
+        #     logger.warning("No miners are available for challenge phase.")
+        #     return False
+        
+        ready_miners = locked_miners
         ready_uids = [uid for uid, _ in ready_miners]
 
         # Step 5: Challenge
@@ -459,35 +459,36 @@ class Validator(BaseValidatorNeuron):
 
         logger.debug(f"Challenge phase completed in {challenge_timer.elapsed_time:.2f} seconds")
 
-        # # Step 6: Revert
-        # with Timer() as revert_timer:    
+        # Step 6: Revert
+        with Timer() as revert_timer:    
 
-        #     logger.info(f"🔄 Reverting miner's machines access : {ready_uids}")
+            logger.info(f"🔄 Reverting miner's machines access : {ready_uids}")
 
-        #     try:
+            try:
                 
-        #         revert_results = await round_manager.execute_task(
-        #             task="revert",
-        #             miners=ready_miners,
-        #             subset_miners=subset_miners,
-        #             backup_suffix=backup_suffix,
-        #         )
+                revert_results = await round_manager.execute_task(
+                    task="revert",
+                    miners=ready_miners,
+                    subset_miners=subset_miners,
+                    backup_suffix=backup_suffix,
+                    timeout=REVERT_TIMEOUT
+                )
 
-        #     except Exception as e:
-        #         logger.error(f"Error during revert phase: {e}")
-        #         revert_results = []
+            except Exception as e:
+                logger.error(f"Error during revert phase: {e}")
+                revert_results = []
 
-        # logger.debug(f"Revert completed in {revert_timer.elapsed_time:.2f} seconds")
+        logger.debug(f"Revert completed in {revert_timer.elapsed_time:.2f} seconds")
 
         # Create a complete response event
         response_event = DendriteResponseEvent(
             synapses=synapses,
             all_miners_availability=all_miners_availability,
             setup_status=setup_results,
-            # lockdown_status=lockdown_results,
-            gre_status=gre_results,
+            lockdown_status=lockdown_results,
+            # gre_status=gre_results,
             challenge_status=challenge_results,
-            # revert_status=revert_results,
+            revert_status=revert_results,
             uids=subset_miners,
         )
 
