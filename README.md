@@ -79,44 +79,44 @@ The Tensorprox system employs a sophisticated network topology utilizing GRE tun
 
 ### Network Nodes
 
-1. **Benign Node (10.0.0.4)**
+1. **Traffic Generator (Tgen-0) (10.1.3.71)**
    - Physical interface on 10.0.0.0/24 network
-   - GRE tunnel to Moat (gre-moat: 192.168.100.1/30)
-   - IPIP tunnel (ipip-benign) with overlay IP: 10.200.77.102/32
+   - GRE tunnel to Moat (gre-moat: 192.168.110.1/30)
+   - IPIP tunnel (ipip-tgen-0) with overlay IP: 10.200.77.1/32
 
-2. **Attacker Node (10.0.0.2)**
+2. **Traffic Generator (Tgen-0) (10.1.2.86)**
    - Physical interface on 10.0.0.0/24 network
-   - GRE tunnel to Moat (gre-moat: 192.168.102.1/30)
-   - IPIP tunnel (ipip-attacker) with overlay IP: 10.200.77.103/32
+   - GRE tunnel to Moat (gre-moat: 192.168.114.1/30)
+   - IPIP tunnel (ipip-tgen-1) with overlay IP: 10.200.77.2/32
 
-3. **Moat Node (10.0.0.6)**
+3. **Moat Node (10.1.3.141)**
    - Physical interface on 10.0.0.0/24 network
    - Multiple GRE tunnels:
-     * To Benign (gre-benign: 192.168.100.2/30)
-     * To Attacker (gre-attacker: 192.168.102.2/30)
+     * To Tgen-0 (gre-tgen-0: 192.168.110.2/30)
+     * To Tgen-1 (gre-tgen-1: 192.168.114.2/30)
      * To King (gre-king: 192.168.101.1/30)
    - IPIP tunnel to King for encapsulation
 
-4. **King Node (10.0.0.5)**
+4. **King Node (10.1.3.23)**
    - Physical interface on 10.0.0.0/24 network
    - GRE tunnel to Moat (gre-moat: 192.168.101.2/30)
-   - IPIP tunnel (ipip-king) with overlay IP: 10.200.77.1/32
+   - IPIP tunnel (ipip-king) with overlay IP: 10.0.0.1/32
 
 ## Traffic Flow Mechanics
 
-### Benign to King Traffic Flow
-1. Traffic originates from Benign (10.200.77.102) to King (10.200.77.1)
+### Tgen-0 to King Traffic Flow
+1. Traffic originates from Benign (10.200.77.1) to King (10.0.0.1)
 2. Routed via gre-moat interface
 3. Encapsulated in GRE and sent to Moat
-4. Moat receives on gre-benign interface
+4. Moat receives on gre-tgen-0 interface
 5. Forwarded through gre-king to King
 6. King processes packet through ipip-king interface
 
-### Attacker to King Traffic Flow
-1. Traffic originates from Attacker (10.200.77.103) to King (10.200.77.1)
+### Tgen-1 to King Traffic Flow
+1. Traffic originates from Attacker (10.200.77.2) to King (10.0.0.1)
 2. Routed via gre-moat interface
 3. Encapsulated in GRE and sent to Moat
-4. Moat receives on gre-attacker interface
+4. Moat receives on gre-tgen-1 interface
 5. Forwarded through gre-king to King
 6. King processes packet through ipip-king interface
 
