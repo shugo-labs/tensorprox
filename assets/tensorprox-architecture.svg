@@ -76,7 +76,7 @@
   
   <!-- Traffic Generators Section -->
   <rect x="130" y="160" width="300" height="350" rx="10" ry="10" fill="rgba(224, 231, 255, 0.2)" stroke="#155966" stroke-width="1.5" stroke-dasharray="3,3"/>
-  <text x="280" y="180" font-family="Arial, Helvetica, sans-serif" font-size="18" text-anchor="middle" font-weight="bold" fill="#155966">Scalable Traffic Generators</text>
+  <text x="280" y="185" font-family="Arial, Helvetica, sans-serif" font-size="18" text-anchor="middle" fill="#155966">Traffic Generators</text>
   
   <!-- tgen 1 -->
   <rect x="150" y="200" width="120" height="70" rx="8" ry="8" fill="url(#tgenGradient)" stroke="#155966" stroke-width="1.5" filter="url(#glow)"/>
@@ -99,10 +99,11 @@
   <text x="235" y="390" font-family="Arial, Helvetica, sans-serif" font-size="18" text-anchor="middle" fill="#2D5082">...</text>
   <text x="280" y="420" font-family="Arial, Helvetica, sans-serif" font-size="12" font-style="italic" text-anchor="middle" fill="#555">Scalable to n machines</text>
   <text x="280" y="440" font-family="Arial, Helvetica, sans-serif" font-size="12" font-style="italic" text-anchor="middle" fill="#555">for increased traffic volume</text>
-  
+  <text x="280" y="460" font-family="Arial, Helvetica, sans-serif" font-size="12" font-style="italic" text-anchor="middle" fill="#555">2 ⩽ n ⩽ 255</text>
+
   <!-- Moat Node (Miner) -->
   <g filter="url(#shadow)">
-  <path d="M525,250 L595,240 L635,330 L595,420 L525,410 L485,330 Z" fill="url(#moatGradient)" stroke="#4A7E3A" stroke-width="2" filter="url(#glow)" />
+  <path d="M525,242 L595,232 L635,322 L595,412 L525,402 L485,322 Z" fill="url(#moatGradient)" stroke="#4A7E3A" stroke-width="2" filter="url(#glow)" />
   <text x="560" y="285" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="bold" text-anchor="middle" fill="white">MOAT</text>
   <text x="560" y="310" font-family="Arial, Helvetica, sans-serif" font-size="14" text-anchor="middle" fill="white">(Miner)</text>
   <text x="560" y="360" font-family="Arial, Helvetica, sans-serif" font-size="12" text-anchor="middle" fill="white">AF_XDP Filtering</text>
@@ -138,7 +139,7 @@
 
   
   <!-- GRE Tunnel from Moat to King -->
-  <path d="M630 330 Q 675 330, 720 330" fill="none" stroke="#2851a3" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <path d="M633 320 Q 675 330, 722 330" fill="none" stroke="#2851a3" stroke-width="2" marker-end="url(#arrowBlue)"/>
   
 <!-- Legend (Top Right) -->
 <rect x="680" y="120" width="180" height="75" rx="5" ry="5" fill="white" stroke="#888" stroke-width="1"/>
