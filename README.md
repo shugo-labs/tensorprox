@@ -75,7 +75,7 @@ Tensorprox enables progressive scalability through competitive bandwidth handlin
 
 ## Network Architecture Overview
 
-The Tensorprox system employs a sophisticated network topology utilizing GRE tunnels to create a secure, flexible overlay network. The architecture consists of four interconnected nodes within the 10.0.0.0/24 physical network, establishing a complex tunnel infrastructure.
+The Tensorprox system employs a sophisticated network topology utilizing GRE tunnels to create a secure, flexible overlay network. The architecture consists of interconnected nodes within the 10.0.0.0/24 physical network, establishing a complex tunnel infrastructure.
 
 ### Network Nodes
 
@@ -84,7 +84,7 @@ The Tensorprox system employs a sophisticated network topology utilizing GRE tun
    - GRE tunnel to Moat (gre-moat: 192.168.110.1/30)
    - IPIP tunnel (ipip-tgen-0) with overlay IP: 10.200.77.1/32
 
-2. **Traffic Generator (Tgen-0) (10.1.2.86)**
+2. **Traffic Generator (Tgen-1) (10.1.2.86)**
    - Physical interface on 10.0.0.0/24 network
    - GRE tunnel to Moat (gre-moat: 192.168.114.1/30)
    - IPIP tunnel (ipip-tgen-1) with overlay IP: 10.200.77.2/32

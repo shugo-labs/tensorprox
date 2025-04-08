@@ -328,8 +328,6 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
         dendrite_uid = settings.METAGRAPH.hotkeys.index(synapse.dendrite.hotkey)
         event = MinerLoggingEvent(
             epoch_time=timing,
-            challenges=challenges,
-            prediction=prediction,
             validator_uid=dendrite_uid,
             validator_ip=synapse.dendrite.ip,
             validator_coldkey=settings.METAGRAPH.coldkeys[dendrite_uid],

@@ -29,7 +29,7 @@ udp_flood_count=0
 tcp_syn_flood_count=0
 
 # Default RTT value
-rtt_avg=10000000
+rtt_avg=1000000000
 
 # Define the traffic filtering
 filter_traffic="(tcp or udp) and dst host $king_ip"

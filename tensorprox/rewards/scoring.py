@@ -49,10 +49,6 @@ Version: 0.1.0
 
 import asyncio
 import threading
-import shutil
-import os
-import numpy as np
-
 from pydantic import ConfigDict
 from loguru import logger
 from dataclasses import dataclass
@@ -90,14 +86,12 @@ class TaskScorer(AsyncLoopRunner):
     Attributes:
         is_running (bool): Indicates if the scoring loop is active.
         thread (threading.Thread): The background thread running the scoring loop.
-        interval (int): Time interval (in seconds) between scoring iterations.
         model_config (ConfigDict): Configuration for the Pydantic model.
         base_reward_model (ClassVar[BaseRewardConfig]): The reward model used for
             computing rewards.
     """
     is_running: bool = False
     thread: threading.Thread = None
-    interval: int = 10
     model_config = ConfigDict(arbitrary_types_allowed=True)
     base_reward_model: ClassVar[BaseRewardConfig] = BaseRewardConfig(reward_model=ChallengeRewardModel())
     scoring_round: ScoringConfig = None
@@ -151,6 +145,15 @@ class TaskScorer(AsyncLoopRunner):
             response_event=reward_event.response,
             uids=reward_event.uids,
             rewards=reward_event.rewards,
+            bdr=reward_event.bdr,
+            ama=reward_event.ama,
+            sps=reward_event.sps,
+            exp_bdr=reward_event.exp_bdr,
+            exp_ama=reward_event.exp_ama,
+            exp_sps=reward_event.exp_sps,
+            rtc=reward_event.rtc,
+            rtt_value=reward_event.rtt_value,
+            lf=reward_event.lf,
         ))
 
 
