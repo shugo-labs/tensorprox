@@ -280,6 +280,12 @@ class RoundManager(BaseModel):
             uid_status_availability["ping_status_code"] = 500
             return synapse, uid_status_availability
 
+        # Check the validity of the traffic generators
+        if not synapse.machine_availabilities.is_valid:
+            uid_status_availability["ping_status_message"] = "Not enough traffic generators (minimum 2 required)."
+            uid_status_availability["ping_status_code"] = 400
+            return synapse, uid_status_availability
+    
         if not synapse.machine_availabilities.key_pair:
             uid_status_availability["ping_status_message"] = "Missing SSH Key Pair."
             uid_status_availability["ping_status_code"] = 400
