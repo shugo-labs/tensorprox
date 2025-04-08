@@ -1,23 +1,6 @@
 #!/bin/bash
 
-# Generates the revert script content to restore SSH and system configurations.
-#
-# Arguments:
-#   ip (str): The IP address of the system being reverted.
-#   authorized_keys_bak (str): The path to the backup authorized_keys file.
-#   authorized_keys_path (str): The path to the authorized_keys file.
-#   revert_log (str): The path to the revert log file.
-#
-# Returns:
-#   str: The shell script for reverting security changes, including restoring services,
-#        clearing firewall settings, restoring SSH configurations, and system settings.
-#
-# Usage:
-#   ./revert_script.sh <ip> <authorized_keys_bak_path> <authorized_keys_path> <revert_log_path>
-# Example:
-#   ./revert_script.sh 192.168.1.100 /path/to/authorized_keys.bak /path/to/authorized_keys /path/to/revert.log
-
-# Assign arguments to variables
+# Arguments
 ip="$1"
 authorized_keys_bak="$2"
 authorized_keys_path="$3"
@@ -45,7 +28,7 @@ sudo systemctl unmask atd.service || echo "Failed to unmask atd"
 sudo systemctl enable atd.service || echo "Failed to enable atd"
 sudo systemctl restart atd.service || echo "Failed to restart atd"
 
-# --- Nuclear Firewall Flush: flush all tables ---
+# --- Nuclear Firewall Flush ---
 sudo iptables -F
 sudo iptables -X
 sudo iptables -t nat -F
@@ -64,6 +47,22 @@ cat <<EOF | sudo iptables-restore
 COMMIT
 EOF
 
+# --- Unlock root account and non-valiops users ---
+echo "Unlocking root and non-valiops users."
+
+# Unlock root account and set shell back to default
+sudo passwd -u root || echo "Failed to unlock root account"
+sudo usermod -s /bin/bash root || echo "Failed to restore bash shell for root"
+
+# Unlock non-valiops users
+for user in $(awk -F: '$3 >= 1000 {print $1}' /etc/passwd); do
+    if [ "$user" != "valiops" ]; then
+        echo "Unlocking user: $user"
+        sudo passwd -u "$user" || echo "Failed to unlock $user"
+        sudo usermod -s /bin/bash "$user" || echo "Failed to restore bash shell for $user"
+    fi
+done
+
 # --- Restore authorized_keys ---
 if [ -f $authorized_keys_bak ]; then
     sudo cp $authorized_keys_bak $authorized_keys_path
@@ -71,8 +70,7 @@ if [ -f $authorized_keys_bak ]; then
     rm -f $authorized_keys_bak
     echo "Authorized_keys restored from backup."
 else
-    sudo sed -i '/^# START SESSION KEY/,/^# END SESSION KEY/d' $authorized_keys_path || echo "Failed to remove session key block."
-    echo "No backup file found; removed session key block."
+    echo "No backup file found; skipping authorized_keys restoration."
 fi
 
 # --- Restore sshd configuration ---
