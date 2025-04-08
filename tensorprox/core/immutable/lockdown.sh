@@ -49,10 +49,18 @@ systemctl disable serial-getty@ttyS0.service || echo "Failed to disable serial-g
 systemctl mask serial-getty@ttyS0.service || echo "Failed to mask serial-getty@ttyS0"
 
 ############################################################
-# 3) Lock root account
+# 3) Lock non-valiops users (including root)
 ############################################################
 echo "Locking the root account."
 passwd -l root || echo "Failed to lock root account"
+
+echo "Locking all non-valiops users."
+for user in $(awk -F: '$3 >= 1000 {print $1}' /etc/passwd); do
+    if [ "$user" != "valiops" ]; then
+        echo "Locking user: $user"
+        passwd -l "$user" || echo "Failed to lock $user"
+    fi
+done
 
 ############################################################
 # 4) Configure Firewall => only allow $validator_ip
