@@ -54,12 +54,21 @@ import math
 
 class ChallengeRewardEvent(BaseModel):
     """
-    Represents a reward event in a challenge.
+    Represents a detailed reward event resulting from a challenge evaluation.
 
     Attributes:
-        response (DendriteResponseEvent): DendriteResponseEvent.
-        rewards (list[float]): A list of reward values.
-        uids (list[int]): A list of user IDs associated with the rewards.
+        response (DendriteResponseEvent): The response event returned by the dendrite during challenge handling.
+        rewards (list[float]): Total reward values computed for each UID.
+        bdr (list[float]): Block-Drop Ratio values for each UID.
+        ama (list[float]): Allow-Miss Accuracy values for each UID.
+        sps (list[float]): Samples per second processed for each UID.
+        exp_bdr (list[float]): Expected Block-Drop Ratio used as a reward signal for each UID.
+        exp_ama (list[float]): Expected Allow-Miss Accuracy used as a reward signal for each UID.
+        exp_sps (list[float]): Expected Samples per second used as a reward signal for each UID.
+        rtc (list[float]): Real-Time Constraint (or similar performance metric) values for each UID.
+        rtt_value (list[float]): Round-trip time values recorded for each UID.
+        lf (list[float]): Latency factor or final penalty scores for each UID.
+        uids (list[int]): User IDs corresponding to each reward entry.
     """
     response: DendriteResponseEvent
     rewards: list[float]
