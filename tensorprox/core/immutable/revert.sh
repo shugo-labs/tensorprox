@@ -1,10 +1,11 @@
 #!/bin/bash
 
 # Arguments
-ip="$1"
-authorized_keys_bak="$2"
-authorized_keys_path="$3"
-revert_log="$4"
+ssh_user="$1"
+ip="$2"
+authorized_keys_bak="$3"
+authorized_keys_path="$4"
+revert_log="$5"
 
 # Revert script for $ip
 # Logging to $revert_log
@@ -56,7 +57,7 @@ sudo usermod -s /bin/bash root || echo "Failed to restore bash shell for root"
 
 # Unlock non-valiops users
 for user in $(awk -F: '$3 >= 1000 {print $1}' /etc/passwd); do
-    if [ "$user" != "valiops" ]; then
+    if [ "$user" != "$ssh_user" ]; then
         echo "Unlocking user: $user"
         sudo passwd -u "$user" || echo "Failed to unlock $user"
         sudo usermod -s /bin/bash "$user" || echo "Failed to restore bash shell for $user"
