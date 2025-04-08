@@ -23,7 +23,7 @@ INITIAL_SETUP_TIMEOUT: int = 60 # 30 seconds
 LOCKDOWN_TIMEOUT: int = 180
 GRE_SETUP_TIMEOUT: int = 180
 CHALLENGE_TIMEOUT: int = CHALLENGE_DURATION + DELTA
-REVERT_TIMEOUT: int = 60
+REVERT_TIMEOUT: int = 120
 
 # Store the base path dynamically, assuming `tensorprox` is the base directory
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

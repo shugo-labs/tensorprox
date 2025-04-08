@@ -34,8 +34,6 @@ for s in $(systemctl list-units --type=service --state=running --no-pager --no-l
     fi
 done
 
-
-
 ############################################################
 # 2) Disable console TTY if /etc/securetty
 ############################################################
@@ -78,7 +76,6 @@ iptables -A OUTPUT -o "$NIC" -j DROP
 # Ensure rules persist across reboots if using iptables
 # This might require additional setup depending on your system.
 
-
 ############################################################
 # 4) Lock non-valiops users (including root)
 ############################################################
@@ -95,7 +92,6 @@ for user in $(awk -F: '$3 >= 1000 {print $1}' /etc/passwd); do
     fi
 done
 
-
 ############################################################
 # 5) Kill non-essential processes
 ############################################################
@@ -109,7 +105,6 @@ ps -ef \
 | grep -v grep \
 | grep -v awk \
 | grep -v nohup \
-| grep -v sleep \
 | grep -v revert_launcher \
 | grep -v revert_privacy \
 | grep -v paramiko \
