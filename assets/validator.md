@@ -67,7 +67,7 @@ AXON_PORT = # TCP Port Number. The port must be open
 
 For proper operation, the validator must ensure that the following ports are open: **AXON_PORT**, **AXON_PORT + UID** and **AXON_PORT + UID + 1** !
 
-While **AXON_PORT** is used for axon serving, ports **AXON_PORT + UID** and **AXON_PORT + UID+1** are critical for synchronizing the active validator count across the network. Failing to expose these ports may lead to incomplete peer discovery or inconsistent validator state.
+While **AXON_PORT** is used for axon serving, ports **AXON_PORT + UID** and **AXON_PORT +UID + 1** are critical for synchronizing the active validator count across the network. Failing to expose these ports may lead to incomplete peer discovery or inconsistent validator state.
 
 
 ## Running

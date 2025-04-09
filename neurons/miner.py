@@ -633,7 +633,7 @@ async def clone_or_update_repository(
     initial_private_key_path: str = INITIAL_PK_PATH,
     repo_path: str = f"/home/{RESTRICTED_USER}/tensorprox",
     repo_url: str = "github.com/shugo-io/tensorprox.git",
-    branch: str = "lockdown-revert",
+    branch: str = "scalable-trafficgen",
     sparse_folder: str = "tensorprox/core/immutable",
     timeout: int = 5,
     retries: int = 3,
