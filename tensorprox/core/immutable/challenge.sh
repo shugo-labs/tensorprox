@@ -50,11 +50,8 @@ if [[ "$machine_name" == tgen* ]]; then
     fi
 
     # Install necessary Python packages
-    for package in faker scapy pycryptodome; do
-        if ! python3 -c "import $package" &>/dev/null; then
-            sudo pip3 install $package > /dev/null 2>&1
-        fi
-    done
+    sudo pip3 install faker scapy pycryptodome --quiet
+
 
     # Dump playlist into temporary json file
     echo "$playlist_json" > /tmp/playlist.json
