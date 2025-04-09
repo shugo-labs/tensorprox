@@ -1398,11 +1398,6 @@ class GRESetup:
             node_index (int, optional): Index of the traffic generator (0, 1, 2, etc.)
                                     Not required for king node.
         """
-            
-        # Check if ethtool exists, otherwise install it
-        if not shutil.which("ethtool"):
-            log("[INFO] ethtool not found, installing it...", level=1)
-            self.install_ethtool()
         
         # Validate node type
         if self.node_type == "king":

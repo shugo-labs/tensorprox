@@ -14,14 +14,14 @@ class DendriteResponseEvent(BaseModel):
     synapses: list[PingSynapse]
     all_miners_availability: list[Dict[str, Union[int, str]]] = []
     setup_status: list[Dict[str, Union[int, str]]] = []
-    lockdown_status: list[Dict[str, Union[int, str]]] = []
     gre_status: list[Dict[str, Union[int, str]]] = []
+    lockdown_status: list[Dict[str, Union[int, str]]] = []
     challenge_status: list[Dict[str, Union[int, str, list]]] = []
     revert_status: list[Dict[str, Union[int, str]]] = []
     ping_status_by_uid: dict[int, Dict[str, Union[int, str]]] = {}
     setup_status_by_uid: dict[int, Dict[str, Union[int, str]]] = {}
-    lockdown_status_by_uid: dict[int, Dict[str, Union[int, str]]] = {}
     gre_status_by_uid: dict[int, Dict[str, Union[int, str]]] = {}
+    lockdown_status_by_uid: dict[int, Dict[str, Union[int, str]]] = {}
     challenge_status_by_uid: dict[int, Dict[str, Union[int, str, list]]] = {}
     revert_status_by_uid: dict[int, Dict[str, Union[int, str]]] = {}
 
@@ -36,8 +36,8 @@ class DendriteResponseEvent(BaseModel):
         # Reset all lists and dictionaries to start fresh
         self.ping_status_by_uid = {}
         self.setup_status_by_uid = {}
-        self.lockdown_status_by_uid = {}
         self.gre_status_by_uid = {}
+        self.lockdown_status_by_uid = {}
         self.challenge_status_by_uid = {}
         self.revert_status_by_uid = {}
         
@@ -61,16 +61,6 @@ class DendriteResponseEvent(BaseModel):
                         "initial_setup_status_code": setup.get("initial_setup_status_code", 400),
                     }
 
-        # Lockdown Step
-        if self.lockdown_status:
-            for lockdown in self.lockdown_status:
-                uid = lockdown.get("uid")
-                if uid is not None:
-                    self.lockdown_status_by_uid[uid] = {
-                        "lockdown_status_message": lockdown.get("lockdown_status_message", f"UID {uid} not locked down."),
-                        "lockdown_status_code": lockdown.get("lockdown_status_code", 400),
-                    }
-
         # GRE Step
         if self.gre_status:
             for gre in self.gre_status:
@@ -79,6 +69,16 @@ class DendriteResponseEvent(BaseModel):
                     self.gre_status_by_uid[uid] = {
                         "gre_setup_status_message": gre.get("gre_setup_status_message", f"UID {uid} not set up."),
                         "gre_setup_status_code": gre.get("gre_setup_status_code", 400),
+                    }
+
+        # Lockdown Step
+        if self.lockdown_status:
+            for lockdown in self.lockdown_status:
+                uid = lockdown.get("uid")
+                if uid is not None:
+                    self.lockdown_status_by_uid[uid] = {
+                        "lockdown_status_message": lockdown.get("lockdown_status_message", f"UID {uid} not locked down."),
+                        "lockdown_status_code": lockdown.get("lockdown_status_code", 400),
                     }
 
         # Challenge Step
