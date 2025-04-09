@@ -154,11 +154,6 @@ for iface in $(ip link show | grep -o '^[0-9]\+: [^:]\+' | cut -d' ' -f2); do
     fi
 done
 
-# Disable BPF JIT compiler which can be used for snooping
-if [ -f /proc/sys/net/core/bpf_jit_enable ]; then
-    echo 0 > /proc/sys/net/core/bpf_jit_enable
-fi
-
 ############################################################
 # 7) Find and kill hidden processes
 ############################################################
@@ -201,11 +196,6 @@ if [ -n "$suspicious_modules" ]; then
         echo "Attempting to unload malicious module $module"
         rmmod "$module" 2>/dev/null || echo "Failed to unload module $module"
     done
-fi
-
-# Prevent loading of new modules
-if [ -w /proc/sys/kernel/modules_disabled ]; then
-    echo 1 > /proc/sys/kernel/modules_disabled || echo "Failed to disable module loading"
 fi
 
 ############################################################
