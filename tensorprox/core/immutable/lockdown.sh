@@ -52,29 +52,40 @@ systemctl mask serial-getty@ttyS0.service || echo "Failed to mask serial-getty@t
 # 3) Configure Firewall => only allow $validator_ip
 ############################################################
 NIC=$(ip route | grep default | awk '{print $5}' | head -1)
+
+# Flush existing rules
 iptables -F
 iptables -X
+
+# Set default policies to DROP (safer)
+iptables -P INPUT DROP
+iptables -P OUTPUT DROP
+iptables -P FORWARD DROP
+
+# Allow established/related connections
+iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
 # Allow SSH from validator
 iptables -A INPUT -i "$NIC" -p tcp -s "$validator_ip" --dport 22 -j ACCEPT
 iptables -A OUTPUT -o "$NIC" -p tcp --sport 22 -d "$validator_ip" -j ACCEPT
 
-# Allow ICMP (ping) for debugging GRE/IPIP later
+# Allow ICMP (ping)
 iptables -A INPUT -p icmp -j ACCEPT
 iptables -A OUTPUT -p icmp -j ACCEPT
 
-# Allow GRE and IPIP protocols
+# Allow GRE and IPIP
 iptables -A INPUT -p 47 -j ACCEPT  # GRE
 iptables -A OUTPUT -p 47 -j ACCEPT
 iptables -A INPUT -p 4 -j ACCEPT   # IPIP
 iptables -A OUTPUT -p 4 -j ACCEPT
 
-# Allow TCP and UDP for challenge traffic
-iptables -A INPUT -p tcp -j ACCEPT
-iptables -A OUTPUT -p tcp -j ACCEPT
-iptables -A INPUT -p udp -j ACCEPT
-iptables -A OUTPUT -p udp -j ACCEPT
+# Allow TCP from overlay (entire 10.0.0.0/8 range)
+iptables -A INPUT  -p tcp -s 10.0.0.0/8 -j ACCEPT
+iptables -A OUTPUT -p tcp -d 10.0.0.0/8 -j ACCEPT
 
+# Allow UDP from overlay
+iptables -A INPUT  -p udp -s 10.0.0.0/8 -j ACCEPT
+iptables -A OUTPUT -p udp -d 10.0.0.0/8 -j ACCEPT
 
 # Ensure rules persist across reboots if using iptables
 # This might require additional setup depending on your system.
