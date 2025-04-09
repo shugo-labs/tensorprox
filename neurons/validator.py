@@ -402,39 +402,37 @@ class Validator(BaseValidatorNeuron):
             logger.warning("No miners are available for challenge phase.")
             return False
 
-        # locked_miners = setup_completed_miners
         locked_uids = [uid for uid, _ in locked_miners]
 
-        # # Step 4: GRE Setup
-        # with Timer() as gre_timer:
+        # Step 4: GRE Setup
+        with Timer() as gre_timer:
 
-        #     logger.info(f"⚙️ Starting GRE configuration phase for miners: {locked_uids}")
+            logger.info(f"⚙️ Starting GRE configuration phase for miners: {locked_uids}")
 
-        #     try:
+            try:
 
-        #         gre_results = await round_manager.execute_task(
-        #             task="gre_setup",
-        #             miners=locked_miners,
-        #             subset_miners=subset_miners,
-        #             timeout=GRE_SETUP_TIMEOUT
-        #         )
+                gre_results = await round_manager.execute_task(
+                    task="gre_setup",
+                    miners=locked_miners,
+                    subset_miners=subset_miners,
+                    timeout=GRE_SETUP_TIMEOUT
+                )
 
-        #     except Exception as e:
-        #         logger.error(f"Error during GRE configuration phase: {e}")
-        #         gre_results = []
+            except Exception as e:
+                logger.error(f"Error during GRE configuration phase: {e}")
+                gre_results = []
 
-        # logger.debug(f"GRE configuration completed in {gre_timer.elapsed_time:.2f} seconds")
+        logger.debug(f"GRE configuration completed in {gre_timer.elapsed_time:.2f} seconds")
         
-        # ready_miners = [
-        #     (uid, synapse) for uid, synapse in locked_miners
-        #     if any(entry["uid"] == uid and entry["gre_setup_status_code"] == 200 for entry in gre_results)
-        # ]
+        ready_miners = [
+            (uid, synapse) for uid, synapse in locked_miners
+            if any(entry["uid"] == uid and entry["gre_setup_status_code"] == 200 for entry in gre_results)
+        ]
 
-        # if not ready_miners:
-        #     logger.warning("No miners are available for challenge phase.")
-        #     return False
+        if not ready_miners:
+            logger.warning("No miners are available for challenge phase.")
+            return False
         
-        ready_miners = locked_miners
         ready_uids = [uid for uid, _ in ready_miners]
 
         # Step 5: Challenge
@@ -486,7 +484,7 @@ class Validator(BaseValidatorNeuron):
             all_miners_availability=all_miners_availability,
             setup_status=setup_results,
             lockdown_status=lockdown_results,
-            # gre_status=gre_results,
+            gre_status=gre_results,
             challenge_status=challenge_results,
             revert_status=revert_results,
             uids=subset_miners,
