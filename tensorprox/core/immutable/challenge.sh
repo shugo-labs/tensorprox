@@ -1,15 +1,5 @@
 #!/bin/bash
 
-# Ensure required tools are installed
-if ! command -v jq &> /dev/null; then
-    sudo apt-get update -qq && sudo apt-get install -y jq -qq
-fi
-
-if ! command -v tcpdump &> /dev/null; then
-    sudo apt-get update > /dev/null 2>&1
-    sudo apt-get install -y tcpdump > /dev/null 2>&1
-fi
-
 machine_name="$1"
 challenge_duration="$2"
 label_hashes="$3"
@@ -43,15 +33,6 @@ fi
 
 # Traffic generation for tgen machines
 if [[ "$machine_name" == tgen* ]]; then
-
-    # Install Python3 and pip if not installed
-    if ! command -v python3 &>/dev/null; then
-        sudo apt-get update && sudo apt-get install -y python3 python3-pip
-    fi
-
-    # Install necessary Python packages
-    sudo pip3 install faker scapy pycryptodome --quiet
-
 
     # Dump playlist into temporary json file
     echo "$playlist_json" > /tmp/playlist.json
