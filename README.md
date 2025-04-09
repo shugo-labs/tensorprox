@@ -68,6 +68,8 @@ Tensorprox enables progressive scalability through competitive bandwidth handlin
 
 # GRE/IPIP Tunnel Architecture
 
+To support secure and flexible experimentation, this architecture relies on GRE and IPIP tunnels to establish a sandboxed overlay network that faithfully simulates real-world traffic conditions without being constrained by ISP-level limitations. This allows us to model complex network behaviors, including IP spoofing scenarios, within a secure and ethical research context. The use of tunneling ensures that all interactions remain confined to an isolated overlay network, providing full control over traffic flow and enabling precise evaluation of network defense mechanisms such as traffic filtering, latency management, and anomaly detection.
+
 
 ![Network Topology](./assets/architecture.svg)
 
