@@ -464,7 +464,8 @@ class RoundManager(BaseModel):
         args = [
             '/usr/bin/bash', 
             remote_script_path,
-            ssh_user, ssh_dir, 
+            ssh_user, 
+            ssh_dir, 
             self.validator_ip,
             authorized_keys_path
         ]
