@@ -81,12 +81,12 @@ The Tensorprox system employs a sophisticated network topology utilizing GRE tun
 
 ### Network Nodes
 
-1. **Traffic Generator (Tgen-0) (10.1.3.71)**
+1. **Traffic Generator (tgen-0) (10.1.3.71)**
    - Physical interface on 10.0.0.0/24 network
    - GRE tunnel to Moat (gre-moat: 192.168.110.1/30)
    - IPIP tunnel (ipip-tgen-0) with overlay IP: 10.200.77.1/32
 
-2. **Traffic Generator (Tgen-1) (10.1.2.86)**
+2. **Traffic Generator (tgen-1) (10.1.2.86)**
    - Physical interface on 10.0.0.0/24 network
    - GRE tunnel to Moat (gre-moat: 192.168.114.1/30)
    - IPIP tunnel (ipip-tgen-1) with overlay IP: 10.200.77.2/32
