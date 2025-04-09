@@ -76,13 +76,17 @@ iptables -A OUTPUT -p 47 -j ACCEPT
 iptables -A INPUT -p 4 -j ACCEPT   # IPIP
 iptables -A OUTPUT -p 4 -j ACCEPT
 
-# Allow TCP from overlay (entire 10.0.0.0/8 range)
+# Allow UDP/TCP from overlay
 iptables -A INPUT  -p tcp -s 10.0.0.0/8 -j ACCEPT
 iptables -A OUTPUT -p tcp -d 10.0.0.0/8 -j ACCEPT
-
-# Allow UDP from overlay
 iptables -A INPUT  -p udp -s 10.0.0.0/8 -j ACCEPT
 iptables -A OUTPUT -p udp -d 10.0.0.0/8 -j ACCEPT
+
+# Block all public IP addresses for UDP/TCP
+iptables -A INPUT -p tcp ! -s 10.0.0.0/8 -j REJECT
+iptables -A OUTPUT -p tcp ! -d 10.0.0.0/8 -j REJECT
+iptables -A INPUT -p udp ! -s 10.0.0.0/8 -j REJECT
+iptables -A OUTPUT -p udp ! -d 10.0.0.0/8 -j REJECT
 
 # Ensure rules persist across reboots if using iptables
 # This might require additional setup depending on your system.
