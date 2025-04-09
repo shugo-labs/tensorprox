@@ -62,9 +62,6 @@ iptables -P INPUT DROP
 iptables -P OUTPUT DROP
 iptables -P FORWARD DROP
 
-# Allow established/related connections
-iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-
 # Allow SSH from validator
 iptables -A INPUT -i "$NIC" -p tcp -s "$validator_ip" --dport 22 -j ACCEPT
 iptables -A OUTPUT -o "$NIC" -p tcp --sport 22 -d "$validator_ip" -j ACCEPT
