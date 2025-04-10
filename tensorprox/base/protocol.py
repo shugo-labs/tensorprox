@@ -28,7 +28,7 @@ class MachineConfig(BaseModel):
         # Truncate the traffic_generators to MAX_TGENS
         traffic_generators = values.get('traffic_generators', [])
         values['traffic_generators'] = traffic_generators[:MAX_TGENS]
-        values['is_valid'] = False if len(traffic_generators) < 2 else True
+        values['is_valid'] = False if len(traffic_generators) < MIN_TGENS else True
         return values
     
 class PingSynapse(bt.Synapse):

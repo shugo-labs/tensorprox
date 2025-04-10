@@ -39,6 +39,7 @@ import os, sys
 sys.path.append(os.path.expanduser("~/tensorprox"))
 from aiohttp import web
 import asyncio
+import signal
 from tensorprox import *
 from tensorprox.utils.utils import *
 from tensorprox import settings
@@ -64,6 +65,10 @@ import hashlib
 fetch_runner = None
 client_runner = None
 EPOCH_TIME = ROUND_TIMEOUT + EPSILON
+
+# Global variables to track the current state of miners for cleanup on shutdown
+current_locked_miners = []
+current_backup_suffix = None
 
 class Validator(BaseValidatorNeuron):
     """Tensorprox validator neuron responsible for managing miners and running validation tasks."""
@@ -435,6 +440,11 @@ class Validator(BaseValidatorNeuron):
 
         locked_uids = [uid for uid, _ in locked_miners]
 
+        # Store current locked miners and backup suffix for emergency revert
+        global current_locked_miners, current_backup_suffix
+        current_locked_miners = locked_miners
+        current_backup_suffix = backup_suffix
+
         # Step 5: Challenge
         with Timer() as challenge_timer:
             
@@ -478,6 +488,10 @@ class Validator(BaseValidatorNeuron):
 
         logger.debug(f"Revert completed in {revert_timer.elapsed_time:.2f} seconds")
 
+        # Clear the current locked miners as they've been reverted
+        current_locked_miners = []
+        current_backup_suffix = None
+
         # Create a complete response event
         response_event = DendriteResponseEvent(
             synapses=synapses,
@@ -520,6 +534,56 @@ async def cleanup_servers():
         logger.info("Client server cleaned up.")
 
 
+async def emergency_revert():
+    """
+    Emergency function to revert miners' machines access when the validator is shutting down.
+    This ensures miners regain access to their machines even if the validator process is killed.
+    """
+    global current_locked_miners, current_backup_suffix
+    
+    if current_locked_miners and current_backup_suffix:
+        logger.warning("🚨 Emergency shutdown detected! Performing emergency revert for locked miners...")
+        
+        try:
+            subset_miners = [uid for uid, _ in current_locked_miners]
+            
+            revert_results = await round_manager.execute_task(
+                task="revert",
+                miners=current_locked_miners,
+                subset_miners=subset_miners,
+                backup_suffix=current_backup_suffix,
+                timeout=REVERT_TIMEOUT
+            )
+            
+            logger.info(f"✅ Emergency revert completed successfully for miners: {subset_miners}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error during emergency revert: {e}")
+    else:
+        logger.info("No miners were locked, no emergency revert needed.")
+
+
+async def shutdown(signal=None):
+    """
+    Handle shutdown signals gracefully, reverting any locked miners first.
+    
+    Args:
+        signal: The signal that triggered the shutdown (optional)
+    """
+    if signal:
+        logger.info(f"Received shutdown signal: {signal.name}")
+    
+    # Mark the validator for exit
+    validator_instance.should_exit = True
+    
+    # Perform emergency revert for any locked miners
+    await emergency_revert()
+    
+    # Cleanup servers
+    await cleanup_servers()
+    
+    logger.info("Validator shutdown complete.")
+
 ###############################################################################
 
 # Create an aiohttp app for validator
@@ -537,9 +601,15 @@ async def main():
     """
     Starts the validator's aiohttp server.
 
-    This function initializes and runs the web server to handle incoming requests.
+    This function initializes and runs the web server to handle incoming requests
+    and sets up signal handlers for graceful shutdown.
     """
 
+    # Set up signal handlers for graceful shutdown
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        asyncio.get_event_loop().add_signal_handler(
+            sig, lambda s=sig: asyncio.create_task(shutdown(s))
+        )
 
     # Start background tasks
     asyncio.create_task(weight_setter.start())
@@ -547,16 +617,20 @@ async def main():
     asyncio.create_task(validator_instance.periodic_epoch_check())  # Start the periodic epoch check
     
     try:
-
         logger.info(f"Validator is up and running, next round starting in {get_remaining_time(EPOCH_TIME)}...")
         
         while not validator_instance.should_exit:
             await asyncio.sleep(1)
 
+    except Exception as e:
+        logger.exception(f"Unexpected error in main loop: {e}")
+        validator_instance.should_exit = True
+    
     finally:
-        # Cleanup on shutdown
-        await cleanup_servers()  # Cleanup the servers
-        logger.info("Cleaned up runners and shutting down.")
+        # Ensure proper cleanup happens even if an exception occurs
+        await shutdown()
+        logger.info("Validator has been shut down.")
+
 
 if __name__ == "__main__":
 
