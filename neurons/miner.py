@@ -193,7 +193,7 @@ class Miner(BaseMinerNeuron):
             logger.debug(f"📧 Synapse received from {synapse.dendrite.hotkey}. Task : {task} | State : {state}.")
 
             if state == "GET_READY":
-                interfaces = [f"gre-tgen-{i}" for i in range(self.max_tgens)]
+                interfaces = [f"gre-tgen-{i}" for i in range(min(len(self.traffic_generators),self.max_tgens))]
                 if not self.firewall_active:
                     self.firewall_active = True
                     self.stop_firewall_event.clear()  # Reset stop event
