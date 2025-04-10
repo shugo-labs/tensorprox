@@ -75,6 +75,10 @@ MOAT_PRIVATE_IP = # Private IP of the miner machine (moat)
 PRIVATE_KEY_PATH = # Private key generated for the machines' creation (king, attacker, benign) on your specific provider
 ```
 
+## Miner SSH Access Requirement
+
+To participate in the challenge, all miners must have original access to both the king and traffic generator machines (whether personal machines or VPS). Additionally, miners must provide restricted SSH access to these machines for the validator, ensuring that all machines are within the **same private network**. This setup is a critical requirement for the challenge to proceed. Failure to provide the required restricted SSH access within the same private network will result in the miner being ineligible to participate.
+
 ## Running
 
 1. After setting up the environment file, create a new CSV file named "trafficgen_machines.csv" and populate it with the details of your traffic generator machines. The CSV format should include the following columns:
