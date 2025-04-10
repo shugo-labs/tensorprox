@@ -24,25 +24,25 @@ Active Validator Scenario: Only 1 validator is active
 
 ## Installation
 
-Update system packages and install Python pip/venv :
+1. Update system packages and install Python pip/venv :
 
 ```bash
 sudo apt update && sudo apt install python3-pip -y && apt install python3-venv -y
 ```
 
-Install npm and pm2 for process management :
+2. Install npm and pm2 for process management :
 
 ```bash
 sudo apt install npm -y && sudo npm install -g pm2 
 ```
 
-Create and activate virtual environment :
+3. Create and activate virtual environment :
 
 ```bash
 python3 -m venv tp && source tp/bin/activate
 ```
 
-Clone the repository and install the required pip dependencies :
+4. Clone the repository and install the required pip dependencies :
 
 ```bash
 git clone https://github.com/shugo-io/tensorprox.git
@@ -72,14 +72,14 @@ While **AXON_PORT** is used for axon serving, ports **AXON_PORT + UID** and **AX
 
 ## Running
 
-After creating the above environment file, run :
+1. After creating the above environment file, run :
 
 ```bash
 pm2 start "python3 neurons/validator.py" --kill-timeout 5000 --name validator
 ```
 It's important to use the --kill-timeout flag to give the signal handler enough time to properly revert the miner's machines in case of an interruption or shutdown.
 
-Check if the instance is correctly running :
+2. Check if the instance is correctly running :
 
 ```bash
 pm2 list
