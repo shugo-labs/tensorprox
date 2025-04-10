@@ -17,6 +17,8 @@ import string
 import hashlib
 import psutil
 import ipaddress
+import json
+import pickle
 
 def get_remaining_time(duration):
     current_time = time.time()
@@ -87,6 +89,40 @@ def get_subnet(interface):
             ip_network = ipaddress.ip_network(f"{addr.address}/{addr.netmask}", strict=False)
             return str(ip_network)
     return None  # No IPv4 address found
+
+def generate_ips(num_ips=1000000, benign_percentage=0.1):
+    # Total number of benign and attack IPs
+    benign_count = int(num_ips * benign_percentage)
+    attack_count = num_ips - benign_count
+
+    # Generate the list of IPs
+    ips = []
+    for _ in range(num_ips):
+        # Generate random IP within 10.0.0.0/8
+        ip_int = random.randint(int(ipaddress.IPv4Address("10.0.0.0")), int(ipaddress.IPv4Address("10.255.255.255")))
+        ip = str(ipaddress.IPv4Address(ip_int))
+        ips.append(ip)
+
+    # Split the list into benign and attack
+    random.shuffle(ips)
+    benign_ips = ips[:benign_count]
+    attack_ips = ips[benign_count:]
+
+    # Create a dictionary for storing
+    ip_data = {
+        "benign": benign_ips,
+        "attack": attack_ips
+    }
+
+    return ip_data
+
+def save_ips_to_file(ip_data, filename="ips_data.pkl"):
+    with open(filename, 'wb') as f:
+        pickle.dump(ip_data, f)
+
+def load_ips_from_file(filename="ips_data.pkl"):
+    with open(filename, 'rb') as f:
+        return pickle.load(f)
 
 def log_message(level: str, message: str):
     """
