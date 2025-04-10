@@ -75,7 +75,9 @@ While **AXON_PORT** is used for axon serving, ports **AXON_PORT + UID** and **AX
 After creating the above environment file, run :
 
 ```bash
-pm2 start "python3 neurons/validator.py" --name validator
+pm2 start "python3 neurons/validator.py" --kill-timeout 5000 --name validator
+
+It's important to use the --kill-timeout flag to give the signal handler enough time to properly revert the miner's machines in case of an interruption or shutdown.
 ```
 
 Check if the instance is correctly running :
