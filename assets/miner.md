@@ -110,5 +110,3 @@ pm2 list
 ```bash
 pm2 logs miner
 ```
-
-🔗 To learn more, visit our GitHub repo: [github.com/shugo-labs/tensorprox](https://github.com/shugo-labs/tensorprox.git)
