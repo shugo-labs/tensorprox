@@ -15,7 +15,7 @@ __spec_version__ = _version_to_int(__version__)
 EPSILON: int = 15
 DELTA: int = 15
 CHALLENGE_DURATION: int = 60 #15 minutes
-MAX_TGENS = 2
+MIN_TGENS = 2
 MAX_TGENS = 8
 
 #Timeouts
