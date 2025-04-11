@@ -36,12 +36,14 @@ This repository is the **official codebase for Bittensor Subnet 234 (SN234) v0.1
 
 🚨 Tensorprox by Shugo.io is building the future of decentralized cybersecurity.<br/>
 Our journey is shaped by 4 powerful phases:<br/>
-1️⃣ Foundation Forge – Core architecture, synthetic attack simulation, performance-based competition ✅<br/>
-2️⃣ Maturity – Smarter detection, faster scaling, cooperative defense 🧠<br/>
-3️⃣ Integration – One-click, plug-and-play protection for any user or subnet node 🔌<br/>
-4️⃣ Expansion – Enterprise-grade, globally redundant, threat-intelligent defense 🌍<br/>
+1️⃣ **Foundation Forge** – Core architecture, synthetic attack simulation, performance-based competition ✅<br/>
+2️⃣ **Maturity** – Smarter detection, faster scaling, cooperative defense 🧠<br/>
+3️⃣ **Integration** – One-click, plug-and-play protection for any user or subnet node 🔌<br/>
+4️⃣ **Expansion** – Enterprise-grade, globally redundant, threat-intelligent defense 🌍<br/>
 We’re done laying the foundation—soon, anyone can deploy powerful DDoS protection in seconds.<br/>
 From sandbox to safeguard, Tensorprox is making protection automatic, scalable, and decentralized.<br/>
+
+<img src="./assets/vision-tensorprox.png" alt="Tensorprox Vision">
 
 # Introduction
 
