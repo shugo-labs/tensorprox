@@ -175,63 +175,85 @@ The scoring system evaluates miners based on their ability to **protect the King
 
 ### Reward Calculation Components
 
-The reward function is composed of four key metrics:
+The reward function evaluates each miner using four main components, each contributing 25% to the total reward:
 
 
-1. **Benign Delivery Rate (BDR)**
-   - Evaluates the efficiency of forwarding normal traffic
-   - Calculated as: 
+1. **Accuracy (25% weight)**
+
+Reflects how well the miner distinguishes between benign and malicious traffic. It is composed of:
+
+   - Benign Delivery Rate (BDR): Evaluates the efficiency of forwarding normal traffic
    ```
    BDR = (exp((total_reaching_benign / total_benign_sent)**2) - 1) / (exp(1) - 1)
    ```
-
-2. **Attack Mitigation Accuracy (AMA)**
-   - Measures the ability to detect and block malicious traffic
-   - Calculated as: 
+   - Attack Mitigation Accuracy (AMA): Measures the ability to detect and block malicious traffic
    ```
    AMA = (exp((1 - (total_reaching_attacks / total_attacks_sent))**2) - 1) / (exp(1) - 1)
    ```
+   - Combined as:
+   ```
+   Accuracy = 0.5 * BDR + 0.5 * AMA
+   ```
 
-3. **Selective Processing Score (SPS)**
-   - Measures traffic purity: out of all packets that reached the King, what percentage was benign ?
-   - Calculated as: 
+
+2. **Efficiency (25% weight)**
+
+Measures traffic purity: out of all packets that reached the King, what percentage was benign ?
+
+   - Selective Processing Score (SPS): Percentage of benign packets among all packets reaching the King. 
    ```
     SPS = (exp((total_reaching_benign / total_reaching_packets)**2) - 1) / (exp(1) - 1)
    ```
+   - Includes a dynamic efficiency boost based on volume to scale the importance of SPS :
+   ```
+   efficiency_boost = 1 + (VPS * volume_weight)
+   Efficiency = min(1.0, SPS * efficiency_boost)
+   ```
 
-4. **Relative Throughput Capacity (RTC)**
-   - Assesses the miner’s ability to process and forward benign traffic volume compared to other miners in the same round.
-   - Ratio of total packets processed (sum of benign packets forwarded and attack packets blocked) by a miner to the highest number of packets processed by any miner in a given round :
+
+3. **Throughput (25% weight)**
+
+Rewards miners that process and handle more traffic effectively.
+
+   - Relative Throughput Capacity (RTC): Measures the ratio of benign traffic forwarded compared to the top-performing miner.
    ```
    RTC = total_reaching_benign / max_reaching_benign
    ```
-
-4. **Volume Processing Score (VPS)**
-   - Rewards miners who process larger total traffic volumes.
-   - Calculated as :
+   - Volume Processing Score (VPS): Total volume processed normalized to the highest traffic processor.
    ```
    VPS = total_packets_sent / max_total_packets_sent
    ```
+   - Combined with a weight split:
+   ```
+   Throughput = (RTC * (1 - volume_weight)) + (VPS * volume_weight)
+   ```
 
-5. **Latency Factor (LF)**
-   - Assesses response time and network performance
-   - Calculated using log-based normalized Round-Trip Time (RTT): 
+
+4. **Latency (25% weight)**
+
+Captures responsiveness and speed.
+
+   - Latency Factor (LF): Based on average RTT using a log-normalized inverse curve:
+
    ```
    LF = 1 / (1 + log(AVG_RTT + 1)**3 / 10)
    ```
 
+   - Also allows mild tolerance for higher volumes :
+   ```
+   latency_tolerance = VPS * volume_weight * 0.5
+   Latency = min(1.0, LF + latency_tolerance)
+   ```
+
 ### Scoring Method
 
-The final reward combines these components with balanced weights:
+The final reward is computed as a weighted sum of the four components:
 
 ```
-accuracy = (BDR * 0.5) + (AMA * 0.5)
-efficiency = SPS
-throughput = (RTC * 0.8) + (VPS * 0.2)
-latency = LF
-
-Reward = (0.25 * accuracy) + (0.25 * efficiency) + (0.25 * throughput) + (0.25 * latency)
-
+Reward = (0.25 * Accuracy)
+       + (0.25 * Efficiency)
+       + (0.25 * Throughput)
+       + (0.25 * Latency)
 ```
 
 
