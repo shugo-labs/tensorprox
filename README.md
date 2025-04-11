@@ -192,7 +192,7 @@ Reflects how well the miner distinguishes between benign and malicious traffic. 
    ```
    - Combined as:
    ```
-   Accuracy = 0.5 * BDR + 0.5 * AMA
+   accuracy = 0.5 * BDR + 0.5 * AMA
    ```
 
 
@@ -207,7 +207,7 @@ Measures traffic purity: out of all packets that reached the King, what percenta
    - Includes a dynamic efficiency boost based on volume to scale the importance of SPS :
    ```
    efficiency_boost = 1 + (VPS * volume_weight)
-   Efficiency = min(1.0, SPS * efficiency_boost)
+   efficiency = min(1.0, SPS * efficiency_boost)
    ```
 
 
@@ -223,9 +223,9 @@ Rewards miners that process and handle more traffic effectively.
    ```
    VPS = total_packets_sent / max_total_packets_sent
    ```
-   - Combined with a weight split:
+   - Combined with a weight split :
    ```
-   Throughput = (RTC * (1 - volume_weight)) + (VPS * volume_weight)
+   throughput = (RTC * (1 - volume_weight)) + (VPS * volume_weight)
    ```
 
 
@@ -233,7 +233,7 @@ Rewards miners that process and handle more traffic effectively.
 
 Captures responsiveness and speed.
 
-   - Latency Factor (LF): Based on average RTT using a log-normalized inverse curve:
+   - Latency Factor (LF): Based on average RTT using a log-normalized inverse curve :
 
    ```
    LF = 1 / (1 + log(AVG_RTT + 1)**3 / 10)
@@ -242,18 +242,18 @@ Captures responsiveness and speed.
    - Also allows mild tolerance for higher volumes :
    ```
    latency_tolerance = VPS * volume_weight * 0.5
-   Latency = min(1.0, LF + latency_tolerance)
+   latency = min(1.0, LF + latency_tolerance)
    ```
 
 ### Scoring Method
 
-The final reward is computed as a weighted sum of the four components:
+The final reward is computed as a weighted sum of the four components :
 
 ```
-Reward = (0.25 * Accuracy)
-       + (0.25 * Efficiency)
-       + (0.25 * Throughput)
-       + (0.25 * Latency)
+reward = (0.25 * accuracy)
+       + (0.25 * efficiency)
+       + (0.25 * throughput)
+       + (0.25 * latency)
 ```
 
 
