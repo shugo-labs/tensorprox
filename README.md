@@ -165,7 +165,7 @@ To maximize network performance, the system implements:
 
 # Validation Round Lifecycle
 
-<img src="./assets/round_lifecycle.png"/>
+![Validation Round Lifecycle](./assets/lifecycle-process.svg)
 
 # Reward Mechanism
 

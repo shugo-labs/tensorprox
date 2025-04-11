@@ -1,0 +1,85 @@
+<svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="800" height="600" fill="#262144" />
+  
+  <!-- Center circle -->
+  <circle cx="400" cy="300" r="150" fill="none" stroke="#444444" stroke-width="2" />
+  
+  <!-- Perfectly spaced nodes on a circle -->
+  <!-- Each node is positioned at 60 degree intervals (360/6 = 60) -->
+  
+  <!-- Connection lines between stages - equidistant -->
+  <path d="M400,150 L400,450" fill="none" stroke="#444444" stroke-width="1.5" stroke-dasharray="5,5" />
+  <path d="M530,187.5 L270,412.5" fill="none" stroke="#444444" stroke-width="1.5" stroke-dasharray="5,5" />
+  <path d="M530,412.5 L270,187.5" fill="none" stroke="#444444" stroke-width="1.5" stroke-dasharray="5,5" />
+  
+  <!-- Circular path for visual flow -->
+  <path d="M400,150 A150,150 0 0,1 530,187.5 A150,150 0 0,1 550,300 A150,150 0 0,1 530,412.5 A150,150 0 0,1 400,450 A150,150 0 0,1 270,412.5 A150,150 0 0,1 250,300 A150,150 0 0,1 270,187.5 A150,150 0 0,1 400,150" 
+        fill="none" stroke="#333355" stroke-width="10" stroke-opacity="0.5" />
+  
+  <!-- Step 1 - Top -->
+  <circle cx="400" cy="150" r="30" fill="#2ee5c2" />
+  <text x="400" y="158" font-family="Arial, sans-serif" font-size="22" fill="white" text-anchor="middle" font-weight="bold">01</text>  
+  <!-- Step 1 Details - positioned precisely -->
+  <text x="400" y="50" font-family="Arial, sans-serif" font-size="12" fill="#cccccc" text-anchor="middle">Query miners for machines' availability</text>
+  <text x="400" y="70" font-family="Arial, sans-serif" font-size="12" fill="#cccccc" text-anchor="middle">Filter and select responsive miners</text>
+    <text x="400" y="100" font-family="Arial, sans-serif" font-size="16" fill="white" text-anchor="middle" font-weight="bold">Check Availability</text>
+
+  
+  <!-- Step 2 - Top Right -->
+  <circle cx="530" cy="187.5" r="30" fill="#20b5ce" />
+  <text x="530" y="195.5" font-family="Arial, sans-serif" font-size="22" fill="white" text-anchor="middle" font-weight="bold">02</text>
+  <text x="650" y="187.5" font-family="Arial, sans-serif" font-size="16" fill="white" text-anchor="middle" font-weight="bold">Initial Setup</text>
+  
+  <!-- Step 2 Details -->
+  <text x="650" y="217.5" font-family="Arial, sans-serif" font-size="12" fill="#cccccc" text-anchor="middle">Establish session keys</text>
+  <text x="650" y="237.5" font-family="Arial, sans-serif" font-size="12" fill="#cccccc" text-anchor="middle">Prepare machines for lockdown</text>
+  
+  <!-- Step 3 - Bottom Right -->
+  <circle cx="530" cy="412.5" r="30" fill="#b243d2" />
+  <text x="530" y="420.5" font-family="Arial, sans-serif" font-size="22" fill="white" text-anchor="middle" font-weight="bold">03</text>
+  <text x="630" y="420" font-family="Arial, sans-serif" font-size="16" fill="white" text-anchor="middle" font-weight="bold">Generic Routing</text>
+  <text x="630" y="442.5" font-family="Arial, sans-serif" font-size="16" fill="white" text-anchor="middle" font-weight="bold">Encapsulation</text>
+  
+  <!-- Step 3 Details -->
+  <text x="600" y="472.5" font-family="Arial, sans-serif" font-size="12" fill="#cccccc" text-anchor="middle">Creates an isolated, controlled network</text>
+  <text x="600" y="492.5" font-family="Arial, sans-serif" font-size="12" fill="#cccccc" text-anchor="middle">Provides a sandboxed environment</text>
+  
+  <!-- Step 4 - Bottom -->
+  <circle cx="400" cy="450" r="30" fill="#ff5e5e" stroke="#ff8547" stroke-width="5" />
+  <text x="400" y="458" font-family="Arial, sans-serif" font-size="22" fill="white" text-anchor="middle" font-weight="bold">04</text>
+  <text x="400" y="510" font-family="Arial, sans-serif" font-size="16" fill="white" text-anchor="middle" font-weight="bold">Lockdown</text>
+  
+  <!-- Step 4 Details -->
+  <text x="400" y="540" font-family="Arial, sans-serif" font-size="12" fill="#cccccc" text-anchor="middle">Prevent external interference</text>
+  <text x="400" y="560" font-family="Arial, sans-serif" font-size="12" fill="#cccccc" text-anchor="middle">Ensure controlled testing conditions</text>
+  
+  <!-- Step 5 - Bottom Left -->
+  <circle cx="270" cy="412.5" r="30" fill="#20b5ce" />
+  <text x="270" y="420.5" font-family="Arial, sans-serif" font-size="22" fill="white" text-anchor="middle" font-weight="bold">05</text>
+  <text x="150" y="412.5" font-family="Arial, sans-serif" font-size="16" fill="white" text-anchor="middle" font-weight="bold">Challenge Execution</text>
+  
+  <!-- Step 5 Details -->
+  <text x="150" y="442.5" font-family="Arial, sans-serif" font-size="12" fill="#cccccc" text-anchor="middle">Generate synthetic traffic scenarios</text>
+  <text x="150" y="462.5" font-family="Arial, sans-serif" font-size="12" fill="#cccccc" text-anchor="middle">Test miner's protection capabilities</text>
+  
+  <!-- Step 6 - Top Left -->
+  <circle cx="270" cy="187.5" r="30" fill="#b243d2" />
+  <text x="270" y="195.5" font-family="Arial, sans-serif" font-size="22" fill="white" text-anchor="middle" font-weight="bold">06</text>
+  <text x="150" y="187.5" font-family="Arial, sans-serif" font-size="16" fill="white" text-anchor="middle" font-weight="bold">Revert</text>
+  
+  <!-- Step 6 Details -->
+  <text x="140" y="217.5" font-family="Arial, sans-serif" font-size="12" fill="#cccccc" text-anchor="middle">Restore original machine configurations</text>
+  <text x="140" y="237.5" font-family="Arial, sans-serif" font-size="12" fill="#cccccc" text-anchor="middle">Clean up test environments</text>
+  
+  <!-- Center arrows indicating flow -->
+  <circle cx="400" cy="300" r="60" fill="none" stroke="#ff8547" stroke-width="4" stroke-dasharray="10 10" />
+  
+  <!-- Directional arrows perfectly positioned at each 60 degrees -->
+  <polygon points="385,220 415,220 400,240" fill="#ff8547" />
+  <polygon points="480,257.5 480,282.5 460,270" fill="#ff8547" />
+  <polygon points="480,317.5 480,342.5 460,330" fill="#ff8547" />
+  <polygon points="385,380 415,380 400,360" fill="#ff8547" />
+  <polygon points="320,342.5 320,317.5 340,330" fill="#ff8547" />
+  <polygon points="320,282.5 320,257.5 340,270" fill="#ff8547" />
+</svg>
