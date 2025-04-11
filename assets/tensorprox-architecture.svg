@@ -1,12 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600">
   <!-- Background with subtle gradient -->
   <defs>
-  <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-    <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
-    <stop offset="100%" style="stop-color:#f9f9f9;stop-opacity:1" />
-  </linearGradient>
-
-    
     <!-- Shadow filter -->
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
       <feGaussianBlur in="SourceAlpha" stdDeviation="3" />
@@ -61,22 +55,18 @@
   </defs>
   
   <!-- Background -->
-  <rect width="1000" height="600" fill="url(#bg-gradient)"/>
+  <rect width="1000" height="600" fill="#262144"/>
   
-    <!-- Subtle grid pattern -->
-  <path d="M0,50 L800,50 M0,100 L800,100 M0,150 L800,150 M0,200 L800,200 M0,250 L800,250 M0,300 L800,300 M0,350 L800,350 M0,400 L800,400 M0,450 L800,450" stroke="#e0e0e0" stroke-width="0.5"/>
-  <path d="M50,0 L50,500 M100,0 L100,500 M150,0 L150,500 M200,0 L200,500 M250,0 L250,500 M300,0 L300,500 M350,0 L350,500 M400,0 L400,500 M450,0 L450,500 M500,0 L500,500 M550,0 L550,500 M600,0 L600,500 M650,0 L650,500 M700,0 L700,500 M750,0 L750,500" stroke="#e0e0e0" stroke-width="0.5"/>
-
   <!-- Title and Subtitle -->
-  <text x="500" y="50" font-family="Arial, Helvetica, sans-serif" font-size="28" text-anchor="middle" font-weight="bold" fill="#333">Tensorprox: Scalable DDoS Protection Architecture</text>
-  <text x="500" y="80" font-family="Arial, Helvetica, sans-serif" font-size="16" text-anchor="middle" fill="#666">Distributed Traffic Generation and Filtering System</text>
+  <text x="500" y="50" font-family="Arial, Helvetica, sans-serif" font-size="28" text-anchor="middle" font-weight="bold" fill="white">Tensorprox: Scalable DDoS Protection Architecture</text>
+  <text x="500" y="80" font-family="Arial, Helvetica, sans-serif" font-size="16" text-anchor="middle" fill="white">Distributed Traffic Generation and Filtering System</text>
 
   <!-- Physical Network Border -->
   <rect x="100" y="100" width="800" height="450" fill="none" stroke="#888" stroke-width="2" stroke-dasharray="5,5" rx="15" ry="15"/>
   
   <!-- Traffic Generators Section -->
   <rect x="130" y="160" width="300" height="350" rx="10" ry="10" fill="rgba(224, 231, 255, 0.2)" stroke="#155966" stroke-width="1.5" stroke-dasharray="3,3"/>
-  <text x="280" y="185" font-family="Arial, Helvetica, sans-serif" font-size="18" text-anchor="middle" fill="#155966">Traffic Generators</text>
+  <text x="280" y="185" font-family="Arial, Helvetica, sans-serif" font-size="18" text-anchor="middle" fill="white">Traffic Generators</text>
   
   <!-- tgen 1 -->
   <rect x="150" y="200" width="120" height="70" rx="8" ry="8" fill="url(#tgenGradient)" stroke="#155966" stroke-width="1.5" filter="url(#glow)"/>
@@ -96,10 +86,10 @@
   <text x="350" y="330" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">tgen n</text>
   
   <!-- Scalability indicator -->
-  <text x="235" y="390" font-family="Arial, Helvetica, sans-serif" font-size="18" text-anchor="middle" fill="#2D5082">...</text>
-  <text x="280" y="420" font-family="Arial, Helvetica, sans-serif" font-size="12" font-style="italic" text-anchor="middle" fill="#555">Scalable to n machines</text>
-  <text x="280" y="440" font-family="Arial, Helvetica, sans-serif" font-size="12" font-style="italic" text-anchor="middle" fill="#555">for increased traffic volume</text>
-  <text x="280" y="460" font-family="Arial, Helvetica, sans-serif" font-size="12" font-style="italic" text-anchor="middle" fill="#555">2 ⩽ n ⩽ 255</text>
+  <text x="235" y="390" font-family="Arial, Helvetica, sans-serif" font-size="18" text-anchor="middle" fill="white">...</text>
+  <text x="280" y="420" font-family="Arial, Helvetica, sans-serif" font-size="12" font-style="italic" text-anchor="middle" fill="white">Scalable to n machines</text>
+  <text x="280" y="440" font-family="Arial, Helvetica, sans-serif" font-size="12" font-style="italic" text-anchor="middle" fill="white">for increased traffic volume</text>
+  <text x="280" y="460" font-family="Arial, Helvetica, sans-serif" font-size="12" font-style="italic" text-anchor="middle" fill="white">2 ⩽ n ⩽ 255</text>
 
   <!-- Moat Node (Miner) -->
   <g filter="url(#shadow)">
