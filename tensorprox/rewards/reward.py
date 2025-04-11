@@ -79,6 +79,7 @@ class ChallengeRewardEvent(BaseModel):
     exp_ama: list[float]
     exp_sps: list[float]
     rtc: list[float]
+    vps: list[float]
     rtt_value: list[float]
     lf: list[float]
     uids: list[int]
@@ -102,6 +103,7 @@ class ChallengeRewardEvent(BaseModel):
             "exp_ama": self.exp_ama,
             "exp_sps": self.exp_sps,
             "rtc": self.rtc,
+            "vps": self.vps,
             "rtt_value": self.rtt_value,
             "lf": self.lf,
             "uids": self.uids,
@@ -122,6 +124,7 @@ class BatchRewardOutput(BaseModel):
     exp_ama: np.ndarray
     exp_sps: np.ndarray
     rtc: np.ndarray
+    vps: np.ndarray
     rtt_value: np.ndarray
     lf: np.ndarray 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -160,17 +163,12 @@ class ChallengeRewardModel(BaseModel):
 
         #Initialize metrics lists
         scores = []
-        bdr, ama, sps, exp_bdr, exp_ama, exp_sps, rtc, lf = [[0]*len(uids) for _ in range(8)]
+        bdr, ama, sps, exp_bdr, exp_ama, exp_sps, rtc, vps, lf = [[0]*len(uids) for _ in range(9)]
         rtt_value = [1e9]*len(uids)
 
-        # Reward weights
-        alpha = 0.25  # Benign Delivery Rate (BDR)
-        beta = 0.25   # Attack Mitigation Accuracy (AMA)
-        gamma = 0.2   # Selective Processing Score (SPS)
-        delta = 0.15  # Relative Throughput Capacity (RTC)
-        epsilon = 0.15  # Latency Factor (LF)
 
         # Track max throughput for normalization
+        max_total_packets_sent = 0
         max_reaching_benign = 0
         packet_data = {}
 
@@ -204,14 +202,17 @@ class ChallengeRewardModel(BaseModel):
             # Average RTT across tgens
             rtt = max(sum(rtt_list) / len(rtt_list), 0) if rtt_list else 1e9
 
+            total_packets_sent = total_attacks_sent + total_benign_sent
             total_reaching_attacks = sum(king_counts.get(label, 0) for label in attack_labels) # total attacks reaching King
             total_reaching_benign = king_counts.get("BENIGN", 0) # total benign reaching King
             total_reaching_packets = total_reaching_benign + total_reaching_attacks # total packets reaching King
             max_reaching_benign = max(max_reaching_benign, total_reaching_benign) # max benign reaching for this round across all miners 
+            max_total_packets_sent = max(max_total_packets_sent, total_packets_sent)
 
             packet_data[uid] = {
                 "total_attacks_sent": total_attacks_sent,
                 "total_benign_sent": total_benign_sent,
+                "total_packets_sent": total_packets_sent,
                 "total_reaching_attacks": total_reaching_attacks,
                 "total_reaching_benign": total_reaching_benign,
                 "total_reaching_packets": total_reaching_packets,
@@ -248,23 +249,55 @@ class ChallengeRewardModel(BaseModel):
             # Relative Throughput Capacity (benign only)
             RTC = total_reaching_benign / max_reaching_benign if max_reaching_benign > 0 else 0
 
+            # Volume Processing Score (normalized to 0-1)
+            VPS = total_packets_sent / max_total_packets_sent if max_total_packets_sent > 0 else 0
+        
             # Latency Factor
             LF = self.normalize_rtt(rtt)
 
+            # Store all metrics for reporting
+            for arr, val in zip(
+                [bdr, ama, sps, exp_bdr, exp_ama, exp_sps, rtc, vps, lf, rtt_value, vps],
+                [BDR, AMA, SPS, reward_BDR, reward_AMA, reward_SPS, RTC, VPS, LF, rtt, VPS]
+            ):
+                arr[uid] = val
+
+            # Base weights (add up to 1)
+            alpha = 0.25  # Accuracy component
+            beta = 0.25   # Efficiency component
+            gamma = 0.25  # Throughput component
+            delta = 0.25  # Latency component
+            
+            # Volume weight - determines how much to consider volume in scoring
+            volume_weight = 0.2
+            
+            # Accuracy component (AMA & BDR)
+            accuracy = (reward_BDR * 0.5) + (reward_AMA * 0.5)
+            
+            # Efficiency component (SPS)
+            # Scale up SPS importance linearly with volume, but cap at max 2x importance
+            efficiency_boost = 1 + (VPS * volume_weight)  # 1.0 to 1.2 scaling
+            efficiency = min(1.0, reward_SPS * efficiency_boost)
+            
+            # Throughput component (combination of RTC and VPS)
+            # Higher volume gets more weight in throughput score
+            throughput = (RTC * (1 - volume_weight)) + (VPS * volume_weight)
+            
+            # Latency component (LF with slight tolerance for higher volumes)
+            # For high volume, we're slightly more tolerant of latency
+            latency_tolerance = VPS * volume_weight * 0.5  # 0 to 0.1 range
+            latency = min(1.0, LF + latency_tolerance)
+                        
             logging.info(f"BDR for UID {uid} : {BDR}")
             logging.info(f"AMA for UID {uid} : {AMA}")
             logging.info(f"SPS for UID {uid} : {SPS}")
             logging.info(f"RTC for UID {uid} : {RTC}")
+            logging.info(f"VPS for UID {uid} : {VPS}")
             logging.info(f"Average RTT for UID {uid} : {rtt} ms")
             logging.info(f"LF for UID {uid} : {LF}")
-
-            for arr, val in zip(
-                [bdr, ama, sps, exp_bdr, exp_ama, exp_sps, rtc, lf, rtt_value],
-                [BDR, AMA, SPS, reward_BDR, reward_AMA, reward_SPS, RTC, LF, rtt]
-            ):
-                arr[uid] = val
                 
-            reward = alpha * reward_BDR + beta * reward_AMA + gamma * reward_SPS + delta * RTC + epsilon * LF
+            # Final reward calculation
+            reward = alpha * accuracy + beta * efficiency + gamma * throughput + delta * latency
          
             scores.append(reward)
 
@@ -277,6 +310,7 @@ class ChallengeRewardModel(BaseModel):
             exp_ama=np.array(exp_ama),
             exp_sps=np.array(exp_sps),
             rtc=np.array(rtc),
+            vps=np.array(vps),
             rtt_value=np.array(rtt_value),
             lf=np.array(lf)
         )
@@ -324,6 +358,7 @@ class BaseRewardConfig(BaseModel):
             exp_ama=batch_rewards_output.exp_ama.tolist(),
             exp_sps=batch_rewards_output.exp_sps.tolist(),
             rtc=batch_rewards_output.rtc.tolist(),
+            vps=batch_rewards_output.vps.tolist(),
             rtt_value=batch_rewards_output.rtt_value.tolist(),                        
             lf=batch_rewards_output.lf.tolist(),                        
             uids=uids,

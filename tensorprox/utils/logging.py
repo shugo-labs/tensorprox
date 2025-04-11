@@ -107,6 +107,7 @@ class RewardLoggingEvent(BaseEvent):
     exp_ama: list[float]
     exp_sps: list[float]
     rtc: list[float]
+    vps: list[float]
     rtt_value: list[float]
     lf: list[float]
     response_event: DendriteResponseEvent
