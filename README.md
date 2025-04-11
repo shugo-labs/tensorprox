@@ -206,7 +206,7 @@ The reward function is composed of four key metrics:
    RTC = total_reaching_benign / max_reaching_benign
    ```
 
-4. **Volume Processing Score (RTC)**
+4. **Volume Processing Score (VPS)**
    - Rewards miners who process larger total traffic volumes.
    - Calculated as :
    ```
