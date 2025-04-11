@@ -152,6 +152,7 @@ class TaskScorer(AsyncLoopRunner):
             exp_ama=reward_event.exp_ama,
             exp_sps=reward_event.exp_sps,
             rtc=reward_event.rtc,
+            vps=reward_event.vps,
             rtt_value=reward_event.rtt_value,
             lf=reward_event.lf,
         ))

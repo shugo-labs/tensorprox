@@ -178,35 +178,42 @@ The scoring system evaluates miners based on their ability to **protect the King
 The reward function is composed of four key metrics:
 
 
-1. **Benign Delivery Rate (BDR)** - 25% Weight
+1. **Benign Delivery Rate (BDR)**
    - Evaluates the efficiency of forwarding normal traffic
    - Calculated as: 
    ```
    BDR = (exp((total_reaching_benign / total_benign_sent)**2) - 1) / (exp(1) - 1)
    ```
 
-2. **Attack Mitigation Accuracy (AMA)** - 25% Weight
+2. **Attack Mitigation Accuracy (AMA)**
    - Measures the ability to detect and block malicious traffic
    - Calculated as: 
    ```
    AMA = (exp((1 - (total_reaching_attacks / total_attacks_sent))**2) - 1) / (exp(1) - 1)
    ```
 
-3. **Selective Processing Score (SPS)** - 20% Weight
+3. **Selective Processing Score (SPS)**
    - Measures traffic purity: out of all packets that reached the King, what percentage was benign ?
    - Calculated as: 
    ```
     SPS = (exp((total_reaching_benign / total_reaching_packets)**2) - 1) / (exp(1) - 1)
    ```
 
-4. **Relative Throughput Capacity (RTC)** - 15% Weight
+4. **Relative Throughput Capacity (RTC)**
    - Assesses the miner’s ability to process and forward benign traffic volume compared to other miners in the same round.
    - Ratio of total packets processed (sum of benign packets forwarded and attack packets blocked) by a miner to the highest number of packets processed by any miner in a given round :
    ```
    RTC = total_reaching_benign / max_reaching_benign
    ```
 
-5. **Latency Factor (LF)** - 15% Weight
+4. **Volume Processing Score (RTC)**
+   - Rewards miners who process larger total traffic volumes.
+   - Calculated as :
+   ```
+   VPS = total_packets_sent / max_total_packets_sent
+   ```
+
+5. **Latency Factor (LF)**
    - Assesses response time and network performance
    - Calculated using log-based normalized Round-Trip Time (RTT): 
    ```
@@ -215,10 +222,16 @@ The reward function is composed of four key metrics:
 
 ### Scoring Method
 
-The final reward is calculated using a weighted sum:
+The final reward combines these components with balanced weights:
 
 ```
-Reward = (0.25 * BDR) + (0.25 * AMA) + (0.2 * SPS) + (0.15 * RTC) + (0.15 * LF)
+accuracy = (BDR * 0.5) + (AMA * 0.5)
+efficiency = SPS
+throughput = (RTC * 0.8) + (VPS * 0.2)
+latency = LF
+
+Reward = (0.25 * accuracy) + (0.25 * efficiency) + (0.25 * throughput) + (0.25 * latency)
+
 ```
 
 
