@@ -110,6 +110,13 @@ class RewardLoggingEvent(BaseEvent):
     vps: list[float]
     rtt_value: list[float]
     lf: list[float]
+    best_bandwidth: float
+    best_capacity: float
+    best_purity: float
+    best_bdr: float
+    global_bandwidth: float
+    global_capacity: float
+    global_purity: float
     response_event: DendriteResponseEvent
 
     

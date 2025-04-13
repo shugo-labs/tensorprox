@@ -51,6 +51,7 @@ from tensorprox.base.dendrite import DendriteResponseEvent
 from pydantic import BaseModel, ConfigDict
 import logging
 import math
+from tensorprox import *
 
 class ChallengeRewardEvent(BaseModel):
     """
@@ -82,6 +83,13 @@ class ChallengeRewardEvent(BaseModel):
     vps: list[float]
     rtt_value: list[float]
     lf: list[float]
+    best_bandwidth: float
+    best_capacity: float
+    best_purity: float
+    best_bdr: float
+    global_bandwidth: float
+    global_capacity: float
+    global_purity: float
     uids: list[int]
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -106,6 +114,13 @@ class ChallengeRewardEvent(BaseModel):
             "vps": self.vps,
             "rtt_value": self.rtt_value,
             "lf": self.lf,
+            "best_bandwidth": self.best_bandwidth,
+            "best_capacity": self.best_capacity,
+            "best_purity": self.best_purity,
+            "best_bdr": self.best_bdr,
+            "global_bandwidth": self.global_bandwidth,
+            "global_capacity": self.global_capacity,
+            "global_purity": self.global_purity,
             "uids": self.uids,
         }
 
@@ -127,12 +142,19 @@ class BatchRewardOutput(BaseModel):
     vps: np.ndarray
     rtt_value: np.ndarray
     lf: np.ndarray 
+    best_bandwidth: float
+    best_capacity: float
+    best_purity: float
+    best_bdr: float
+    global_bandwidth: float
+    global_capacity: float
+    global_purity: float
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 class ChallengeRewardModel(BaseModel):
     
     @staticmethod
-    def normalize_rtt(input, exponent=3, scale_factor=10):
+    def normalize_rtt(input, exponent=4, scale_factor=10):
         # Use max to avoid negative logs causing unexpected results
         return 1 / (1 + math.log(input + 1)**exponent / scale_factor)
     
@@ -170,6 +192,10 @@ class ChallengeRewardModel(BaseModel):
         # Track max throughput for normalization
         max_total_packets_sent = 0
         max_reaching_benign = 0
+        global_reaching_benign = 0
+        global_reaching_attacks = 0
+        global_reaching_packets = 0
+        global_packets_sent = 0
         packet_data = {}
 
         for uid in uids:
@@ -208,7 +234,10 @@ class ChallengeRewardModel(BaseModel):
             total_reaching_packets = total_reaching_benign + total_reaching_attacks # total packets reaching King
             max_reaching_benign = max(max_reaching_benign, total_reaching_benign) # max benign reaching for this round across all miners 
             max_total_packets_sent = max(max_total_packets_sent, total_packets_sent)
-
+            global_reaching_benign += total_reaching_benign
+            global_reaching_packets += total_reaching_benign + total_reaching_attacks
+            global_packets_sent += total_packets_sent
+            
             packet_data[uid] = {
                 "total_attacks_sent": total_attacks_sent,
                 "total_benign_sent": total_benign_sent,
@@ -216,10 +245,19 @@ class ChallengeRewardModel(BaseModel):
                 "total_reaching_attacks": total_reaching_attacks,
                 "total_reaching_benign": total_reaching_benign,
                 "total_reaching_packets": total_reaching_packets,
-                "rtt": rtt
+                "rtt": rtt,
             }
 
             logging.info(f"PACKET DATA : {packet_data}")
+
+
+        global_purity = global_reaching_benign / global_reaching_packets if global_reaching_packets > 0 else 0
+        global_capacity = global_reaching_benign / CHALLENGE_DURATION if CHALLENGE_DURATION > 0 else 0
+        global_bandwidth = global_packets_sent / CHALLENGE_DURATION if CHALLENGE_DURATION > 0 else 0
+
+        # Calculate rewards and store metrics
+        best_miner_score = -float('inf')
+        best_miner_uid = None
 
         for uid in uids:
             if uid not in packet_data:
@@ -235,15 +273,15 @@ class ChallengeRewardModel(BaseModel):
             rtt = data["rtt"]
 
             # Benign Delivery Rate
-            BDR = total_reaching_benign / total_benign_sent if total_benign_sent > 0 else 0
+            BDR = max(total_reaching_benign / total_benign_sent, 0) if total_benign_sent > 0 else 0
             reward_BDR = self.exponential_ratio(BDR)
 
             # Attack Penalty Score
-            AMA = 1 - (total_reaching_attacks / total_attacks_sent) if total_attacks_sent > 0 else 1
+            AMA = max(1 - (total_reaching_attacks / total_attacks_sent), 0) if total_attacks_sent > 0 else 1
             reward_AMA = self.exponential_ratio(AMA)
 
             # Selective Processing Score
-            SPS = total_reaching_benign / total_reaching_packets if total_reaching_packets > 0 else 0
+            SPS = max(total_reaching_benign / total_reaching_packets, 0) if total_reaching_packets > 0 else 0
             reward_SPS = self.exponential_ratio(SPS)
 
             # Relative Throughput Capacity (benign only)
@@ -301,6 +339,21 @@ class ChallengeRewardModel(BaseModel):
          
             scores.append(reward)
 
+            # Update best miner score if this UID has the highest reward
+            if reward > best_miner_score:
+                best_miner_score = reward
+                best_miner_uid = uid
+
+        # Get the best miner's specific metrics
+        if best_miner_uid is not None:
+            best_miner_data = packet_data[best_miner_uid]
+            best_bdr = best_miner_data["total_reaching_benign"]/best_miner_data["total_benign_sent"] if best_miner_data["total_benign_sent"] > 0 else 0
+            best_purity = best_miner_data["total_reaching_benign"] / best_miner_data["total_reaching_packets"] if best_miner_data["total_reaching_packets"] > 0 else 0
+            best_bandwidth = best_miner_data["total_packets_sent"] / CHALLENGE_DURATION if CHALLENGE_DURATION > 0 else 0
+            best_capacity = best_miner_data["total_reaching_benign"] / CHALLENGE_DURATION if CHALLENGE_DURATION > 0 else 0
+        else:
+            best_purity, best_bandwidth, best_capacity = 0, 0, 0, 0
+
         return BatchRewardOutput(
             rewards=np.array(scores),
             bdr=np.array(bdr),
@@ -312,7 +365,14 @@ class ChallengeRewardModel(BaseModel):
             rtc=np.array(rtc),
             vps=np.array(vps),
             rtt_value=np.array(rtt_value),
-            lf=np.array(lf)
+            lf=np.array(lf),
+            best_bandwidth=best_bandwidth,
+            best_capacity=best_capacity,
+            best_purity=best_purity,
+            best_bdr=best_bdr,
+            global_bandwidth = global_bandwidth,
+            global_capacity = global_capacity,
+            global_purity = global_purity
         )
 
 class BaseRewardConfig(BaseModel):
@@ -360,6 +420,13 @@ class BaseRewardConfig(BaseModel):
             rtc=batch_rewards_output.rtc.tolist(),
             vps=batch_rewards_output.vps.tolist(),
             rtt_value=batch_rewards_output.rtt_value.tolist(),                        
-            lf=batch_rewards_output.lf.tolist(),                        
+            lf=batch_rewards_output.lf.tolist(), 
+            best_bandwidth=batch_rewards_output.best_bandwidth,
+            best_capacity=batch_rewards_output.best_capacity,
+            best_purity = batch_rewards_output.best_purity,  
+            best_bdr = batch_rewards_output.best_bdr, 
+            global_bandwidth=batch_rewards_output.global_bandwidth,
+            global_capacity=batch_rewards_output.global_capacity,
+            global_purity = batch_rewards_output.global_purity,                       
             uids=uids,
         )
