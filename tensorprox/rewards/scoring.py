@@ -155,6 +155,13 @@ class TaskScorer(AsyncLoopRunner):
             vps=reward_event.vps,
             rtt_value=reward_event.rtt_value,
             lf=reward_event.lf,
+            best_bandwidth=reward_event.best_bandwidth,
+            best_capacity=reward_event.best_capacity,
+            best_purity=reward_event.best_purity,
+            best_bdr= reward_event.best_bdr,
+            global_bandwidth=reward_event.global_bandwidth,
+            global_capacity=reward_event.global_capacity,
+            global_purity=reward_event.global_purity,
         ))
 
 
