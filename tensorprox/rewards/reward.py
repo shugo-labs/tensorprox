@@ -83,6 +83,7 @@ class ChallengeRewardEvent(BaseModel):
     vps: list[float]
     rtt_value: list[float]
     lf: list[float]
+    best_miner_score: float
     best_bandwidth: float
     best_capacity: float
     best_purity: float
@@ -114,6 +115,7 @@ class ChallengeRewardEvent(BaseModel):
             "vps": self.vps,
             "rtt_value": self.rtt_value,
             "lf": self.lf,
+            "best_miner_score": self.best_miner_score,
             "best_bandwidth": self.best_bandwidth,
             "best_capacity": self.best_capacity,
             "best_purity": self.best_purity,
@@ -142,6 +144,7 @@ class BatchRewardOutput(BaseModel):
     vps: np.ndarray
     rtt_value: np.ndarray
     lf: np.ndarray 
+    best_miner_score: float
     best_bandwidth: float
     best_capacity: float
     best_purity: float
@@ -366,13 +369,14 @@ class ChallengeRewardModel(BaseModel):
             vps=np.array(vps),
             rtt_value=np.array(rtt_value),
             lf=np.array(lf),
+            best_miner_score=best_miner_score,
             best_bandwidth=best_bandwidth,
             best_capacity=best_capacity,
             best_purity=best_purity,
             best_bdr=best_bdr,
-            global_bandwidth = global_bandwidth,
-            global_capacity = global_capacity,
-            global_purity = global_purity
+            global_bandwidth=global_bandwidth,
+            global_capacity=global_capacity,
+            global_purity=global_purity
         )
 
 class BaseRewardConfig(BaseModel):
@@ -421,6 +425,7 @@ class BaseRewardConfig(BaseModel):
             vps=batch_rewards_output.vps.tolist(),
             rtt_value=batch_rewards_output.rtt_value.tolist(),                        
             lf=batch_rewards_output.lf.tolist(), 
+            best_miner_score=batch_rewards_output.best_miner_score,
             best_bandwidth=batch_rewards_output.best_bandwidth,
             best_capacity=batch_rewards_output.best_capacity,
             best_purity = batch_rewards_output.best_purity,  
