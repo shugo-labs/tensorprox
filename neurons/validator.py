@@ -320,15 +320,9 @@ class Validator(BaseValidatorNeuron):
         
         # Step 1: Query miner availability
         with Timer() as timer:
-            
-            # hardcoded for testing purpose
-            if 14 not in subset_miners:
-                subset_miners += [14]
-
-            to_remove = [8,9,11,12,13,16]
-            subset_miners = [miner for miner in subset_miners if miner not in to_remove]
 
             logger.debug(f"🔍 Querying machine availabilities for UIDs: {subset_miners}")
+            
             try:
                 synapses, all_miners_availability = await round_manager.check_machines_availability(subset_miners)
             except Exception as e:
