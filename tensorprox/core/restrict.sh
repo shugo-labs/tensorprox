@@ -1,6 +1,13 @@
 #!/bin/bash
 # Complete setup script for whitelist-agent configuration
 
+# Check if username argument is provided
+if [ -z "$1" ]; then
+    echo "Error: Username argument required."
+    echo "Usage: $0 <username>"
+    exit 1
+fi
+
 restricted_user="$1"
 
 # Exit on any error
@@ -11,7 +18,7 @@ echo "Starting setup process..."
 # Main Task 1: Prepare the Environment
 echo "Creating dedicated system user (if not exists)..."
 if ! id -u $restricted_user &>/dev/null; then
-    sudo adduser --disabled-password --gecos "" $restricted_user || { echo "Failed to create user $restricted_user. Exiting."; exit 1; }
+    sudo useradd --system --shell /bin/bash --create-home $restricted_user || { echo "Failed to create user $restricted_user. Exiting."; exit 1; }
 else
     echo "User $restricted_user already exists, skipping creation."
 fi
@@ -32,6 +39,12 @@ sudo passwd -l "$restricted_user" || echo "Password already locked or error occu
 echo "Installing SSH server if not already installed..."
 sudo apt update
 sudo apt install -y openssh-server || { echo "Failed to install SSH server. Exiting."; exit 1; }
+
+# Install SSH server if not already installed - in non-interactive mode
+echo "Installing SSH server if not already installed..."
+export DEBIAN_FRONTEND=noninteractive
+sudo apt-get update -qq || { echo "Failed to update package lists. Continuing..."; true; }
+sudo apt-get install -y -qq openssh-server || { echo "Failed to install SSH server. Exiting."; exit 1; }
 
 # Ensure SSH service is enabled and running
 echo "Ensuring SSH service is enabled and running..."
