@@ -35,11 +35,6 @@ sudo chmod 600 "/home/$restricted_user/.ssh/authorized_keys"
 echo "Restricting password authentication..."
 sudo passwd -l "$restricted_user" || echo "Password already locked or error occurred, continuing..."
 
-# Install SSH server if not already installed
-echo "Installing SSH server if not already installed..."
-sudo apt update
-sudo apt install -y openssh-server || { echo "Failed to install SSH server. Exiting."; exit 1; }
-
 # Install SSH server if not already installed - in non-interactive mode
 echo "Installing SSH server if not already installed..."
 export DEBIAN_FRONTEND=noninteractive
