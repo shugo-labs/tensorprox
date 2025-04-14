@@ -40,6 +40,7 @@ sys.path.append(os.path.expanduser("~/tensorprox"))
 from aiohttp import web
 import asyncio
 import signal
+import bittensor as bt
 from tensorprox import *
 from tensorprox.utils.utils import *
 from tensorprox import settings
@@ -185,10 +186,19 @@ class Validator(BaseValidatorNeuron):
 
                 logger.debug(f"Number of active validators = {self.active_count}")
 
-                #Generate hash seed from universal time sync
+                # Generate hash seed from universal time sync
                 seed = int(hashlib.sha256(str(sync_time).encode('utf-8')).hexdigest(), 16) % (2**32)
+                
+                # Get the list of all uids registered on the subnet / default set to SUBNET_NEURON_SIZE
+                subtensor = bt.subtensor(network=settings.SUBTENSOR_NETWORK)
+                max_subnet_range = list(range(settings.SUBNET_NEURON_SIZE))
+                neurons_uids = max_subnet_range  # fallback default
 
-                sync_shuffled_uids = self.sync_shuffle_uids(list(range(settings.SUBNET_NEURON_SIZE)), self.active_count, seed)
+                if subtensor:
+                    neurons_list = subtensor.neurons_lite(settings.NETUID)
+                    neurons_uids = [neuron.uid for neuron in neurons_list] if neurons_list else max_subnet_range
+
+                sync_shuffled_uids = self.sync_shuffle_uids(neurons_uids, self.active_count, seed)
 
                 mapped_uids = self.map_to_consecutive(active_validators_uids)
                                     
