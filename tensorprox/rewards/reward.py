@@ -355,7 +355,7 @@ class ChallengeRewardModel(BaseModel):
             best_bandwidth = best_miner_data["total_packets_sent"] / CHALLENGE_DURATION if CHALLENGE_DURATION > 0 else 0
             best_capacity = best_miner_data["total_reaching_benign"] / CHALLENGE_DURATION if CHALLENGE_DURATION > 0 else 0
         else:
-            best_purity, best_bandwidth, best_capacity = 0, 0, 0, 0
+            best_bdr, best_purity, best_bandwidth, best_capacity = 0, 0, 0, 0
 
         return BatchRewardOutput(
             rewards=np.array(scores),
