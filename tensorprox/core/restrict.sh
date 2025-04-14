@@ -38,8 +38,9 @@ sudo passwd -l "$restricted_user" || echo "Password already locked or error occu
 # Install SSH server if not already installed - in non-interactive mode
 echo "Installing SSH server if not already installed..."
 export DEBIAN_FRONTEND=noninteractive
-sudo apt-get update -qq || { echo "Failed to update package lists. Continuing..."; true; }
-sudo apt-get install -y -qq openssh-server || { echo "Failed to install SSH server. Exiting."; exit 1; }
+sudo apt-get -o Dpkg::Options::="--force-confdef" \
+             -o Dpkg::Options::="--force-confold" \
+             install -y -qq openssh-server
 
 # Ensure SSH service is enabled and running
 echo "Ensuring SSH service is enabled and running..."
