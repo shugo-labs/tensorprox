@@ -10,6 +10,7 @@ class MachineDetails(BaseModel):
     ip: str | None = None
     username: str | None = None
     private_ip: str | None = None
+    interface: str | None = None
     index: str | None = None
 
     def get(self, key, default=None):
@@ -21,6 +22,7 @@ class MachineConfig(BaseModel):
     traffic_generators: List[MachineDetails] = Field(default_factory=list)
     king: MachineDetails = Field(default_factory=MachineDetails)
     moat_private_ip: str = ""
+    moat_interface: str = ""
     is_valid: bool = True
 
     @model_validator(mode='before')

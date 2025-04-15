@@ -50,9 +50,13 @@ else:
 class GRESetup:
 
     node_type: str 
+    primary_interface: str
+    local_ip: str
 
-    def __init__(self, node_type: str):
-        self.node_type = node_type  # Set the node_type
+    def __init__(self, node_type: str, private_ip: str, interface: str):
+        self.node_type = node_type
+        self.local_ip = private_ip
+        self.primary_interface = interface
 
     def run_cmd(self, cmd, show_output=False, check=False, quiet=False, timeout=360, shell=False):
         """Run command and return result with proper sudo privileges"""
@@ -184,58 +188,58 @@ class GRESetup:
                 return True
             return False
     
-    def detect_primary_interface(self):
-        """Detect the primary network interface with a public IP"""
-        # First try common interface names for cloud VMs
-        common_interfaces = ['ens5', 'eth0', 'enp1s0','virbr0', 'ens3', 'enp0s3', 'en0']
+    # def detect_self.primary_interface(self):
+    #     """Detect the primary network interface with a public IP"""
+    #     # First try common interface names for cloud VMs
+    #     common_interfaces = ['eth1', 'ens5', 'eth0', 'enp1s0','virbr0', 'ens3', 'enp0s3', 'en0']
         
-        for interface in common_interfaces:
-            # Check if interface exists
-            result = self.run_cmd(["ip", "link", "show", interface], quiet=True)
-            if result.returncode == 0:
-                # Check if it has an IP
-                ip_result = self.run_cmd(["ip", "-o", "-4", "addr", "show", "dev", interface], quiet=True)
-                if ip_result.returncode == 0 and ip_result.stdout.strip():
-                    match = re.search(r'inet\s+([0-9.]+)', ip_result.stdout)
-                    if match and match.group(1) != "127.0.0.1":
-                        ip = match.group(1)
-                        log("[AUTO] Detected primary interface: {0} with IP: {1}".format(interface, ip), level=1)
-                        return interface, ip
+    #     for interface in common_interfaces:
+    #         # Check if interface exists
+    #         result = self.run_cmd(["ip", "link", "show", interface], quiet=True)
+    #         if result.returncode == 0:
+    #             # Check if it has an IP
+    #             ip_result = self.run_cmd(["ip", "-o", "-4", "addr", "show", "dev", interface], quiet=True)
+    #             if ip_result.returncode == 0 and ip_result.stdout.strip():
+    #                 match = re.search(r'inet\s+([0-9.]+)', ip_result.stdout)
+    #                 if match and match.group(1) != "127.0.0.1":
+    #                     ip = match.group(1)
+    #                     log("[AUTO] Detected primary interface: {0} with IP: {1}".format(interface, ip), level=1)
+    #                     return interface, ip
         
-        # If not found with common names, try to find via default route
-        route_result = self.run_cmd(["ip", "-o", "route", "get", "1.1.1.1"], quiet=True)
-        if route_result.returncode == 0:
-            match = re.search(r'dev\s+(\S+)', route_result.stdout)
-            if match:
-                interface = match.group(1)
-                ip_result = self.run_cmd(["ip", "-o", "-4", "addr", "show", "dev", interface], quiet=True)
-                if ip_result.returncode == 0:
-                    match = re.search(r'inet\s+([0-9.]+)', ip_result.stdout)
-                    if match:
-                        ip = match.group(1)
-                        log("[AUTO] Detected primary interface via route: {0} with IP: {1}".format(interface, ip), level=1)
-                        return interface, ip
+    #     # If not found with common names, try to find via default route
+    #     route_result = self.run_cmd(["ip", "-o", "route", "get", "1.1.1.1"], quiet=True)
+    #     if route_result.returncode == 0:
+    #         match = re.search(r'dev\s+(\S+)', route_result.stdout)
+    #         if match:
+    #             interface = match.group(1)
+    #             ip_result = self.run_cmd(["ip", "-o", "-4", "addr", "show", "dev", interface], quiet=True)
+    #             if ip_result.returncode == 0:
+    #                 match = re.search(r'inet\s+([0-9.]+)', ip_result.stdout)
+    #                 if match:
+    #                     ip = match.group(1)
+    #                     log("[AUTO] Detected primary interface via route: {0} with IP: {1}".format(interface, ip), level=1)
+    #                     return interface, ip
         
-        # Last resort - get all interfaces and pick first non-loopback with IPv4
-        all_interfaces_result = self.run_cmd(["ip", "link", "show"], quiet=True)
-        if all_interfaces_result.returncode == 0:
-            for line in all_interfaces_result.stdout.splitlines():
-                match = re.search(r'\d+:\s+(\S+):', line)
-                if match:
-                    interface = match.group(1)
-                    if interface == 'lo' or interface.startswith(('gre', 'tun', 'br')):
-                        continue
+    #     # Last resort - get all interfaces and pick first non-loopback with IPv4
+    #     all_interfaces_result = self.run_cmd(["ip", "link", "show"], quiet=True)
+    #     if all_interfaces_result.returncode == 0:
+    #         for line in all_interfaces_result.stdout.splitlines():
+    #             match = re.search(r'\d+:\s+(\S+):', line)
+    #             if match:
+    #                 interface = match.group(1)
+    #                 if interface == 'lo' or interface.startswith(('gre', 'tun', 'br')):
+    #                     continue
                     
-                    ip_result = self.run_cmd(["ip", "-o", "-4", "addr", "show", "dev", interface], quiet=True)
-                    if ip_result.returncode == 0 and ip_result.stdout.strip():
-                        match = re.search(r'inet\s+([0-9.]+)', ip_result.stdout)
-                        if match and not match.group(1).startswith('127.'):
-                            ip = match.group(1)
-                            log("[AUTO] Found usable interface: {0} with IP: {1}".format(interface, ip), level=1)
-                            return interface, ip
+    #                 ip_result = self.run_cmd(["ip", "-o", "-4", "addr", "show", "dev", interface], quiet=True)
+    #                 if ip_result.returncode == 0 and ip_result.stdout.strip():
+    #                     match = re.search(r'inet\s+([0-9.]+)', ip_result.stdout)
+    #                     if match and not match.group(1).startswith('127.'):
+    #                         ip = match.group(1)
+    #                         log("[AUTO] Found usable interface: {0} with IP: {1}".format(interface, ip), level=1)
+    #                         return interface, ip
         
-        log("[ERROR] Could not detect primary network interface", level=0)
-        return None, None
+    #     log("[ERROR] Could not detect primary network interface", level=0)
+    #     return None, None
 
     def flush_device(self, dev):
         """Delete network device if it exists"""
@@ -299,9 +303,9 @@ class GRESetup:
                 log("[INFO] NUMA nodes: {0}".format(capabilities["numa_nodes"]), level=1)
         
         # Check NIC driver and speed
-        primary_interface, _ = self.detect_primary_interface()
-        if primary_interface:
-            driver_info = self.run_cmd(["ethtool", "-i", primary_interface], quiet=True)
+        # primary_interface, _ = self.detect_self.primary_interface()
+        if self.primary_interface:
+            driver_info = self.run_cmd(["ethtool", "-i", self.primary_interface], quiet=True)
             if driver_info.returncode == 0:
                 driver_match = re.search(r'driver:\s+(\S+)', driver_info.stdout)
                 if driver_match:
@@ -314,7 +318,7 @@ class GRESetup:
                     log("[INFO] virtio_net detected - Generic XDP mode support", level=1)
             
             # Try to determine NIC speed
-            speed_info = self.run_cmd(["ethtool", primary_interface], quiet=True)
+            speed_info = self.run_cmd(["ethtool", self.primary_interface], quiet=True)
             if speed_info.returncode == 0:
                 speed_match = re.search(r'Speed:\s+(\d+)([GMK]b/s)', speed_info.stdout)
                 if speed_match:
@@ -334,7 +338,7 @@ class GRESetup:
             
             # Try to determine if native XDP is also supported by the driver
             if not capabilities["is_virtualized"]:
-                native_check = self.run_cmd(["ip", "link", "set", "dev", primary_interface, "xdp", "off"], quiet=True)
+                native_check = self.run_cmd(["ip", "link", "set", "dev", self.primary_interface, "xdp", "off"], quiet=True)
                 if native_check.returncode == 0:
                     capabilities["xdp_support"] = "native"
                     log("[INFO] Native XDP support detected", level=1)
@@ -509,9 +513,9 @@ class GRESetup:
         rps_cpus = (1 << cpu_count) - 1  # Use all available CPUs
         
         # Enable Receive Packet Steering for balanced processing across CPUs
-        primary_interface, _ = self.detect_primary_interface()
+        # primary_interface, _ = self.detect_self.primary_interface()
         for i in range(cpu_count):
-            rx_queue_path = f"/sys/class/net/{primary_interface}/queues/rx-{i}/rps_cpus"
+            rx_queue_path = f"/sys/class/net/{self.primary_interface}/queues/rx-{i}/rps_cpus"
             try:
                 # Try to write directly
                 with open(rx_queue_path, "w") as f:
@@ -597,12 +601,12 @@ class GRESetup:
                 log(f"[WARN] Failed to update GRUB config for CPU isolation: {e}", level=1)
         
         # Find IRQs for network interfaces
-        primary_interface, _ = self.detect_primary_interface()
+        # primary_interface, _ = self.detect_self.primary_interface()
         irqs = []
         try:
             with open("/proc/interrupts", "r") as f:
                 for line in f:
-                    if primary_interface in line:
+                    if self.primary_interface in line:
                         irq = line.split(":")[0].strip()
                         irqs.append(irq)
         except:
@@ -645,31 +649,31 @@ class GRESetup:
         """Apply virtio-specific optimizations for tunnel traffic"""
         log("[INFO] Applying virtio-specific optimizations", level=1)
         
-        primary_interface, _ = self.detect_primary_interface()
+        # primary_interface, _ = self.detect_self.primary_interface()
         
         # Check if this is a virtio interface
-        driver_info = self.run_cmd(["ethtool", "-i", primary_interface], quiet=True)
+        driver_info = self.run_cmd(["ethtool", "-i", self.primary_interface], quiet=True)
         if "virtio" not in driver_info.stdout:
             log("[INFO] Not a virtio interface, skipping virtio-specific optimizations", level=1)
             return False
         
         # Enable multi-queue support for virtio
         cpu_count = multiprocessing.cpu_count()
-        self.run_cmd(["ethtool", "-L", primary_interface, "combined", str(max(1, cpu_count - 1))], quiet=True)
+        self.run_cmd(["ethtool", "-L", self.primary_interface, "combined", str(max(1, cpu_count - 1))], quiet=True)
         
         # Increase descriptor ring size for virtio
-        self.run_cmd(["ethtool", "-G", primary_interface, "rx", "1024", "tx", "1024"], quiet=True)
+        self.run_cmd(["ethtool", "-G", self.primary_interface, "rx", "1024", "tx", "1024"], quiet=True)
         
         # Optimize virtio queue processing
-        self.run_cmd(["ethtool", "-C", primary_interface, "adaptive-rx", "on", "adaptive-tx", "on"], quiet=True)
+        self.run_cmd(["ethtool", "-C", self.primary_interface, "adaptive-rx", "on", "adaptive-tx", "on"], quiet=True)
         
         # Enable offloads that virtio supports
-        self.run_cmd(["ethtool", "--offload", primary_interface, "rx-checksumming", "on"], quiet=True)
-        self.run_cmd(["ethtool", "--offload", primary_interface, "tx-checksumming", "on"], quiet=True)
-        self.run_cmd(["ethtool", "--offload", primary_interface, "sg", "on"], quiet=True)
-        self.run_cmd(["ethtool", "--offload", primary_interface, "tso", "on"], quiet=True)
-        self.run_cmd(["ethtool", "--offload", primary_interface, "gso", "on"], quiet=True)
-        self.run_cmd(["ethtool", "--offload", primary_interface, "gro", "on"], quiet=True)
+        self.run_cmd(["ethtool", "--offload", self.primary_interface, "rx-checksumming", "on"], quiet=True)
+        self.run_cmd(["ethtool", "--offload", self.primary_interface, "tx-checksumming", "on"], quiet=True)
+        self.run_cmd(["ethtool", "--offload", self.primary_interface, "sg", "on"], quiet=True)
+        self.run_cmd(["ethtool", "--offload", self.primary_interface, "tso", "on"], quiet=True)
+        self.run_cmd(["ethtool", "--offload", self.primary_interface, "gso", "on"], quiet=True)
+        self.run_cmd(["ethtool", "--offload", self.primary_interface, "gro", "on"], quiet=True)
         
         # Enable Busy Polling for virtio - reduces latency at cost of CPU
         self.run_cmd(["sysctl", "-w", "net.core.busy_read=50"], quiet=True)
@@ -1047,9 +1051,9 @@ class GRESetup:
         self.run_cmd(["sysctl", "-w", "kernel.sched_rt_runtime_us=-1"], quiet=True)
         
         # Configure virtio for optimal DPDK performance
-        primary_interface, _ = self.detect_primary_interface()
-        self.run_cmd(["ethtool", "--offload", primary_interface, "rx", "on", "tx", "on"], quiet=True)
-        self.run_cmd(["ethtool", "--offload", primary_interface, "sg", "on", "tso", "on", "gso", "on", "gro", "on"], quiet=True)
+        # primary_interface, _ = self.detect_self.primary_interface()
+        self.run_cmd(["ethtool", "--offload", self.primary_interface, "rx", "on", "tx", "on"], quiet=True)
+        self.run_cmd(["ethtool", "--offload", self.primary_interface, "sg", "on", "tso", "on", "gso", "on", "gro", "on"], quiet=True)
         
         log("[INFO] DPDK optimized for virtualized environment", level=1)
         return True
@@ -1180,15 +1184,15 @@ class GRESetup:
                 self.run_cmd(["sudo", "-n", "chown", f"{os.getuid()}:{os.getgid()}", object_file], quiet=True)
                 
             # When loading XDP program
-            primary_interface, _ = self.detect_primary_interface()
-            driver_info = self.run_cmd(["ethtool", "-i", primary_interface], quiet=True)
+            # primary_interface, _ = self.detect_self.primary_interface()
+            driver_info = self.run_cmd(["ethtool", "-i", self.primary_interface], quiet=True)
             
             # Always use generic mode for virtio (which is what we detect from the logs)
             log("[INFO] Using generic XDP mode for virtio_net", level=1)
-            load_result = self.run_cmd(["ip", "link", "set", "dev", primary_interface, "xdpgeneric", "obj", object_file, "sec", "xdp"], quiet=True)
+            load_result = self.run_cmd(["ip", "link", "set", "dev", self.primary_interface, "xdpgeneric", "obj", object_file, "sec", "xdp"], quiet=True)
             
             if load_result.returncode == 0:
-                log("[INFO] Optimized XDP program loaded successfully on {0}".format(primary_interface), level=1)
+                log("[INFO] Optimized XDP program loaded successfully on {0}".format(self.primary_interface), level=1)
                 return True
             else:
                 log("[WARN] Failed to load XDP program", level=1)
@@ -1413,9 +1417,9 @@ class GRESetup:
             return False
         
         # Auto-detect primary interface
-        primary_interface, local_ip = self.detect_primary_interface()
+        # primary_interface, local_ip = self.detect_self.primary_interface()
         
-        if not primary_interface or not local_ip:
+        if not self.primary_interface or not self.local_ip:
             log("[ERROR] Failed to detect primary interface", level=0)
             return False
         
@@ -1424,7 +1428,7 @@ class GRESetup:
             return False
         
         if self.node_type == "king":
-            log(f"[INFO] Setting up optimized King node with IP {local_ip} connecting to Moat at {moat_ip}")
+            log(f"[INFO] Setting up optimized King node with IP {self.local_ip} connecting to Moat at {moat_ip}")
             
             # King node configuration
             gre_ip = "192.168.101.2"
@@ -1435,7 +1439,7 @@ class GRESetup:
             ipip_tunnel_name = "ipip-king"
             
         else:  # Traffic generator
-            log(f"[INFO] Setting up Traffic Generator {node_index} with IP {local_ip} connecting to Moat at {moat_ip}")
+            log(f"[INFO] Setting up Traffic Generator {node_index} with IP {self.local_ip} connecting to Moat at {moat_ip}")
             
             # Traffic generator configuration (using the new scheme)
             tunnel_subnet = f"192.168.{110 + (node_index*4)}"
@@ -1468,7 +1472,7 @@ class GRESetup:
         
         # 1. Create GRE tunnel to Moat
         self.run_cmd(["ip", "tunnel", "add", tunnel_name, "mode", "gre", 
-                "local", local_ip, "remote", moat_ip, "ttl", "inherit", 
+                "local", self.local_ip, "remote", moat_ip, "ttl", "inherit", 
                 "key", str(moat_key)], check=True)
         
         self.run_cmd(["ip", "link", "set", tunnel_name, "mtu", str(GRE_MTU)])
@@ -1579,8 +1583,8 @@ class GRESetup:
         # --- End robust error handling ---
         
         # Auto-detect primary interface
-        primary_interface, local_ip = self.detect_primary_interface()
-        if not primary_interface or not local_ip:
+        # primary_interface, local_ip = self.detect_self.primary_interface()
+        if not self.primary_interface or not self.local_ip:
             log("[ERROR] Failed to detect primary interface", level=0)
             return False
         
@@ -1593,7 +1597,7 @@ class GRESetup:
             log("[ERROR] At least one traffic generation IP address is required", level=0)
             return False
         
-        log("[INFO] Setting up optimized moat node with IP {0}".format(local_ip))
+        log("[INFO] Setting up optimized moat node with IP {0}".format(self.local_ip))
         log("[INFO] Connecting to King at {0}".format(king_private_ip))
         log("[INFO] Connecting to {0} traffic generation machines: {1}".format(
             len(traffic_gen_ips), ", ".join(traffic_gen_ips)))
@@ -1649,7 +1653,7 @@ class GRESetup:
             
             # Create the tunnel
             self.run_cmd(["ip", "tunnel", "add", tunnel_name, "mode", "gre", 
-                    "local", local_ip, "remote", tgen_ip, "ttl", "inherit", 
+                    "local", self.local_ip, "remote", tgen_ip, "ttl", "inherit", 
                     "key", str(tunnel_key)])
             
             self.run_cmd(["ip", "link", "set", tunnel_name, "mtu", str(GRE_MTU)])
@@ -1663,7 +1667,7 @@ class GRESetup:
         
         # 2. Create GRE tunnel to King
         self.run_cmd(["ip", "tunnel", "add", "gre-king", "mode", "gre", 
-                "local", local_ip, "remote", king_private_ip, "ttl", "inherit", 
+                "local", self.local_ip, "remote", king_private_ip, "ttl", "inherit", 
                 "key", str(MOAT_KING_KEY)])
         
         self.run_cmd(["ip", "link", "set", "gre-king", "mtu", str(GRE_MTU)])
@@ -1799,7 +1803,7 @@ def log(message, level=1):
 
 def main():
     # Check if the correct number of arguments are provided
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 5:
         print("[ERROR] Insufficient arguments. Please provide the node type and the moat_ip.")
         sys.exit(1)
     
@@ -1812,18 +1816,20 @@ def main():
         sys.exit(1)
     
     moat_ip = sys.argv[2]
-    
+    private_ip = sys.argv[3]
+    interface = sys.argv[4]
+
     # Check if node_type is 'tgen' and if node_index is provided
     if node_type == "tgen":
-        if len(sys.argv) < 4:
+        if len(sys.argv) < 6:
             print("[ERROR] node_index is required for tgen node type.")
             sys.exit(1)
-        node_index = int(sys.argv[3])
+        node_index = int(sys.argv[5])
     else:
         node_index = None  # No index required for 'king' node type
 
     # Create an instance of GRESetup
-    gre_setup = GRESetup(node_type=node_type)
+    gre_setup = GRESetup(node_type=node_type, private_ip=private_ip, interface=interface)
     
     # Call the appropriate method based on node_type
     if not gre_setup.configure_node(moat_ip, node_index):

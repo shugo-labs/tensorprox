@@ -80,7 +80,9 @@ NEURON_STOP_ON_FORWARD_EXCEPTION: bool = False
 KING_PUBLIC_IP: str = os.environ.get("KING_PUBLIC_IP")
 KING_USERNAME: str = os.environ.get("KING_USERNAME", "root")
 KING_PRIVATE_IP: str = os.environ.get("KING_PRIVATE_IP")
+KING_INTERFACE: str = os.environ.get("KING_INTERFACE")
 MOAT_PRIVATE_IP: str = os.environ.get("MOAT_PRIVATE_IP")
+MOAT_INTERFACE: str = os.environ.get("MOAT_INTERFACE")
 INITIAL_PK_PATH: str = os.environ.get("PRIVATE_KEY_PATH")
 
 class Miner(BaseMinerNeuron):
@@ -139,16 +141,16 @@ class Miner(BaseMinerNeuron):
             # Limit the number of traffic generators to max_tgens
             self.max_tgens = synapse.max_tgens
             synapse.machine_availabilities.traffic_generators = [
-                MachineDetails(ip=ip, username=RESTRICTED_USER, private_ip=private_ip, index=str(index))
-                for index, (ip, _, private_ip) in enumerate(self.traffic_generators[:self.max_tgens])  # Limit by max_tgens
+                MachineDetails(ip=ip, username=RESTRICTED_USER, private_ip=private_ip, interface=interface, index=str(index))
+                for index, (ip, _, private_ip, interface) in enumerate(self.traffic_generators[:self.max_tgens])  # Limit by max_tgens
             ]
 
             # === Step 2: Add infra nodes (king + moat) ===
             synapse.machine_availabilities.king = MachineDetails(
-                ip=KING_PUBLIC_IP, username=RESTRICTED_USER, private_ip=KING_PRIVATE_IP
+                ip=KING_PUBLIC_IP, username=RESTRICTED_USER, private_ip=KING_PRIVATE_IP, interface=KING_INTERFACE
             )
             synapse.machine_availabilities.moat_private_ip = MOAT_PRIVATE_IP
-
+            synapse.machine_availabilities.moat_interface = MOAT_INTERFACE
 
             # === Step 3: Prepare all SSH key addition tasks (excluding moat) ===
             tasks = [
@@ -157,7 +159,7 @@ class Miner(BaseMinerNeuron):
                     ssh_public_key=ssh_public_key,
                     username=username
                 )
-                for ip, username, _ in self.machines
+                for ip, username, _, _ in self.machines
             ]
 
             await asyncio.gather(*tasks)
@@ -725,7 +727,7 @@ async def clone_repositories(github_token: str, machines: List[tuple]):
     This function clones or updates the repositories on the remote machines.
     """
     tasks = []
-    for machine_ip, username, _ in machines:
+    for machine_ip, username, _, _ in machines:
         tasks.append(clone_or_update_repository(
             machine_ip=machine_ip,
             github_token=github_token,
@@ -791,7 +793,7 @@ async def setup_machines(github_token: str, machines: List[tuple], initial_priva
 
     tasks = []
 
-    for machine_ip, username, _ in machines:
+    for machine_ip, username, _, _ in machines:
         tasks.append(run_whitelist_setup(machine_ip, initial_private_key_path, username))
     
     # Run all whitelist setup tasks concurrently and wait for them to complete
@@ -812,10 +814,10 @@ def run_gre_setup(traffic_generators):
     
     try:
         # Performing GRE Setup before starting
-        gre = GRESetup(node_type="moat")
+        gre = GRESetup(node_type="moat", private_ip=MOAT_PRIVATE_IP, interface=MOAT_INTERFACE)
         success = gre.moat(
             king_private_ip=KING_PRIVATE_IP,
-            traffic_gen_ips=[private_ip for (_, _, private_ip) in traffic_generators]
+            traffic_gen_ips=[private_ip for (_, _, private_ip, _) in traffic_generators]
         )
         if success :
             logger.info("GRE setup successfully done.")
@@ -845,8 +847,9 @@ def load_trafficgen_machine_tuples(file_path = os.path.join(BASE_DIR, "trafficge
             public_ip = row.get("public_ip", "").strip()
             username = row.get("username", "").strip()
             private_ip = row.get("private_ip", "").strip()
+            interface = row.get("interface", "").strip()
             if public_ip and username:
-                machines.append((public_ip, username, private_ip))
+                machines.append((public_ip, username, private_ip, interface))
     return machines
 
 if __name__ == "__main__":
@@ -855,7 +858,7 @@ if __name__ == "__main__":
 
     # Load machine info
     traffic_generators = load_trafficgen_machine_tuples()
-    machines = traffic_generators + [(KING_PUBLIC_IP, KING_USERNAME, KING_PRIVATE_IP)]
+    machines = traffic_generators + [(KING_PUBLIC_IP, KING_USERNAME, KING_PRIVATE_IP, KING_INTERFACE)]
 
     run_gre_setup(traffic_generators)
     
