@@ -94,9 +94,9 @@ import traceback
 
 dotenv.load_dotenv()
 
-# # Disable all asyncssh logging by setting its level to CRITICAL
-# asyncssh_logger = logging.getLogger('asyncssh')
-# asyncssh_logger.setLevel(logging.CRITICAL)
+# Disable all asyncssh logging by setting its level to CRITICAL
+asyncssh_logger = logging.getLogger('asyncssh')
+asyncssh_logger.setLevel(logging.CRITICAL)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -543,6 +543,8 @@ class RoundManager(BaseModel):
         machine_type: str,
         index: str,
         moat_private_ip: str,
+        private_ip: str,
+        interface: str,
         script_name: str = "gre_setup.py",
         linked_files: list = []
     ) -> bool:
@@ -574,6 +576,8 @@ class RoundManager(BaseModel):
             remote_script_path,
             machine_type, 
             moat_private_ip,
+            private_ip,
+            interface,
             index
         ]
 
@@ -758,6 +762,8 @@ class RoundManager(BaseModel):
 
                 # Retrieve necessary connection and task details
                 ip = machine_details.ip
+                private_ip = machine_details.private_ip
+                interface = machine_details.interface
                 ssh_user = machine_details.username
                 index = machine_details.index
                 ssh_dir = get_authorized_keys_dir(ssh_user)  # Get directory for authorized keys
@@ -816,7 +822,9 @@ class RoundManager(BaseModel):
                             remote_base_directory,
                             machine_type,
                             index,
-                            moat_private_ip
+                            moat_private_ip,
+                            private_ip,
+                            interface
                         )
                     elif task == "challenge":
                         result = await self.process_challenge(
