@@ -83,6 +83,8 @@ class ChallengeRewardEvent(BaseModel):
     vps: list[float]
     rtt_value: list[float]
     lf: list[float]
+    ttl_attacks_sent: list[int]
+    ttl_packets_sent: list[int]
     best_miner_score: float
     best_bandwidth: float
     best_capacity: float
@@ -115,6 +117,8 @@ class ChallengeRewardEvent(BaseModel):
             "vps": self.vps,
             "rtt_value": self.rtt_value,
             "lf": self.lf,
+            "ttl_attacks_sent": self.ttl_attacks_sent,
+            "ttl_packets_sent": self.ttl_packets_sent,
             "best_miner_score": self.best_miner_score,
             "best_bandwidth": self.best_bandwidth,
             "best_capacity": self.best_capacity,
@@ -144,6 +148,8 @@ class BatchRewardOutput(BaseModel):
     vps: np.ndarray
     rtt_value: np.ndarray
     lf: np.ndarray 
+    ttl_attacks_sent: np.ndarray
+    ttl_packets_sent: np.ndarray
     best_miner_score: float
     best_bandwidth: float
     best_capacity: float
@@ -188,7 +194,7 @@ class ChallengeRewardModel(BaseModel):
 
         #Initialize metrics lists
         scores = []
-        bdr, ama, sps, exp_bdr, exp_ama, exp_sps, rtc, vps, lf = [[0]*len(uids) for _ in range(9)]
+        bdr, ama, sps, exp_bdr, exp_ama, exp_sps, rtc, vps, lf, ttl_packets_sent, ttl_attacks_sent = [[0]*len(uids) for _ in range(11)]
         rtt_value = [1e9]*len(uids)
 
 
@@ -270,6 +276,7 @@ class ChallengeRewardModel(BaseModel):
             data = packet_data[uid]
             total_attacks_sent = data["total_attacks_sent"]
             total_benign_sent = data["total_benign_sent"]
+            total_packets_sent = data["total_packets_sent"]
             total_reaching_attacks = data["total_reaching_attacks"]
             total_reaching_benign = data["total_reaching_benign"]
             total_reaching_packets = data["total_reaching_packets"]
@@ -298,8 +305,8 @@ class ChallengeRewardModel(BaseModel):
 
             # Store all metrics for reporting
             for arr, val in zip(
-                [bdr, ama, sps, exp_bdr, exp_ama, exp_sps, rtc, vps, lf, rtt_value, vps],
-                [BDR, AMA, SPS, reward_BDR, reward_AMA, reward_SPS, RTC, VPS, LF, rtt, VPS]
+                [bdr, ama, sps, exp_bdr, exp_ama, exp_sps, rtc, vps, lf, rtt_value, vps, ttl_attacks_sent, ttl_packets_sent],
+                [BDR, AMA, SPS, reward_BDR, reward_AMA, reward_SPS, RTC, VPS, LF, rtt, VPS, total_attacks_sent, total_packets_sent]
             ):
                 arr[uid] = val
 
@@ -369,6 +376,8 @@ class ChallengeRewardModel(BaseModel):
             vps=np.array(vps),
             rtt_value=np.array(rtt_value),
             lf=np.array(lf),
+            ttl_attacks_sent=np.array(ttl_attacks_sent),
+            ttl_packets_sent=np.array(ttl_packets_sent),
             best_miner_score=best_miner_score,
             best_bandwidth=best_bandwidth,
             best_capacity=best_capacity,
@@ -425,6 +434,8 @@ class BaseRewardConfig(BaseModel):
             vps=batch_rewards_output.vps.tolist(),
             rtt_value=batch_rewards_output.rtt_value.tolist(),                        
             lf=batch_rewards_output.lf.tolist(), 
+            ttl_attacks_sent = batch_rewards_output.ttl_attacks_sent.tolist(),
+            ttl_packets_sent = batch_rewards_output.ttl_packets_sent.tolist(),
             best_miner_score=batch_rewards_output.best_miner_score,
             best_bandwidth=batch_rewards_output.best_bandwidth,
             best_capacity=batch_rewards_output.best_capacity,
