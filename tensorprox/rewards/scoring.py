@@ -155,6 +155,8 @@ class TaskScorer(AsyncLoopRunner):
             vps=reward_event.vps,
             rtt_value=reward_event.rtt_value,
             lf=reward_event.lf,
+            ttl_attacks_sent=reward_event.ttl_attacks_sent,
+            ttl_packets_sent=reward_event.ttl_packets_sent,
             best_miner_score=reward_event.best_miner_score,
             best_bandwidth=reward_event.best_bandwidth,
             best_capacity=reward_event.best_capacity,

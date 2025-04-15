@@ -110,6 +110,8 @@ class RewardLoggingEvent(BaseEvent):
     vps: list[float]
     rtt_value: list[float]
     lf: list[float]
+    ttl_attacks_sent: list[int]
+    ttl_packets_sent: list[int]
     best_miner_score: float
     best_bandwidth: float
     best_capacity: float
