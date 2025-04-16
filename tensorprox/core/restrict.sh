@@ -35,24 +35,57 @@ sudo chmod 600 "/home/$restricted_user/.ssh/authorized_keys"
 echo "Restricting password authentication..."
 sudo passwd -l "$restricted_user" || echo "Password already locked or error occurred, continuing..."
 
-# Install SSH server if not already installed - in non-interactive mode
-echo "Installing SSH server if not already installed..."
-export DEBIAN_FRONTEND=noninteractive
-sudo apt-get -o Dpkg::Options::="--force-confdef" \
-             -o Dpkg::Options::="--force-confold" \
-             install -y -qq openssh-server
-
-# Ensure SSH service is enabled and running
-echo "Ensuring SSH service is enabled and running..."
-if systemctl list-unit-files | grep -q "ssh.service"; then
-    sudo systemctl enable ssh
-    sudo systemctl start ssh
-elif systemctl list-unit-files | grep -q "sshd.service"; then
-    sudo systemctl enable sshd
-    sudo systemctl start sshd
+# Check if SSH server is already installed and running
+echo "Checking if SSH server is already installed..."
+if systemctl is-active --quiet sshd || systemctl is-active --quiet ssh; then
+    echo "SSH server is already running. Skipping installation."
 else
-    # Fallback for older Ubuntu versions
-    sudo service ssh start || sudo service sshd start || echo "Could not start SSH service, please check manually."
+    echo "Installing SSH server in non-interactive mode..."
+    
+    # Pre-configure openssh-server to avoid prompts
+    sudo debconf-set-selections <<EOF
+openssh-server openssh-server/permit-root-login boolean true
+openssh-server openssh-server/password-authentication boolean true
+EOF
+    
+    # Kill any stalled dpkg or apt processes
+    sudo pkill -9 dpkg || true
+    sudo pkill -9 apt || true
+    
+    # Wait for apt/dpkg locks to be released
+    echo "Waiting for apt/dpkg locks to be released..."
+    for i in {1..60}; do
+        if ! sudo lsof /var/lib/dpkg/lock-frontend >/dev/null 2>&1 && ! sudo lsof /var/lib/apt/lists/lock >/dev/null 2>&1; then
+            break
+        fi
+        echo "Waiting for locks to be released... ($i/60)"
+        sleep 1
+    done
+    
+    # Clean up and fix any interrupted installations
+    sudo rm -f /var/lib/dpkg/lock-frontend
+    sudo rm -f /var/lib/apt/lists/lock
+    sudo dpkg --configure -a
+    
+    # Install OpenSSH with maximum non-interactive settings
+    export DEBIAN_FRONTEND=noninteractive
+    sudo -E apt-get update -qq
+    sudo -E apt-get -o Dpkg::Options::="--force-confdef" \
+                   -o Dpkg::Options::="--force-confold" \
+                   -o Dpkg::Options::="--force-confnew" \
+                   -y --allow-downgrades --allow-remove-essential --allow-change-held-packages \
+                   install -qq openssh-server </dev/null >/dev/null 2>&1
+    
+    # Check if the installation was successful
+    if ! systemctl is-active --quiet sshd && ! systemctl is-active --quiet ssh; then
+        echo "SSH server installation may have failed. Attempting alternative method..."
+        
+        # Alternative installation method (bare minimum to get SSH working)
+        sudo -E apt-get -qq install -y openssh-server --no-install-recommends </dev/null
+        
+        # Ensure configuration directory exists
+        sudo mkdir -p /etc/ssh/sshd_config.d
+    fi
 fi
 
 # Define the sudoers file name (use a fixed name for simplicity)
