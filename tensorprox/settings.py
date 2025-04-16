@@ -19,14 +19,14 @@ class Settings(BaseSettings):
 
     #Subnet parameters
     SUBNET_NEURON_SIZE: int = 256
-    WEIGHT_SETTER_STEP: int = 30240 #2520 blocks / 8 hours and 24 minutes
+    WEIGHT_SETTER_STEP: int = 23040 #1920 blocks / 6 hours and 24 minutes
 
     SAVE_PATH: Optional[str] = Field("./storage", env="SAVE_PATH")
 
     # W&B.
     WANDB_ON: bool = Field(True, env="WANDB_ON")
-    WANDB_ENTITY: Optional[str] = Field("data-deepmind", env="WANDB_ENTITY")
-    WANDB_PROJECT_NAME: Optional[str] = Field("TensorProx", env="WANDB_PROJECT_NAME")
+    WANDB_ENTITY: Optional[str] = Field("shugo-labs", env="WANDB_ENTITY")
+    WANDB_PROJECT_NAME: Optional[str] = Field("tensorprox", env="WANDB_PROJECT_NAME")
     WANDB_RUN_STEP_LENGTH: int = Field(100, env="WANDB_RUN_STEP_LENGTH")
     WANDB_API_KEY: Optional[str] = Field(None, env="WANDB_API_KEY")
     WANDB_OFFLINE: bool = Field(False, env="WANDB_OFFLINE")

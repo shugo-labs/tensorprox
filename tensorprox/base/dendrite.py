@@ -11,7 +11,6 @@ from typing import Dict, Union
 
 class DendriteResponseEvent(BaseModel):
     uids: np.ndarray | list[int]
-    synapses: list[PingSynapse]
     all_miners_availability: list[Dict[str, Union[int, str]]] = []
     setup_status: list[Dict[str, Union[int, str]]] = []
     gre_status: list[Dict[str, Union[int, str]]] = []
