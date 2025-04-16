@@ -489,7 +489,6 @@ class Validator(BaseValidatorNeuron):
 
         # Create a complete response event
         response_event = DendriteResponseEvent(
-            synapses=synapses,
             all_miners_availability=all_miners_availability,
             setup_status=setup_results,
             gre_status=gre_results,
