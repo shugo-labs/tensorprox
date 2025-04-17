@@ -533,15 +533,22 @@ async def send_file_via_scp(local_file, remote_path, remote_ip, remote_key_path,
         print(f"Error: {e}")
 
 
-async def ssh_connect_execute(ip: str, private_key_path: str, username: str, cmd: Union[str, list] = None) -> Union[bool, object]:
+async def ssh_connect_execute(
+    ip: str, 
+    private_key_path: str, 
+    username: str, 
+    cmd: Union[str, list] = None,
+    connection_timeout: float = 10.0  # Default timeout in seconds
+) -> Union[bool, object]:
     """
-    Establishes an SSH connection, optionally executes a command, and closes the connection.
+    Establishes an SSH connection with timeout, optionally executes a command, and closes the connection.
 
     Args:
         ip (str): The target machine's IP address.
         private_key_path (str): The path to the private key used for authentication.
         username (str): The SSH user to authenticate as.
         cmd (Union[str, list], optional): The command to execute.
+        connection_timeout (float, optional): Connection timeout in seconds. Default is 10.0.
 
     Returns:
         Union[bool, object]: 
@@ -549,22 +556,41 @@ async def ssh_connect_execute(ip: str, private_key_path: str, username: str, cmd
             - If a command is provided, returns the result.
     """
     try:
-        # Establish the SSH connection
-        async with asyncssh.connect(ip, username=username, client_keys=[private_key_path], known_hosts=None) as client:
+        # Use wait_for with a timeout instead of the context manager
+        connect_task = asyncssh.connect(
+            ip, 
+            username=username, 
+            client_keys=[private_key_path], 
+            known_hosts=None
+        )
+        
+        client = await asyncio.wait_for(connect_task, timeout=connection_timeout)
+        
+        try:
             if cmd:
                 try:
                     # Run the command and capture the result
                     result = await client.run(cmd, check=False, stderr=asyncssh.PIPE)
-                    return result   
+                    return result
+                except asyncio.TimeoutError:
+                    logger.error(f"Command execution timed out after {connection_timeout} seconds")
+                    return False
                 except Exception as e:
-                    # logger.error(f"Command execution failed: {e}, stderr: {e.stderr}")
+                    logger.error(f"Command execution failed: {e}, stderr: {getattr(e, 'stderr', 'N/A')}")
                     return False  # Command execution failed
-
-        # If no command is provided, return True for successful connection
-        return True
-
+            
+            # If no command is provided, return True for successful connection
+            return True
+        finally:
+            client.close()
+            
+    except asyncio.TimeoutError:
+        logger.error(f"SSH connection timed out after {connection_timeout} seconds")
+        return False
     except asyncssh.Error as e:
         # Connection failed, log the error
         logger.error(f"SSH connection failed: {e}")
         return False
-
+    except Exception as e:
+        logger.error(f"Unexpected error during SSH connection: {e}")
+        return False
