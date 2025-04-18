@@ -173,7 +173,6 @@ EOF
 Description=Timer for automatic revert of security lockdown
 
 [Timer]
-OnBootSec=60
 OnActiveSec=${timeout_seconds}
 Unit=${service_name}.service
 
