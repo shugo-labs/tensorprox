@@ -19,9 +19,9 @@ MIN_TGENS = 2
 MAX_TGENS = 8
 
 #Timeouts
-ROUND_TIMEOUT: int = 1560 # 26 minutes
+ROUND_TIMEOUT: int = 1500 # 26 minutes
 INITIAL_SETUP_TIMEOUT: int = 120 # 2 minutes
-LOCKDOWN_TIMEOUT: int = 120 #2 minutes
+LOCKDOWN_TIMEOUT: int = 60 #1 minutes
 GRE_SETUP_TIMEOUT: int = 240 #4 minutes
 CHALLENGE_TIMEOUT: int = CHALLENGE_DURATION + DELTA #18 minutes
 
