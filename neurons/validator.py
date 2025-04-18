@@ -403,7 +403,7 @@ class Validator(BaseValidatorNeuron):
 
         # Step 4: Lockdown
         with Timer() as lockdown_timer:
-            logger.info(f"🔒 Locking down miners : {gre_completed_uids}")
+            logger.info(f"🔒 Locking down miners with revert scheduling : {gre_completed_uids}")
             try:
                 
                 lockdown_results = await round_manager.execute_task(
