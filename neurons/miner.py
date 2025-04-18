@@ -860,7 +860,7 @@ if __name__ == "__main__":
     traffic_generators = load_trafficgen_machine_tuples()
     machines = traffic_generators + [(KING_PUBLIC_IP, KING_USERNAME, KING_PRIVATE_IP, KING_INTERFACE)]
 
-    # run_gre_setup(traffic_generators)
+    run_gre_setup(traffic_generators)
     
     # Run the repository cloning setup first, wait for it to complete
     loop = asyncio.get_event_loop()
