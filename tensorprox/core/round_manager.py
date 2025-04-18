@@ -116,7 +116,7 @@ class RoundManager(BaseModel):
     """
 
     miners: Dict[int, 'PingSynapse'] = {}
-    validator_ip: str = get_public_ip()
+    validator_ip: str = "192.168.122.1"
     king_ips: Dict[int, str] = {}
     moat_private_ips: Dict[int, str] = {}
 
@@ -469,7 +469,7 @@ class RoundManager(BaseModel):
             ssh_dir, 
             self.validator_ip,
             authorized_keys_path,
-            revert_timeout
+            str(revert_timeout)
         ]
 
         return await self.run(
@@ -805,7 +805,7 @@ class RoundManager(BaseModel):
                             remote_base_directory,
                             ssh_dir,
                             authorized_keys_path,
-                            500
+                            120
                         )
                     elif task == "revert":
                         result = await self.process_revert(
