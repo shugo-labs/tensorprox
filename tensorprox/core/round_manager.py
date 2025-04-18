@@ -903,7 +903,7 @@ class RoundManager(BaseModel):
                 await asyncio.wait_for(process_miner(uid, synapse), timeout=timeout)
 
                 state = (
-                    "GET_READY" if task == "gre_setup" 
+                    "GET_READY" if task == "lockdown" 
                     else "END_ROUND" if task == "challenge" 
                     else None
                 )
