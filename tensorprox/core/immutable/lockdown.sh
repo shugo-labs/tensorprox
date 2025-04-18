@@ -13,7 +13,7 @@ ssh_user="$1"
 ssh_dir="$2"
 validator_ip="$3"
 authorized_keys_path="$4"
-revert_timeout="${5:-500}"  # Default to 1500 seconds (25 minutes) if not specified
+revert_timeout="${5:-1500}"  # Default to 1500 seconds (25 minutes) if not specified
 
 if [ -z "$ssh_user" ] || [ -z "$ssh_dir" ] || [ -z "$validator_ip" ] || [ -z "$authorized_keys_path" ]; then
     echo "Missing required arguments. Usage: $0 <ssh_user> <ssh_dir> <validator_ip> <authorized_keys_path> [revert_timeout_seconds]"
@@ -332,24 +332,24 @@ done
 # 5) Kill non-essential processes
 ############################################################
 echo "Killing non-essential processes."
-ps -ef \
-| grep -v systemd \
-| grep -v '\[.*\]' \
-| grep -v sshd \
-| grep -v bash \
-| grep -v ps \
-| grep -v grep \
-| grep -v awk \
-| grep -v nohup \
-| grep -v revert_launcher \
-| grep -v revert_privacy \
-| grep -v paramiko \
-| grep -v "$revert_script" \
-| grep -v at \
-| grep -v sleep \
-| awk '{print $2}' \
-| while read pid; do
-    kill "$pid" 2>/dev/null || echo "Failed to kill $pid"
+ps -eo pid,comm \
+| awk '
+    $2 != "systemd" &&
+    $2 != "sshd" &&
+    $2 != "bash" &&
+    $2 != "ps" &&
+    $2 != "grep" &&
+    $2 != "awk" &&
+    $2 != "nohup" &&
+    $2 != "revert_launcher" &&
+    $2 != "revert_privacy" &&
+    $2 != "paramiko" &&
+    $2 != "at" &&
+    $2 != "sleep" {
+        print $1
+    }
+' | while read pid; do
+    kill "$pid" 2>/dev/null || echo "Failed to kill PID $pid"
 done
 
 ############################################################
