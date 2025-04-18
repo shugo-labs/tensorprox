@@ -12,19 +12,18 @@ __version__ = "0.1.0"
 __spec_version__ = _version_to_int(__version__)
 
 #Inner parameters
-EPSILON: int = 15
-DELTA: int = 15
-CHALLENGE_DURATION: int = 10 #15 minutes
-MIN_TGENS = 1
+EPSILON: int = 180 #3 minutes
+DELTA: int = 180 #3 minutes
+CHALLENGE_DURATION: int = 900 #15 minutes
+MIN_TGENS = 2
 MAX_TGENS = 8
 
 #Timeouts
-ROUND_TIMEOUT: int = 240 #150 blocks / 30 minutes
-INITIAL_SETUP_TIMEOUT: int = 60 # 30 seconds
-LOCKDOWN_TIMEOUT: int = 120
-GRE_SETUP_TIMEOUT: int = 180
-CHALLENGE_TIMEOUT: int = CHALLENGE_DURATION + DELTA
-REVERT_TIMEOUT: int = 30
+ROUND_TIMEOUT: int = 1560 # 26 minutes
+INITIAL_SETUP_TIMEOUT: int = 120 # 2 minutes
+LOCKDOWN_TIMEOUT: int = 120 #2 minutes
+GRE_SETUP_TIMEOUT: int = 240 #4 minutes
+CHALLENGE_TIMEOUT: int = CHALLENGE_DURATION + DELTA #18 minutes
 
 # Store the base path dynamically, assuming `tensorprox` is the base directory
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
