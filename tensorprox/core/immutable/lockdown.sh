@@ -246,7 +246,7 @@ echo "Starting lockdown procedures..."
 ############################################################
 # 1) Minimal services
 ############################################################
-allowed="apparmor.service dbus.service networkd-dispatcher.service polkit.service rsyslog.service snapd.service ssh.service systemd-journald.service systemd-logind.service systemd-networkd.service systemd-resolved.service systemd-timesyncd.service systemd-udevd.service atd.service"
+allowed="apparmor.service dbus.service networkd-dispatcher.service acpid.service polkit.service rsyslog.service snapd.service ssh.service systemd-journald.service systemd-logind.service systemd-networkd.service systemd-resolved.service systemd-timesyncd.service systemd-udevd.service atd.service"
 for s in $(systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}'); do
     if echo "$allowed" | grep -wq "$s"; then
         :
