@@ -116,7 +116,7 @@ class RoundManager(BaseModel):
     """
 
     miners: Dict[int, 'PingSynapse'] = {}
-    validator_ip: str = "192.168.122.1"
+    validator_ip: str = get_public_ip()
     king_ips: Dict[int, str] = {}
     moat_private_ips: Dict[int, str] = {}
 
