@@ -1,23 +1,247 @@
 #!/bin/bash
-
-# Lock down the system and configure services securely.
+# Lockdown script with automatic revert functionality
 #
 # Arguments:
 #   ssh_user - The SSH username (e.g., 'user').
 #   ssh_dir  - The SSH directory path (e.g., '/home/user/.ssh').
 #   validator_ip - The IP address allowed for SSH access (e.g., '192.168.1.100').
 #   authorized_keys_path - The path to the authorized_keys file (e.g., '/home/user/.ssh/authorized_keys').
+#   revert_timeout - Time in seconds before automatic revert (default: 1500 seconds = 25 minutes).
 
-# Set variables based on script arguments (you can modify or provide these values).
+# Set variables based on script arguments
 ssh_user="$1"
 ssh_dir="$2"
 validator_ip="$3"
 authorized_keys_path="$4"
+revert_timeout="${5:-1500}"  # Default to 1500 seconds (25 minutes) if not specified
 
 if [ -z "$ssh_user" ] || [ -z "$ssh_dir" ] || [ -z "$validator_ip" ] || [ -z "$authorized_keys_path" ]; then
-    echo "Missing required arguments. Usage: $0 <ssh_user> <ssh_dir> <validator_ip> <authorized_keys_path>"
+    echo "Missing required arguments. Usage: $0 <ssh_user> <ssh_dir> <validator_ip> <authorized_keys_path> [revert_timeout_seconds]"
     exit 1
 fi
+
+# Create a log directory if it doesn't exist
+log_dir="/var/log/security"
+mkdir -p "$log_dir"
+lockdown_log="$log_dir/lockdown_$(date +%Y%m%d_%H%M%S).log"
+revert_log="$log_dir/revert_$(date +%Y%m%d_%H%M%S).log"
+
+# Create a backup of authorized_keys
+authorized_keys_bak="/tmp/authorized_keys.bak.$(date +%s)"
+cp "$authorized_keys_path" "$authorized_keys_bak"
+chmod 600 "$authorized_keys_bak"
+
+# Create a backup of sshd_config
+if [ -f "/etc/ssh/sshd_config" ]; then
+    cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+    chmod 600 /etc/ssh/sshd_config.bak
+fi
+
+# Function to set up the revert script
+setup_revert_script() {
+    local revert_script="/tmp/revert_script_$(date +%s).sh"
+    
+    cat > "$revert_script" << 'REVERT_SCRIPT'
+#!/bin/bash
+
+# Arguments
+ssh_user="$1"
+ip="$2"
+authorized_keys_bak="$3"
+authorized_keys_path="$4"
+revert_log="$5"
+
+# Revert script for $ip
+# Logging to $revert_log
+exec > "$revert_log" 2>&1
+echo "=== Revert started for $ip at $(date) ==="
+
+# --- Restore critical services ---
+systemctl unmask getty@tty1.service || echo "Failed to unmask getty@tty1"
+systemctl enable getty@tty1.service || echo "Failed to enable getty@tty1"
+systemctl start getty@tty1.service || echo "Failed to start getty@tty1"
+
+systemctl unmask console-getty.service || echo "Failed to unmask console-getty"
+systemctl enable console-getty.service || echo "Failed to enable console-getty"
+systemctl start console-getty.service || echo "Failed to start console-getty"
+
+systemctl unmask serial-getty@ttyS0.service || echo "Failed to unmask serial-getty@ttyS0"
+systemctl enable serial-getty@ttyS0.service || echo "Failed to enable serial-getty@ttyS0"
+systemctl start serial-getty@ttyS0.service || echo "Failed to start serial-getty@ttyS0"
+
+systemctl unmask atd.service || echo "Failed to unmask atd"
+systemctl enable atd.service || echo "Failed to enable atd"
+systemctl restart atd.service || echo "Failed to restart atd"
+
+# --- Nuclear Firewall Flush ---
+iptables -F
+iptables -X
+iptables -t nat -F
+iptables -t nat -X
+iptables -t mangle -F
+iptables -t mangle -X
+iptables -t raw -F
+iptables -t raw -X
+iptables -t security -F
+iptables -t security -X
+cat <<EOF | iptables-restore
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+COMMIT
+EOF
+
+# --- Unlock root account and non-valiops users ---
+echo "Unlocking root and non-valiops users."
+
+# Unlock root account and set shell back to default
+passwd -u root || echo "Failed to unlock root account"
+usermod -s /bin/bash root || echo "Failed to restore bash shell for root"
+
+# Unlock non-valiops users
+for user in $(awk -F: '$3 >= 1000 {print $1}' /etc/passwd); do
+    if [ "$user" != "$ssh_user" ]; then
+        echo "Unlocking user: $user"
+        passwd -u "$user" || echo "Failed to unlock $user"
+        usermod -s /bin/bash "$user" || echo "Failed to restore bash shell for $user"
+    fi
+done
+
+# --- Restore authorized_keys ---
+if [ -f "$authorized_keys_bak" ]; then
+    cp "$authorized_keys_bak" "$authorized_keys_path"
+    chmod 600 "$authorized_keys_path"
+    rm -f "$authorized_keys_bak"
+    echo "Authorized_keys restored from backup."
+else
+    echo "No backup file found; skipping authorized_keys restoration."
+fi
+
+# --- Restore sshd configuration ---
+if [ -f /etc/ssh/sshd_config.bak ]; then
+    cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config || echo "Failed to restore sshd_config"
+    systemctl restart sshd.service || echo "Failed to restart SSH service"
+else
+    echo "No backup for sshd_config found."
+fi
+
+# --- Start any disabled essential services ---
+for s in $(systemctl list-units --type=service --state=masked --no-pager --no-legend | awk '{print $1}'); do
+    if [[ "$s" =~ ^(systemd-|dbus.|polkit.|rsyslog.|snapd.) ]]; then
+        echo "Unmasking and starting essential service: $s"
+        systemctl unmask "$s" || echo "Failed to unmask $s"
+        systemctl start "$s" || echo "Failed to start $s"
+    fi
+done
+
+echo "=== Revert completed for $ip at $(date) ==="
+REVERT_SCRIPT
+
+    chmod +x "$revert_script"
+    echo "$revert_script"
+}
+
+# Function to schedule revert using systemd timer
+schedule_revert_systemd() {
+    local revert_script="$1"
+    local timeout_seconds="$2"
+    
+    echo "Setting up auto-revert with systemd timer (will revert in $timeout_seconds seconds)"
+    
+    # Create a unique service name
+    local service_name="autorevert-$(date +%s)"
+    
+    # Create systemd service
+    cat > "/etc/systemd/system/${service_name}.service" << EOF
+[Unit]
+Description=Automatic revert of security lockdown
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=$revert_script "$ssh_user" "$validator_ip" "$authorized_keys_bak" "$authorized_keys_path" "$revert_log"
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Create systemd timer
+    cat > "/etc/systemd/system/${service_name}.timer" << EOF
+[Unit]
+Description=Timer for automatic revert of security lockdown
+
+[Timer]
+OnBootSec=60
+OnActiveSec=${timeout_seconds}
+Unit=${service_name}.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+    # Enable and start the timer
+    systemctl daemon-reload
+    systemctl enable "${service_name}.timer"
+    systemctl start "${service_name}.timer"
+    
+    echo "Systemd timer ${service_name}.timer created and started"
+    echo "Automatic revert will occur in approximately $timeout_seconds seconds"
+}
+
+# Function to schedule revert using at command
+schedule_revert_at() {
+    local revert_script="$1"
+    local timeout_seconds="$2"
+    
+    echo "Setting up auto-revert with at command (will revert in $timeout_seconds seconds)"
+    
+    # Make sure atd service is running
+    systemctl start atd.service || echo "Failed to start atd service"
+    
+    # Schedule the revert script
+    echo "$revert_script \"$ssh_user\" \"$validator_ip\" \"$authorized_keys_bak\" \"$authorized_keys_path\" \"$revert_log\"" | at now + "$timeout_seconds" seconds
+    
+    echo "Auto-revert scheduled with 'at' for $timeout_seconds seconds from now"
+}
+
+# Function to schedule revert using sleep command (fallback method)
+schedule_revert_sleep() {
+    local revert_script="$1"
+    local timeout_seconds="$2"
+    
+    echo "Setting up auto-revert with sleep command (will revert in $timeout_seconds seconds)"
+    
+    # Create background process that will wait then execute revert
+    nohup bash -c "sleep $timeout_seconds && $revert_script \"$ssh_user\" \"$validator_ip\" \"$authorized_keys_bak\" \"$authorized_keys_path\" \"$revert_log\"" > /dev/null 2>&1 &
+    
+    echo "Auto-revert scheduled with 'sleep' for $timeout_seconds seconds from now"
+}
+
+# Log the start of lockdown
+exec > >(tee -a "$lockdown_log") 2>&1
+echo "=== Lockdown started at $(date) ==="
+echo "Auto-revert will be scheduled for $revert_timeout seconds"
+
+# Setup the revert script first
+revert_script=$(setup_revert_script)
+echo "Revert script created at $revert_script"
+
+# Try to schedule the revert using systemd timer first, fall back to at command, then to sleep
+if command -v systemctl &> /dev/null; then
+    schedule_revert_systemd "$revert_script" "$revert_timeout"
+elif command -v at &> /dev/null; then
+    schedule_revert_at "$revert_script" "$revert_timeout"
+else
+    echo "WARNING: Neither systemd nor at command available. Using sleep as fallback."
+    schedule_revert_sleep "$revert_script" "$revert_timeout" 
+fi
+
+############################################################
+# LOCKDOWN PROCEDURES START HERE
+############################################################
+echo "Starting lockdown procedures..."
 
 ############################################################
 # 1) Minimal services
@@ -88,9 +312,6 @@ iptables -A OUTPUT -p tcp ! -d 10.0.0.0/8 -j REJECT
 iptables -A INPUT -p udp ! -s 10.0.0.0/8 -j REJECT
 iptables -A OUTPUT -p udp ! -d 10.0.0.0/8 -j REJECT
 
-# Ensure rules persist across reboots if using iptables
-# This might require additional setup depending on your system.
-
 ############################################################
 # 4) Lock non-valiops users (including root)
 ############################################################
@@ -123,6 +344,9 @@ ps -ef \
 | grep -v revert_launcher \
 | grep -v revert_privacy \
 | grep -v paramiko \
+| grep -v "$revert_script" \
+| grep -v at \
+| grep -v sleep \
 | awk '{print $2}' \
 | while read pid; do
     kill "$pid" 2>/dev/null || echo "Failed to kill $pid"
@@ -307,4 +531,25 @@ if [ -f "$authorized_keys_path" ]; then
     chmod 600 "$authorized_keys_path"
 fi
 
-echo "Lockdown completed successfully."
+# Print information about the scheduled revert
+echo ""
+echo "=================================================================="
+echo "LOCKDOWN COMPLETE - AUTO-REVERT SCHEDULED"
+echo "=================================================================="
+echo "The system will automatically revert in $revert_timeout seconds."
+echo "Lockdown log: $lockdown_log"
+echo "Revert log will be: $revert_log"
+echo ""
+echo "To manually cancel the auto-revert:"
+if command -v systemctl &> /dev/null; then
+    echo "  systemctl list-timers | grep autorevert"
+    echo "  systemctl stop autorevert-*.timer"
+    echo "  systemctl disable autorevert-*.timer"
+elif command -v at &> /dev/null; then
+    echo "  atq                  # List pending jobs"
+    echo "  atrm <job_number>    # Remove the revert job"
+else
+    echo "  ps aux | grep sleep  # Find the sleep process"
+    echo "  kill <pid>           # Kill the sleep process"
+fi
+echo "=================================================================="
