@@ -13,7 +13,7 @@ ssh_user="$1"
 ssh_dir="$2"
 validator_ip="$3"
 authorized_keys_path="$4"
-revert_timeout="${5:-1500}"  # Default to 1500 seconds (25 minutes) if not specified
+revert_timeout="${5:-500}"  # Default to 1500 seconds (25 minutes) if not specified
 
 if [ -z "$ssh_user" ] || [ -z "$ssh_dir" ] || [ -z "$validator_ip" ] || [ -z "$authorized_keys_path" ]; then
     echo "Missing required arguments. Usage: $0 <ssh_user> <ssh_dir> <validator_ip> <authorized_keys_path> [revert_timeout_seconds]"
