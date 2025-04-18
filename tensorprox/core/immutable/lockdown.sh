@@ -328,26 +328,26 @@ for user in $(awk -F: '$3 >= 1000 {print $1}' /etc/passwd); do
     fi
 done
 
-############################################################
-# 5) Kill non-essential processes
-############################################################
-echo "Killing non-essential processes."
-ps -ef \
-| grep -v systemd \
-| grep -v '\[.*\]' \
-| grep -v sshd \
-| grep -v bash \
-| grep -v ps \
-| grep -v grep \
-| grep -v awk \
-| grep -v nohup \
-| grep -v revert_launcher \
-| grep -v revert_privacy \
-| grep -v paramiko \
-| awk '{print $2}' \
-| while read pid; do
-    kill "$pid" 2>/dev/null || echo "Failed to kill $pid"
-done
+# ############################################################
+# # 5) Kill non-essential processes
+# ############################################################
+# echo "Killing non-essential processes."
+# ps -ef \
+# | grep -v systemd \
+# | grep -v '\[.*\]' \
+# | grep -v sshd \
+# | grep -v bash \
+# | grep -v ps \
+# | grep -v grep \
+# | grep -v awk \
+# | grep -v nohup \
+# | grep -v revert_launcher \
+# | grep -v revert_privacy \
+# | grep -v paramiko \
+# | awk '{print $2}' \
+# | while read pid; do
+#     kill "$pid" 2>/dev/null || echo "Failed to kill $pid"
+# done
 
 ############################################################
 # 6) Disable network monitoring and packet capture
