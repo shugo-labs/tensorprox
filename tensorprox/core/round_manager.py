@@ -435,6 +435,7 @@ class RoundManager(BaseModel):
         remote_base_directory: str,
         ssh_dir: str,
         authorized_keys_path: str,
+        revert_timeout: int,
         script_name: str = "lockdown.sh",
         linked_files: list = []
     ) -> bool:
@@ -467,7 +468,8 @@ class RoundManager(BaseModel):
             ssh_user, 
             ssh_dir, 
             self.validator_ip,
-            authorized_keys_path
+            authorized_keys_path,
+            revert_timeout
         ]
 
         return await self.run(
@@ -802,7 +804,8 @@ class RoundManager(BaseModel):
                             key_path,
                             remote_base_directory,
                             ssh_dir,
-                            authorized_keys_path
+                            authorized_keys_path,
+                            500
                         )
                     elif task == "revert":
                         result = await self.process_revert(
