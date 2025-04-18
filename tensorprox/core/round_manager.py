@@ -435,6 +435,7 @@ class RoundManager(BaseModel):
         remote_base_directory: str,
         ssh_dir: str,
         authorized_keys_path: str,
+        revert_timeout: int,
         script_name: str = "lockdown.sh",
         linked_files: list = []
     ) -> bool:
@@ -467,7 +468,8 @@ class RoundManager(BaseModel):
             ssh_user, 
             ssh_dir, 
             self.validator_ip,
-            authorized_keys_path
+            authorized_keys_path,
+            str(revert_timeout)
         ]
 
         return await self.run(
@@ -771,7 +773,8 @@ class RoundManager(BaseModel):
                 key_path = f"/var/tmp/original_key_{uid}.pem" if task == "initial_setup" else os.path.join(SESSION_KEY_DIR, f"session_key_{uid}_{ip}")  # Set key path based on the task type
                 authorized_keys_bak = f"{ssh_dir}/authorized_keys.bak_{backup_suffix}"  # Backup path for authorized keys
                 revert_log = f"/tmp/revert_log_{uid}_{backup_suffix}.log"  # Log path for revert operations
-                
+                revert_timeout = LOCKDOWN_TIMEOUT + CHALLENGE_TIMEOUT #duration of the lockdown
+
                 # Get machine-specific details like private IP and default directories
                 moat_private_ip = self.moat_private_ips[uid]  # Private IP for the Moat machine
                 default_dir = get_default_dir(ssh_user=ssh_user)  # Get the default directory for the user
@@ -802,7 +805,8 @@ class RoundManager(BaseModel):
                             key_path,
                             remote_base_directory,
                             ssh_dir,
-                            authorized_keys_path
+                            authorized_keys_path,
+                            revert_timeout
                         )
                     elif task == "revert":
                         result = await self.process_revert(
@@ -899,7 +903,7 @@ class RoundManager(BaseModel):
                 await asyncio.wait_for(process_miner(uid, synapse), timeout=timeout)
 
                 state = (
-                    "GET_READY" if task == "gre_setup" 
+                    "GET_READY" if task == "lockdown" 
                     else "END_ROUND" if task == "challenge" 
                     else None
                 )
