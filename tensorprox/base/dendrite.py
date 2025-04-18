@@ -16,13 +16,11 @@ class DendriteResponseEvent(BaseModel):
     gre_status: list[Dict[str, Union[int, str]]] = []
     lockdown_status: list[Dict[str, Union[int, str]]] = []
     challenge_status: list[Dict[str, Union[int, str, list]]] = []
-    revert_status: list[Dict[str, Union[int, str]]] = []
     ping_status_by_uid: dict[int, Dict[str, Union[int, str]]] = {}
     setup_status_by_uid: dict[int, Dict[str, Union[int, str]]] = {}
     gre_status_by_uid: dict[int, Dict[str, Union[int, str]]] = {}
     lockdown_status_by_uid: dict[int, Dict[str, Union[int, str]]] = {}
     challenge_status_by_uid: dict[int, Dict[str, Union[int, str, list]]] = {}
-    revert_status_by_uid: dict[int, Dict[str, Union[int, str]]] = {}
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -38,7 +36,6 @@ class DendriteResponseEvent(BaseModel):
         self.gre_status_by_uid = {}
         self.lockdown_status_by_uid = {}
         self.challenge_status_by_uid = {}
-        self.revert_status_by_uid = {}
         
         #Check availability Step
         if self.all_miners_availability:
@@ -91,14 +88,5 @@ class DendriteResponseEvent(BaseModel):
                         "label_counts_results" : challenge.get('label_counts_results', [])
                     }
 
-        # Revert Step
-        if self.revert_status:
-            for revert in self.revert_status:
-                uid = revert.get("uid")
-                if uid is not None:
-                    self.revert_status_by_uid[uid] = {
-                        "revert_status_message": revert.get("revert_status_message", f"UID {uid} not reverted."),
-                        "revert_status_code": revert.get("revert_status_code", 400),
-                    }
 
         return self
