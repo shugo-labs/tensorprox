@@ -332,24 +332,21 @@ done
 # 5) Kill non-essential processes
 ############################################################
 echo "Killing non-essential processes."
-ps -eo pid,comm \
-| awk '
-    $2 != "systemd" &&
-    $2 != "sshd" &&
-    $2 != "bash" &&
-    $2 != "ps" &&
-    $2 != "grep" &&
-    $2 != "awk" &&
-    $2 != "nohup" &&
-    $2 != "revert_launcher" &&
-    $2 != "revert_privacy" &&
-    $2 != "paramiko" &&
-    $2 != "at" &&
-    $2 != "sleep" {
-        print $1
-    }
-' | while read pid; do
-    kill "$pid" 2>/dev/null || echo "Failed to kill PID $pid"
+ps -ef \
+| grep -v systemd \
+| grep -v '\[.*\]' \
+| grep -v sshd \
+| grep -v bash \
+| grep -v ps \
+| grep -v grep \
+| grep -v awk \
+| grep -v nohup \
+| grep -v revert_launcher \
+| grep -v revert_privacy \
+| grep -v paramiko \
+| awk '{print $2}' \
+| while read pid; do
+    kill "$pid" 2>/dev/null || echo "Failed to kill $pid"
 done
 
 ############################################################
