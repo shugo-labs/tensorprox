@@ -805,7 +805,7 @@ class RoundManager(BaseModel):
                             remote_base_directory,
                             ssh_dir,
                             authorized_keys_path,
-                            120
+                            180
                         )
                     elif task == "revert":
                         result = await self.process_revert(
