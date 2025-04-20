@@ -8,7 +8,7 @@
 
 <div align="center">
 
-# **Tensorprox: SN234** <!-- omit in toc -->
+# **Tensorprox: SN91** <!-- omit in toc -->
 [![Discord Chat](https://img.shields.io/discord/308323056592486420.svg)](https://discord.gg/bittensor)
 [![Creative Commons Badge](https://img.shields.io/badge/Creative%20Commons-ED592F?logo=creativecommons&logoColor=fff&style=for-the-badge)](https://creativecommons.org/licenses/by-nc/4.0/deed.en)
 
@@ -22,7 +22,7 @@
 
 ---
 
-This repository is the **official codebase for Bittensor Subnet 234 (SN234) v0.1.0+**. To learn more about the Bittensor project and the underlying mechanics, [read here.](https://docs.bittensor.com/)
+This repository is the **official codebase for Bittensor Subnet 91 (SN91) v0.1.0+**. To learn more about the Bittensor project and the underlying mechanics, [read here.](https://docs.bittensor.com/)
 
 <br/>
 <div align="center">
@@ -184,15 +184,15 @@ Reflects how well the miner distinguishes between benign and malicious traffic. 
 
    - Benign Delivery Rate (BDR): Evaluates the efficiency of forwarding normal traffic
    ```
-   BDR = (exp((total_reaching_benign / total_benign_sent)**2) - 1) / (exp(1) - 1)
+   BDR = total_reaching_benign / total_benign_sent
    ```
    - Attack Mitigation Accuracy (AMA): Measures the ability to detect and block malicious traffic
    ```
-   AMA = (exp((1 - (total_reaching_attacks / total_attacks_sent))**2) - 1) / (exp(1) - 1)
+   AMA = 1 - total_reaching_attacks / total_attacks_sent
    ```
    - Combined as:
    ```
-   accuracy = 0.5 * BDR + 0.5 * AMA
+   accuracy = (exp((BDR*AMA)**2) - 1) / (exp(1) - 1)
    ```
 
 
