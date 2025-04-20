@@ -283,15 +283,15 @@ class ChallengeRewardModel(BaseModel):
             rtt = data["rtt"]
 
             # Benign Delivery Rate
-            BDR = max(total_reaching_benign / total_benign_sent, 0) if total_benign_sent > 0 else 0
+            BDR = min(max(total_reaching_benign / total_benign_sent, 0), 1) if total_benign_sent > 0 else 0
             reward_BDR = self.exponential_ratio(BDR)
 
             # Attack Penalty Score
-            AMA = max(1 - (total_reaching_attacks / total_attacks_sent), 0) if total_attacks_sent > 0 else 1
+            AMA = min(max(1 - (total_reaching_attacks / total_attacks_sent), 0), 1) if total_attacks_sent > 0 else 1
             reward_AMA = self.exponential_ratio(AMA)
 
             # Selective Processing Score
-            SPS = max(total_reaching_benign / total_reaching_packets, 0) if total_reaching_packets > 0 else 0
+            SPS = min(max(total_reaching_benign / total_reaching_packets, 0), 1) if total_reaching_packets > 0 else 0
             reward_SPS = self.exponential_ratio(SPS)
 
             # Relative Throughput Capacity (benign only)
