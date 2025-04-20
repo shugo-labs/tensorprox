@@ -2,6 +2,8 @@
 
 ## Compute Requirements
 
+🐧 Required OS: Ubuntu 22.04   |   🐍 Required Python: Python 3.10
+
 ⚙️ Assumptions
 
 Miners: 256 total, evenly distributed across active validators
@@ -16,13 +18,13 @@ Active Validator Scenario: Only 1 validator is active
 | Resource  | Requirement   |
 |-----------|---------------|
 | VRAM      | None          |
-| vCPU      | 32 vCPU       |
-| RAM       | 96 GB         |
+| vCPU      | 16 vCPU       |
+| RAM       | 32 GB         |
 | Storage   | 150 GB        |
 | Network   | >= 1 Gbps     |
 
 
-## Installation
+## 🔧 Installation
 
 1. Update system packages and install Python pip/venv :
 
@@ -45,12 +47,12 @@ python3 -m venv tp && source tp/bin/activate
 4. Clone the repository and install the required pip dependencies :
 
 ```bash
-git clone https://github.com/shugo-io/tensorprox.git
+git clone https://github.com/shugo-labs/tensorprox.git
 cd tensorprox
 pip install -r requirements.txt
 ```
 
-## Configuration
+## 🧩 Configuration
 
 Before running a validator, you will need to create a .env.validator environment file. It is necessary for you to provide the following :
 
@@ -70,14 +72,13 @@ For proper operation, the validator must ensure that the following ports are ope
 While **AXON_PORT** is used for axon serving, ports **AXON_PORT + UID** and **AXON_PORT +UID + 1** are critical for synchronizing the active validator count across the network. Failing to expose these ports may lead to incomplete peer discovery or inconsistent validator state.
 
 
-## Running
+## 🖥️ Running
 
 1. After creating the above environment file, run :
 
 ```bash
-pm2 start "python3 neurons/validator.py" --kill-timeout 5000 --name validator
+pm2 start "python3 neurons/validator.py" --name validator
 ```
-It's important to use the **--kill-timeout** flag to give the signal handler enough time to properly revert the miner's machines in case of an interruption or shutdown.
 
 2. Check if the instance is correctly running :
 

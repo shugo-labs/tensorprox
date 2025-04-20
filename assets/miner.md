@@ -4,6 +4,8 @@
 
 ## Compute Requirements
 
+🐧 Required OS: Ubuntu 22.04   |   🐍 Required Python: Python 3.10
+
 ### 🛡️ What the Miner Firewall Does ?
 
 The Miner machine acts as a real-time traffic firewall during challenge rounds:
@@ -21,8 +23,13 @@ The Miner machine acts as a real-time traffic firewall during challenge rounds:
 | Storage   | 80 GB         |
 | Network   | >= 1 Gbps     |
 
+## 🚀 Scalable Participation
 
-## Installation
+Miners must provide SSH access to the traffic generation and King machines (minimum set to 2 tgens + 1 King).
+However, they can start with machines of any size or capacity. The traffic generation automatically scales to the capability of the machines, ensuring lightweight traffic on lower-tier setups and progressively increasing load as performance scales.
+This makes it possible to get started with even modest VPS or home lab machines, while encouraging scale-up for higher rewards.
+
+## 🔧 Installation
 
 1. Update system packages and install Python (3.10) pip:
 
@@ -50,7 +57,7 @@ cd tensorprox
 pip install -r requirements.txt
 ```
 
-## Configuration
+## 🧩 Configuration
 
 1. Before running a miner, you will need to register its hotkey to the subnet:
 
@@ -69,21 +76,23 @@ btcli s register --wallet.name borgg --wallet.hotkey miner --netuid 234 --subten
 NETUID = # The subnet UID (integer)
 SUBTENSOR_NETWORK = # The network name [test, finney, local]
 SUBTENSOR_CHAIN_ENDPOINT = # The chain endpoint [test if running on test, finney if running on main, custom endpoint if running on local] 
-WALLET_NAME = # Name of your wallet (coldkey) 
+WALLET_NAME = # Name of your wallet (coldkey)
 HOTKEY = # Name of your hotkey associated with above wallet
 AXON_PORT = # TCP Port Number. The port must be open
 KING_PUBLIC_IP = # Public IP of the receiver machine (king)
 KING_PRIVATE_IP = # Private IP of the receiver machine (king)
 KING_USERNAME = # Username of the king machine
+KING_INTERFACE = # Interface on the King machine that has the private IP address assigned
 MOAT_PRIVATE_IP = # Private IP of the miner machine (moat)
+MOAT_INTERFACE =  # Interface on the Moat machine that has the private IP address assigned
 PRIVATE_KEY_PATH = # Private key generated for the machines' creation (king, tgens) on your specific provider
 ```
 
-## Miner SSH Access Requirement
+## 📌 Miner SSH Access Requirement
 
 To participate, all miners must have original SSH access to both the king and traffic generator machines (whether personal machines or VPS). Additionally, miners must provide restricted SSH access to these machines for the validator, and most importantly ensure that all machines are within the **same private network**. This setup is a critical requirement for the challenge to proceed.
 
-## Running
+## 🖥️ Running
 
 1. After setting up the environment file, create a new CSV file named "trafficgen_machines.csv" in the base directory (~/tensorprox)
 
@@ -96,7 +105,7 @@ public_ip,username,private_ip
 2. Start your miner instance with sudo privileges to ensure it has the necessary permissions to forward packets to the King machine:
 
 ```bash
-pm2 start "sudo python3 neurons/miner.py" --name miner
+pm2 start "python3 neurons/miner.py" --name miner
 ```
 
 3. Check if the instance is correctly running:
