@@ -624,18 +624,31 @@ class Attack(ABC):
                 frame: Current stack frame.
             """
             logger.info(f"Duration exceeded ({self.duration}s). Terminating attack.")
-            self.terminate_all_processes()
-            raise SystemExit(0)  # Exit cleanly on timeout
+            # self.terminate_all_processes()
+            self.pause_event.set()  # Signal the attack to stop
         
         def terminate_all_processes() -> None:
             """Terminate all processes associated with this attack."""
-            logger.info("Script completed.")
+            logger.info("Attempting to terminate processes.")
             current_pid = os.getpid()
             try:
-                # Send SIGTERM to the current process group
-                os.killpg(os.getpgid(current_pid), signal.SIGTERM)
+                # Send SIGTERM to the current process group, excluding the current process
+                pgid = os.getpgid(current_pid)
+                for pid in os.listdir('/proc'):
+                    if pid.isdigit():
+                        pid = int(pid)
+                        try:
+                            if os.getpgid(pid) == pgid and pid != current_pid:
+                                os.kill(pid, signal.SIGTERM)
+                                logger.info(f"Sent SIGTERM to process {pid}")
+                        except OSError:
+                            # Process may have already terminated
+                            pass
             except Exception as e:
                 logger.error(f"Failed to terminate processes: {e}")
+            finally:
+                logger.info("Process termination attempt completed.")
+
         
         # Set up signal for enforcing the duration
         signal.signal(signal.SIGALRM, timeout_handler)
