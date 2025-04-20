@@ -257,7 +257,7 @@ class ChallengeRewardModel(BaseModel):
                 "rtt": rtt,
             }
 
-            logging.info(f"PACKET DATA : {packet_data}")
+            # logging.info(f"PACKET DATA : {packet_data}")
 
 
         global_purity = global_reaching_benign / global_reaching_packets if global_reaching_packets > 0 else 0
@@ -336,13 +336,13 @@ class ChallengeRewardModel(BaseModel):
             latency_tolerance = VPS * volume_weight * 0.5  # 0 to 0.1 range
             latency = min(1.0, LF + latency_tolerance)
                         
-            logging.info(f"BDR for UID {uid} : {BDR}")
-            logging.info(f"AMA for UID {uid} : {AMA}")
-            logging.info(f"SPS for UID {uid} : {SPS}")
-            logging.info(f"RTC for UID {uid} : {RTC}")
-            logging.info(f"VPS for UID {uid} : {VPS}")
-            logging.info(f"Average RTT for UID {uid} : {rtt} ms")
-            logging.info(f"LF for UID {uid} : {LF}")
+            # logging.info(f"BDR for UID {uid} : {BDR}")
+            # logging.info(f"AMA for UID {uid} : {AMA}")
+            # logging.info(f"SPS for UID {uid} : {SPS}")
+            # logging.info(f"RTC for UID {uid} : {RTC}")
+            # logging.info(f"VPS for UID {uid} : {VPS}")
+            # logging.info(f"Average RTT for UID {uid} : {rtt} ms")
+            # logging.info(f"LF for UID {uid} : {LF}")
                 
             # Final reward calculation
             reward = alpha * accuracy + beta * efficiency + gamma * throughput + delta * latency
