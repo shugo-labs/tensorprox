@@ -573,10 +573,10 @@ async def ssh_connect_execute(
                     result = await client.run(cmd, check=False, stderr=asyncssh.PIPE)
                     return result
                 except asyncio.TimeoutError:
-                    logger.error(f"Command execution timed out after {connection_timeout} seconds")
+                    # logger.error(f"Command execution timed out after {connection_timeout} seconds")
                     return False
                 except Exception as e:
-                    logger.error(f"Command execution failed: {e}, stderr: {getattr(e, 'stderr', 'N/A')}")
+                    # logger.error(f"Command execution failed: {e}, stderr: {getattr(e, 'stderr', 'N/A')}")
                     return False  # Command execution failed
             
             # If no command is provided, return True for successful connection
@@ -585,12 +585,12 @@ async def ssh_connect_execute(
             client.close()
             
     except asyncio.TimeoutError:
-        logger.error(f"SSH connection timed out after {connection_timeout} seconds")
+        # logger.error(f"SSH connection timed out after {connection_timeout} seconds")
         return False
     except asyncssh.Error as e:
         # Connection failed, log the error
-        logger.error(f"SSH connection failed: {e}")
+        # logger.error(f"SSH connection failed: {e}")
         return False
     except Exception as e:
-        logger.error(f"Unexpected error during SSH connection: {e}")
+        # logger.error(f"Unexpected error during SSH connection: {e}")
         return False
