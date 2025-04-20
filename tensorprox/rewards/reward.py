@@ -320,7 +320,7 @@ class ChallengeRewardModel(BaseModel):
             volume_weight = 0.2
             
             # Accuracy component (AMA & BDR)
-            accuracy = (reward_BDR * 0.5) + (reward_AMA * 0.5)
+            accuracy = self.exponential_ratio(BDR * AMA)
             
             # Efficiency component (SPS)
             # Scale up SPS importance linearly with volume, but cap at max 2x importance
