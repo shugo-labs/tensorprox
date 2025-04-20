@@ -1,8 +1,9 @@
 # VALIDATORS
 
+🐧 Required OS: Ubuntu 22.04   |   🐍 Required Python: Python 3.10
+
 ## Compute Requirements
 
-🐧 Required OS: Ubuntu 22.04   |   🐍 Required Python: Python 3.10
 
 ⚙️ Assumptions
 

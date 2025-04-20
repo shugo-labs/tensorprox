@@ -4,8 +4,6 @@
 
 ## Compute Requirements
 
-🐧 Required OS: Ubuntu 22.04   |   🐍 Required Python: Python 3.10
-
 ### 🛡️ What the Miner Firewall Does ?
 
 The Miner machine acts as a real-time traffic firewall during challenge rounds:
