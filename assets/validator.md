@@ -16,13 +16,13 @@ Active Validator Scenario: Only 1 validator is active
 ➡️ Resulting Load:
 1 validator × 256 miners × 3 machines = 768 simultaneous SSH connections
 
-| Resource  | Requirement   |
-|-----------|---------------|
-| VRAM      | None          |
-| vCPU      | 16 vCPU       |
-| RAM       | 32 GB         |
-| Storage   | 150 GB        |
-| Network   | >= 1 Gbps     |
+| Resource  | Minimum Requirement   |
+|-----------|-----------------------|
+| VRAM      | None                  |
+| vCPU      | 16 vCPU               |
+| RAM       | 32 GB                 |
+| Storage   | 150 GB                |
+| Network   | >= 1 Gbps             |
 
 
 ## 🔧 Installation
