@@ -624,7 +624,7 @@ class Attack(ABC):
                 frame: Current stack frame.
             """
             logger.info(f"Duration exceeded ({self.duration}s). Terminating attack.")
-            self.terminate_all_processes()
+            # self.terminate_all_processes()
             self.pause_event.set()  # Signal the attack to stop
         
         def terminate_all_processes() -> None:
