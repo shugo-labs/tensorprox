@@ -62,7 +62,7 @@ pip install -r requirements.txt
 If you haven't created a coldkey/hotkey wallet pair yet, check [here](https://docs.bittensor.com/btcli)
 
 ```bash
-btcli s register --wallet.name borgg --wallet.hotkey miner --netuid 234 --subtensor.network finney
+btcli s register --wallet.name borgg --wallet.hotkey miner --netuid 91 --subtensor.network finney
 ```
 
 ⚠️ To help decentralization, we strongly encourage using a local Subtensor network.
