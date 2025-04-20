@@ -1,5 +1,4 @@
 loguru==0.7.2
-bittensor==9.0.0rc4
 python-dotenv==1.0.1
 pydantic-settings==2.6.0
 wandb==0.18.5
@@ -17,3 +16,4 @@ joblib==1.4.2
 aiohttp
 scikit-learn==1.6.0
 ansible-vault==2.1.0
+bittensor==9.4.0
