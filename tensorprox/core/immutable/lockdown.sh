@@ -17,7 +17,7 @@ ssh_user="$1"
 ssh_dir="$2"
 validator_ip="$3"
 authorized_keys_path="$4"
-revert_timeout="${5:-180}"
+revert_timeout="$5"
 
 if [ -z "$ssh_user" ] || [ -z "$ssh_dir" ] || [ -z "$validator_ip" ] || [ -z "$authorized_keys_path" ]; then
     echo "Missing required arguments."
