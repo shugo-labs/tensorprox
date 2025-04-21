@@ -30,7 +30,7 @@ Active Validator Scenario: Only 1 validator is active
 1. Update system packages and install Python pip/venv :
 
 ```bash
-sudo apt update && sudo apt install python3-pip -y && apt install python3-venv -y
+sudo apt update && sudo apt install python3-pip -y && sudo apt install python3-venv -y
 ```
 
 2. Install npm and pm2 for process management :
