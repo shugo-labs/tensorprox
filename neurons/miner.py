@@ -630,11 +630,10 @@ class Miner(BaseMinerNeuron):
     
 async def clone_or_update_repository(
     machine_ip: str,
-    github_token: str,
     username: str,
     initial_private_key_path: str = INITIAL_PK_PATH,
     repo_path: str = f"/home/{RESTRICTED_USER}/tensorprox",
-    repo_url: str = "github.com/shugo-labs/tensorprox.git",
+    repo_url: str = "https://github.com/shugo-labs/tensorprox.git",
     branch: str = "main",
     sparse_folder: str = "tensorprox/core/immutable",
     timeout: int = 5,
@@ -646,7 +645,6 @@ async def clone_or_update_repository(
 
     Args:
         machine_ip (str): The public IP of the machine.
-        github_token (str): GitHub personal access token for authentication.
         repo_url (str): The GitHub repository URL.
         branch (str): The branch to clone or pull.
         initial_private_key_path (str): Path to the initial private key for SSH authentication.
@@ -701,7 +699,7 @@ async def clone_or_update_repository(
                     clone_commands = [
                         f"sudo mkdir -p {repo_path}",
                         f"sudo bash -c 'cd {repo_path} && git init'",
-                        f"sudo bash -c 'cd {repo_path} && git remote add origin https://{github_token}@{repo_url}'",
+                        f"sudo bash -c 'cd {repo_path} && git remote add origin https://{repo_url}'",
                         f"sudo bash -c 'cd {repo_path} && git config core.sparseCheckout true'",
                         f"sudo bash -c 'echo \"{sparse_folder}\" | sudo tee {repo_path}/.git/info/sparse-checkout'",
                         f"sudo bash -c 'cd {repo_path} && git fetch origin {branch}'",
@@ -722,7 +720,7 @@ async def clone_or_update_repository(
 
     return
 
-async def clone_repositories(github_token: str, machines: List[tuple]):
+async def clone_repositories(machines: List[tuple]):
     """
     This function clones or updates the repositories on the remote machines.
     """
@@ -730,7 +728,6 @@ async def clone_repositories(github_token: str, machines: List[tuple]):
     for machine_ip, username, _, _ in machines:
         tasks.append(clone_or_update_repository(
             machine_ip=machine_ip,
-            github_token=github_token,
             username=username,
         ))
 
@@ -778,13 +775,12 @@ async def run_whitelist_setup(
         # Handle any exceptions and return an error message
         return f"An error occurred: {str(e)}"
 
-async def setup_machines(github_token: str, machines: List[tuple], initial_private_key_path: str = INITIAL_PK_PATH):
+async def setup_machines(machines: List[tuple], initial_private_key_path: str = INITIAL_PK_PATH):
     """
     Set up repository cloning for multiple machines using their corresponding IPs and usernames.
     
     Args:
         ips (list): A list of IP addresses for the machines.
-        github_token (str): GitHub personal access token.
         initial_private_key_path (str): Path to the private SSH key used for authentication.
         usernames (list): A list of usernames corresponding to each machine's IP.
     """
@@ -802,7 +798,7 @@ async def setup_machines(github_token: str, machines: List[tuple], initial_priva
     # If any whitelist setup fails, don't proceed with cloning
     if all(setup_results):
         logger.info("Whitelist setup successful on all machines, proceeding with cloning.")
-        await clone_repositories(github_token, machines)
+        await clone_repositories(machines)
     else:
         logger.info("Whitelist setup failed on one or more machines, aborting cloning.")
 
@@ -864,7 +860,7 @@ if __name__ == "__main__":
     
     # Run the repository cloning setup first, wait for it to complete
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(setup_machines("", machines))
+    loop.run_until_complete(setup_machines(machines))
 
     with Miner(traffic_generators=traffic_generators, machines=machines) as miner:
         while not miner.should_exit:
