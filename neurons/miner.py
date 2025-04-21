@@ -171,7 +171,7 @@ class Miner(BaseMinerNeuron):
             if NEURON_STOP_ON_FORWARD_EXCEPTION:
                 self.should_exit = True
 
-        logger.debug(f"⏩ Forwarding Ping synapse with machine details to validator {synapse.dendrite.hotkey}: {synapse}.")
+        logger.debug(f"⏩ Forwarding Ping synapse with machine details to validator {synapse.dendrite.hotkey}.")
         return synapse
 
 
