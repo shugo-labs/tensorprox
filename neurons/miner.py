@@ -699,7 +699,7 @@ async def clone_or_update_repository(
                     clone_commands = [
                         f"sudo mkdir -p {repo_path}",
                         f"sudo bash -c 'cd {repo_path} && git init'",
-                        f"sudo bash -c 'cd {repo_path} && git remote add origin https://{repo_url}'",
+                        f"sudo bash -c 'cd {repo_path} && git remote add origin {repo_url}'",
                         f"sudo bash -c 'cd {repo_path} && git config core.sparseCheckout true'",
                         f"sudo bash -c 'echo \"{sparse_folder}\" | sudo tee {repo_path}/.git/info/sparse-checkout'",
                         f"sudo bash -c 'cd {repo_path} && git fetch origin {branch}'",
