@@ -27,7 +27,7 @@ fi
 
 # Install missing packages
 echo "Checking and installing missing packages..."
-needed=("net-tools" "iptables-persistent" "psmisc" "python3" "python3-pip" "tcpdump" "jq" "eth-tool")
+needed=("net-tools" "iptables-persistent" "psmisc" "python3" "python3-pip" "tcpdump" "jq" "ethtool")
 
 # Update package list first
 DEBIAN_FRONTEND=noninteractive apt-get update -qq
