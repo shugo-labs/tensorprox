@@ -32,7 +32,7 @@ This makes it possible to get started with even modest VPS or home lab machines,
 1. Update system packages and install Python (3.10) pip:
 
 ```bash
-sudo apt update && sudo apt install python3-pip -y && apt install python3-venv -y
+sudo apt update && sudo apt install python3-pip -y && sudo apt install python3-venv -y
 ```
 
 2. Install npm and pm2 for process management:
