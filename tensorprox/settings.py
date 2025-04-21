@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     SCORING_QUEUE_LENGTH_THRESHOLD: int = Field(10, env="SCORING_QUEUE_LENGTH_THRESHOLD")
 
     # Additional Fields.
-    NETUID: Optional[int] = Field(234, env="NETUID")
+    NETUID: Optional[int] = Field(91, env="NETUID")
     WALLET_NAME: Optional[str] = Field(None, env="WALLET_NAME")
     AXON_PORT: Optional[int] = Field(None, env="AXON_PORT")
     HOTKEY: Optional[str] = Field(None, env="HOTKEY")
@@ -94,7 +94,7 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     def complete_settings(cls, values: dict[str, Any]) -> dict[str, Any]:
         mode = values["mode"]
-        netuid = values.get("NETUID", 234)
+        netuid = values.get("NETUID", 91)
         if netuid is None:
             raise ValueError("NETUID must be specified")
 
