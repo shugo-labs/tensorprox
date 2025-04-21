@@ -68,7 +68,7 @@ btcli s register --wallet.name borgg --wallet.hotkey miner --netuid 91 --subtens
 ⚠️ To help decentralization, we strongly encourage using a local Subtensor network.
 👉 See [this guide](https://docs.bittensor.com/subtensor-nodes/)
 
-2. You will also need to create a .env.miner environment file. It is necessary for you to provide the following:
+2. You must create a .env.miner environment file in your project directory. It is necessary for you to provide the following:
 
 ```text
 NETUID = # The subnet UID (integer)
@@ -85,6 +85,13 @@ MOAT_PRIVATE_IP = # Private IP of the miner machine (moat)
 MOAT_INTERFACE =  # Interface on the Moat machine that has the private IP address assigned
 PRIVATE_KEY_PATH = # Private key generated for the machines' creation (king, tgens) on your specific provider
 ```
+
+3. Also, make sure to include your WANDB_API_KEY in the .env file :
+
+```text
+WANDB_API_KEY="YOUR_API_KEY"
+```
+
 
 ## 📌 Miner SSH Access Requirement
 

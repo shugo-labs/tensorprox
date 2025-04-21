@@ -55,7 +55,7 @@ pip install -r requirements.txt
 
 ## 🧩 Configuration
 
-Before running a validator, you will need to create a .env.validator environment file. It is necessary for you to provide the following :
+1. Before running a validator, you will need to create a .env.validator environment file. It is necessary for you to provide the following :
 
 ```text
 NETUID = # The subnet UID (integer)
@@ -72,6 +72,19 @@ For proper operation, the validator must ensure that the following ports are ope
 
 While **AXON_PORT** is used for axon serving, ports **AXON_PORT + UID** and **AXON_PORT +UID + 1** are critical for synchronizing the active validator count across the network. Failing to expose these ports may lead to incomplete peer discovery or inconsistent validator state.
 
+To safeguard your exposed ports, you must implement a rate-limiting rule in your iptables (below is an example) :
+
+```text
+iptables -A INPUT -p tcp --dport 8080 -m limit --limit 10/min --limit-burst 5 -j ACCEPT
+iptables -A INPUT -p tcp --dport 8080 -j DROP
+```
+
+
+3. Also, make sure to include your WANDB_API_KEY in the .env file :
+
+```text
+WANDB_API_KEY="YOUR_API_KEY"
+```
 
 ## 🖥️ Running
 
