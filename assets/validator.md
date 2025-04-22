@@ -68,9 +68,9 @@ AXON_PORT = # TCP Port Number. The port must be open
 
 🔔 **Nota Bene**:
 
-For proper operation, the validator must ensure that the following ports are open: **AXON_PORT**, **AXON_PORT + UID** and **AXON_PORT + UID + 1** !
+For proper operation, the validator must ensure that the following ports are open: **AXON_PORT**, **AXON_PORT + UID + 1** and **AXON_PORT + UID + 2** !
 
-While **AXON_PORT** is used for axon serving, ports **AXON_PORT + UID** and **AXON_PORT +UID + 1** are critical for synchronizing the active validator count across the network. Failing to expose these ports may lead to incomplete peer discovery or inconsistent validator state.
+While **AXON_PORT** is used for axon serving, ports **AXON_PORT + UID + 1** and **AXON_PORT + UID + 2** are critical for synchronizing the active validator count across the network. Failing to expose these ports may lead to incomplete peer discovery or inconsistent validator state.
 
 To safeguard your exposed ports, you must implement a rate-limiting rule in your iptables (below is an example) :
 
