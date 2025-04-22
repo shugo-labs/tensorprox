@@ -107,7 +107,7 @@ def neurons_to_ips(netuid, vpermit, network):
     validators = []
     for neuron in subnet_neurons :
         if neuron.validator_permit and int(neuron.total_stake) >= vpermit : 
-            validators.append({"host": f"http://{neuron.axon_info.ip}:{neuron.axon_info.port+neuron.uid}", "hotkey": neuron.axon_info.hotkey, "uid": neuron.uid})
+            validators.append({"host": f"http://{neuron.axon_info.ip}:{neuron.axon_info.port+neuron.uid+1}", "hotkey": neuron.axon_info.hotkey, "uid": neuron.uid})
     return list({tuple(v.items()): dict(v) for v in validators}.values())
 
 
