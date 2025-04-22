@@ -195,7 +195,7 @@ class ChallengeRewardModel(BaseModel):
         #Initialize metrics lists
         scores = []
         bdr, ama, sps, exp_bdr, exp_ama, exp_sps, rtc, vps, lf, ttl_packets_sent, ttl_attacks_sent = [[0]*256 for _ in range(11)]
-        rtt_value = [1e9]*len(uids)
+        rtt_value = [1e9]*256
 
 
         # Track max throughput for normalization
