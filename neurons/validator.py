@@ -280,17 +280,13 @@ class Validator(BaseValidatorNeuron):
 
     async def periodic_epoch_check(self) :
         """Periodically checks the current UTC time to decide when to trigger the next epoch."""
-
-        BLOCK_INTERVAL_SECONDS = 12  # One block every 12 seconds
-        EPOCH_BLOCKS = EPOCH_TIME // BLOCK_INTERVAL_SECONDS  # Convert epoch time from seconds to block units
-
         while not self.should_exit:
 
             subtensor = bt.subtensor(network="finney")
-            block_time = subtensor.block if subtensor else time.time()
+            block_time = subtensor.get_timestamp() if subtensor else time.time()
             current_time = int(block_time)
 
-            if current_time % EPOCH_BLOCKS == 0:  # Trigger epoch every `settings.EPOCH_PERIOD` seconds
+            if current_time % EPOCH_TIME == 0:  # Trigger epoch every `settings.EPOCH_PERIOD` seconds
                 # First round handling : make sure the timestamp is checked before being active
                 if self.first_round:
                     
@@ -551,10 +547,8 @@ async def main():
     asyncio.create_task(task_scorer.start())
     asyncio.create_task(validator_instance.periodic_epoch_check())  # Start the periodic epoch check
     
-    subtensor = bt.subtensor(network="finney")
-
     try:
-        logger.info(f"Validator is up and running, next round starting in {get_remaining_time(subtensor, EPOCH_TIME)}...")
+        logger.info(f"Validator is up and running, next round starting in {get_remaining_time(EPOCH_TIME)}...")
         
         while not validator_instance.should_exit:
             await asyncio.sleep(1)
