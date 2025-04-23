@@ -122,8 +122,8 @@ def set_weights(weights: np.ndarray, step: int = 0):
         netuid=settings.NETUID,
         uids=uint_uids,
         weights=uint_weights,
-        wait_for_finalization=False,
-        wait_for_inclusion=False,
+        wait_for_finalization=True,
+        wait_for_inclusion=True,
         version_key=__spec_version__,
     )
 
