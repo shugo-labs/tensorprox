@@ -56,7 +56,7 @@ from tensorprox.utils.utils import create_random_playlist, get_remaining_time, g
 from tensorprox.rewards.scoring import task_scorer
 from tensorprox.utils.timer import Timer
 from tensorprox.rewards.weight_setter import weight_setter
-from datetime import datetime
+from datetime import datetime, timezone
 import random
 import time
 import hashlib
@@ -282,9 +282,8 @@ class Validator(BaseValidatorNeuron):
         """Periodically checks the current UTC time to decide when to trigger the next epoch."""
         while not self.should_exit:
 
-            subtensor = bt.subtensor(network="finney")
-            block_time = subtensor.get_timestamp() if subtensor else time.time()
-            current_time = int(block_time)
+            now = datetime.now(timezone.utc)
+            current_time = int(now.timestamp())
 
             if current_time % EPOCH_TIME == 0:  # Trigger epoch every `settings.EPOCH_PERIOD` seconds
                 # First round handling : make sure the timestamp is checked before being active
