@@ -368,6 +368,8 @@ class Miner(BaseMinerNeuron):
             entry["fwd_packet_count"] += 1
 
             if protocol == 6:  # TCP
+                if len(packet_data) < 40:
+                    continue  # Not enough for full TCP header
                 tcp_header = struct.unpack('!HHLLBBHHH', packet_data[20:40])
                 flags = tcp_header[5]
                 pkt_size = len(packet_data)
@@ -377,6 +379,8 @@ class Miner(BaseMinerNeuron):
                     entry["tcp_syn_fwd_count"] += 1
 
             elif protocol == 17:  # UDP
+                if len(packet_data) < 28:
+                    continue  # Not enough for UDP header
                 udp_header = struct.unpack('!HHHH', packet_data[20:28])
                 src_port, dest_port = udp_header[0], udp_header[1]
                 pkt_size = len(packet_data)
