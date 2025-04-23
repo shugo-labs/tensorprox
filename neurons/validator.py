@@ -551,8 +551,10 @@ async def main():
     asyncio.create_task(task_scorer.start())
     asyncio.create_task(validator_instance.periodic_epoch_check())  # Start the periodic epoch check
     
+    subtensor = bt.subtensor(network="finney")
+
     try:
-        logger.info(f"Validator is up and running, next round starting in {get_remaining_time(EPOCH_TIME)}...")
+        logger.info(f"Validator is up and running, next round starting in {get_remaining_time(subtensor, settings.EPOCH_TIME)}...")
         
         while not validator_instance.should_exit:
             await asyncio.sleep(1)

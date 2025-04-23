@@ -20,15 +20,23 @@ import ipaddress
 import json
 import pickle
 
-def get_remaining_time(duration):
-    current_time = time.time()
-    next_event_time = ((current_time // duration) + 1) * duration
-    remaining_time = next_event_time - current_time
-    remaining_minutes = int(remaining_time // 60)
-    remaining_seconds = int(remaining_time % 60)
+BLOCK_INTERVAL_SECONDS = 12  # One block every 12 seconds
 
-    return f"{remaining_minutes}m {remaining_seconds}s"
-
+# Utility to get remaining time until next epoch (based on block time)
+def get_remaining_time(subtensor, epoch_time):
+    try:
+        block_time = subtensor.block if subtensor else time.time()
+        current_block = int(block_time)
+        epoch_blocks = epoch_time // BLOCK_INTERVAL_SECONDS
+        next_epoch_block = ((current_block // epoch_blocks) + 1) * epoch_blocks
+        remaining_blocks = next_epoch_block - current_block
+        remaining_seconds = remaining_blocks * BLOCK_INTERVAL_SECONDS
+        remaining_minutes = int(remaining_seconds // 60)
+        remaining_seconds = int(remaining_seconds % 60)
+        return f"{remaining_minutes}m {remaining_seconds}s"
+    except Exception as e:
+        return f"Error calculating time: {e}"
+    
 def is_valid_ip(ip: str) -> bool:
     """
     Validates whether the given string is a valid IPv4 address.
