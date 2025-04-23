@@ -554,7 +554,7 @@ async def main():
     subtensor = bt.subtensor(network="finney")
 
     try:
-        logger.info(f"Validator is up and running, next round starting in {get_remaining_time(subtensor, settings.EPOCH_TIME)}...")
+        logger.info(f"Validator is up and running, next round starting in {get_remaining_time(subtensor, EPOCH_TIME)}...")
         
         while not validator_instance.should_exit:
             await asyncio.sleep(1)
