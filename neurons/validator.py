@@ -178,7 +178,6 @@ class Validator(BaseValidatorNeuron):
 
                 active_validators_uids = self.fetch_active_validators(str(sync_time), uids = registered_uids)
 
-
                 logger.info(f"📢 Starting new round at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC.")
 
                 # Check if validator's uid is in the active list
@@ -280,7 +279,6 @@ class Validator(BaseValidatorNeuron):
             current_time = int(now.timestamp())
 
             if current_time % EPOCH_TIME == 0:  # Trigger epoch every `EPOCH_TIME` seconds
-                # First round handling : make sure the timestamp is checked before being active
                 
                 commit_readiness = settings.SUBTENSOR.commit(
                     wallet=settings.WALLET, 
