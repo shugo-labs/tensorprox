@@ -152,7 +152,7 @@ class Validator(BaseValidatorNeuron):
             return web.json_response({"status": "failed"}, status=400)
 
     
-    async def run_step(self, timeout: float, sync_time: int) -> DendriteResponseEvent | None:
+    async def run_step(self, timeout: float, sync_time: int, start_time: datetime) -> DendriteResponseEvent | None:
         """
         Runs a validation step to query assigned miners, process availability, and initiate challenges.
 
@@ -211,7 +211,6 @@ class Validator(BaseValidatorNeuron):
                     )
                     playlists[f"tgen-{i}"] = playlist
                 
-                start_time = datetime.now()
                 backup_suffix = start_time.strftime("%Y%m%d%H%M%S")
 
                 if subset_miners:
@@ -287,7 +286,7 @@ class Validator(BaseValidatorNeuron):
 
                 logger.info(f"⚡️ Time after commit : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC.")
 
-                await self.run_step(timeout=settings.NEURON_TIMEOUT, sync_time = current_time)   
+                await self.run_step(timeout=settings.NEURON_TIMEOUT, sync_time = current_time, start_time = datetime.now())   
                         
             await asyncio.sleep(1) 
 

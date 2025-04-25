@@ -12,8 +12,8 @@ __version__ = "0.1.0"
 __spec_version__ = _version_to_int(__version__)
 
 #Inner parameters
-EPSILON: int = 180 #3 minutes
-DELTA: int = 180 #3 minutes
+EPSILON: int = 600 #10 minutes
+DELTA: int = 240 #3 minutes
 CHALLENGE_DURATION: int = 900 #15 minutes
 MIN_TGENS = 2
 MAX_TGENS = 8
