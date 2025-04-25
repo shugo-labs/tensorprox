@@ -60,10 +60,7 @@ import random
 import time
 import hashlib
 
-
 # Global variables to store the runner references
-fetch_runner = None
-client_runner = None
 EPOCH_TIME = ROUND_TIMEOUT + EPSILON
 
 class Validator(BaseValidatorNeuron):
@@ -81,8 +78,6 @@ class Validator(BaseValidatorNeuron):
         self._lock = asyncio.Lock()
         self.should_exit = False
         self.active_count = 0
-        self.aiohttp_port = int(os.environ.get("AXON_PORT")) + self.uid + 1
-        self.fetch_port = int(os.environ.get("AXON_PORT")) + self.uid + 2
                     
     def map_to_consecutive(self, active_uids):
         # Sort the input list
@@ -174,11 +169,11 @@ class Validator(BaseValidatorNeuron):
                 subnet_neurons = settings.SUBTENSOR.neurons_lite(settings.NETUID)
                 registered_uids = [neuron.uid for neuron in subnet_neurons]
 
+                logger.info("Waiting 30s before fetching active count..")
+
                 await asyncio.sleep(30)
 
                 active_validators_uids = self.fetch_active_validators(str(sync_time), uids = registered_uids)
-
-                logger.info(f"📢 Starting new round at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC.")
 
                 # Check if validator's uid is in the active list
                 if self.uid not in active_validators_uids :
@@ -279,12 +274,18 @@ class Validator(BaseValidatorNeuron):
             current_time = int(now.timestamp())
 
             if current_time % EPOCH_TIME == 0:  # Trigger epoch every `EPOCH_TIME` seconds
-                
+
+                logger.info(f"📢 Starting new round at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC.")
+
+                logger.info(f"🐛 Committing active count data : {current_time}")
+
                 commit_readiness = settings.SUBTENSOR.commit(
                     wallet=settings.WALLET, 
                     netuid=settings.NETUID, 
                     data=str(current_time)
                 )
+
+                logger.info(f"⚡️ Time after commit : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC.")
 
                 await self.run_step(timeout=settings.NEURON_TIMEOUT, sync_time = current_time)   
                         
@@ -523,6 +524,7 @@ async def main():
     asyncio.create_task(validator_instance.periodic_epoch_check())  # Start the periodic epoch check
     
     try:
+
         logger.info(f"Validator is up and running, next round starting in {get_remaining_time(EPOCH_TIME)}...")
         
         while not validator_instance.should_exit:
