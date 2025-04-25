@@ -19,7 +19,7 @@ MIN_TGENS = 2
 MAX_TGENS = 8
 
 #Timeouts
-ROUND_TIMEOUT: int = 1620 # 26 minutes
+ROUND_TIMEOUT: int = 1980 # 26 minutes
 INITIAL_SETUP_TIMEOUT: int = 120 # 2 minutes
 LOCKDOWN_TIMEOUT: int = 120 #1 minutes
 GRE_SETUP_TIMEOUT: int = 240 #4 minutes
