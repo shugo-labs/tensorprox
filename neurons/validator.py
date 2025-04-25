@@ -89,10 +89,11 @@ class Validator(BaseValidatorNeuron):
         return mapping
     
     def fetch_active_validators(self, data: str):
-        all_commitments = settings.SUBTENSOR.get_all_commitments(netuid=settings.NETUID) 
-        matching_hotkeys = [hotkey for hotkey, value in all_commitments.items() if value == data]
-        uids = [neuron.uid for neuron in settings.METAGRAPH.neurons if neuron.hotkey in matching_hotkeys]
-        return uids
+        return [
+            neuron.uid
+            for neuron in settings.METAGRAPH.neurons
+            if settings.SUBTENSOR.get_commitment(netuid=settings.NETUID, uid=neuron.uid) == data
+        ]
 
     def sync_shuffle_uids(self, uids: list, active_count: int, seed: int):
         
