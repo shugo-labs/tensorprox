@@ -93,13 +93,11 @@ class Validator(BaseValidatorNeuron):
         
         return mapping
     
-    def fetch_active_validators(self, data: str, netuid :int = settings.NETUID):
-        active_validators_uids = []
-        for i in range(settings.NETUID):
-            readiness_check = settings.SUBTENSOR.get_commitment(netuid=settings.NETUID, uid = i)
-            if readiness_check == data:
-                active_validators_uids.append(i)
-        return active_validators_uids
+    def fetch_active_validators(self, data: str, uids: list):
+        return [
+            i for i in range(len(uids))
+            if settings.SUBTENSOR.get_commitment(netuid=settings.NETUID, uid=i) == data
+        ]
 
     def sync_shuffle_uids(self, uids: list, active_count: int, seed: int):
         
@@ -173,16 +171,19 @@ class Validator(BaseValidatorNeuron):
         try:
             async with self._lock:
 
-                logger.info(f"📢 Starting new round at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC.")
+                subnet_neurons = settings.SUBTENSOR.neurons_lite(settings.NETUID)
+                registered_uids = [neuron.uid for neuron in subnet_neurons]
 
-                await asyncio.sleep(10)
-                
-                active_validators_uids = self.fetch_active_validators(str(sync_time))
+                await asyncio.sleep(30)
+
+                active_validators_uids = self.fetch_active_validators(str(sync_time), uids = registered_uids)
+
+
+                logger.info(f"📢 Starting new round at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC.")
 
                 # Check if validator's uid is in the active list
                 if self.uid not in active_validators_uids :
-                    logger.debug(f"UID was not found in the list of active validators, ending round. \
-                    Make sure ports {self.aiohttp_port} and {self.fetch_port} are open.")
+                    logger.debug(f"UID was not found in the list of active validators, ending round.")
                     return None
                 
                 self.active_count = len(active_validators_uids)     
@@ -281,7 +282,12 @@ class Validator(BaseValidatorNeuron):
             if current_time % EPOCH_TIME == 0:  # Trigger epoch every `EPOCH_TIME` seconds
                 # First round handling : make sure the timestamp is checked before being active
                 
-                commit_readiness = settings.SUBTENSOR.commit(wallet=settings.WALLET, netuid=settings.NETUID, data=str(current_time))
+                commit_readiness = settings.SUBTENSOR.commit(
+                    wallet=settings.WALLET, 
+                    netuid=settings.NETUID, 
+                    data=str(current_time)
+                )
+
                 await self.run_step(timeout=settings.NEURON_TIMEOUT, sync_time = current_time)   
                         
             await asyncio.sleep(1) 
