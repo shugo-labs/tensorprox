@@ -90,7 +90,7 @@ class Validator(BaseValidatorNeuron):
     
     def fetch_active_validators(self, data: str, uids: list):
         return [
-            i for i in range(len(uids))
+            i for i in uids
             if settings.SUBTENSOR.get_commitment(netuid=settings.NETUID, uid=i) == data
         ]
 
