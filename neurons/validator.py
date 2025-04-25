@@ -88,11 +88,11 @@ class Validator(BaseValidatorNeuron):
         
         return mapping
     
-    def fetch_active_validators(self, data: str, uids: list):
-        return [
-            i for i in uids
-            if settings.SUBTENSOR.get_commitment(netuid=settings.NETUID, uid=i) == data
-        ]
+    def fetch_active_validators(self, data: str):
+        all_commitments = settings.SUBTENSOR.get_all_commitments(netuid=settings.NETUID) 
+        matching_hotkeys = [hotkey for hotkey, value in all_commitments.items() if value == data]
+        uids = [neuron.uid for neuron in settings.METAGRAPH.neurons if neuron.hotkey in matching_hotkeys]
+        return uids
 
     def sync_shuffle_uids(self, uids: list, active_count: int, seed: int):
         
@@ -166,14 +166,11 @@ class Validator(BaseValidatorNeuron):
         try:
             async with self._lock:
 
-                subnet_neurons = settings.SUBTENSOR.neurons_lite(settings.NETUID)
-                registered_uids = [neuron.uid for neuron in subnet_neurons]
-
                 logger.info("Waiting 30s before fetching active count..")
 
                 await asyncio.sleep(30)
 
-                active_validators_uids = self.fetch_active_validators(str(sync_time), uids = registered_uids)
+                active_validators_uids = self.fetch_active_validators(str(sync_time))
 
                 # Check if validator's uid is in the active list
                 if self.uid not in active_validators_uids :
