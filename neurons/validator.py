@@ -51,7 +51,6 @@ from tensorprox.base.validator import BaseValidatorNeuron
 from tensorprox.base.dendrite import DendriteResponseEvent
 from tensorprox.utils.logging import ErrorLoggingEvent
 from tensorprox.core.round_manager import RoundManager
-from tensorprox.utils.sync_active_validators import fetch_active_validators
 from tensorprox.utils.utils import create_random_playlist, get_remaining_time, generate_random_hashes
 from tensorprox.rewards.scoring import task_scorer
 from tensorprox.utils.timer import Timer
@@ -82,7 +81,6 @@ class Validator(BaseValidatorNeuron):
         self._lock = asyncio.Lock()
         self.should_exit = False
         self.active_count = 0
-        self.first_round = True
         self.aiohttp_port = int(os.environ.get("AXON_PORT")) + self.uid + 1
         self.fetch_port = int(os.environ.get("AXON_PORT")) + self.uid + 2
                     
@@ -95,6 +93,13 @@ class Validator(BaseValidatorNeuron):
         
         return mapping
     
+    def fetch_active_validators(self, data: str, netuid :int = settings.NETUID):
+        active_validators_uids = []
+        for i in range(settings.NETUID):
+            readiness_check = settings.SUBTENSOR.get_commitment(netuid=settings.NETUID, uid = i)
+            if readiness_check == data:
+                active_validators_uids.append(i)
+        return active_validators_uids
 
     def sync_shuffle_uids(self, uids: list, active_count: int, seed: int):
         
@@ -170,7 +175,9 @@ class Validator(BaseValidatorNeuron):
 
                 logger.info(f"📢 Starting new round at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} UTC.")
 
-                active_validators_uids = await fetch_active_validators()  
+                await asyncio.sleep(10)
+                
+                active_validators_uids = self.fetch_active_validators(str(sync_time))
 
                 # Check if validator's uid is in the active list
                 if self.uid not in active_validators_uids :
@@ -264,20 +271,6 @@ class Validator(BaseValidatorNeuron):
         logger.info(log_message)
         return runner
 
-    async def run_fetch_server(self, port):
-        """Starts the fetch server for the validator."""
-        global fetch_runner  # Assign to the global variable
-        fetch_app = web.Application()
-        fetch_runner = await self.run_server(fetch_app, port, f"Validator's counting server running on port {port}.")
-
-    async def run_client_server(self, port):
-        """Starts the client server for the validator."""
-        global client_runner  # Assign to the global variable
-        client_app = web.Application()
-        client_app.router.add_post('/ready', validator_instance.ready)  # Add route for client ready endpoint
-        client_runner = await self.run_server(client_app, port, f"Validator aiohttp client started on port {port}.")
-
-
     async def periodic_epoch_check(self) :
         """Periodically checks the current UTC time to decide when to trigger the next epoch."""
         while not self.should_exit:
@@ -285,17 +278,12 @@ class Validator(BaseValidatorNeuron):
             now = datetime.now(timezone.utc)
             current_time = int(now.timestamp())
 
-            if current_time % EPOCH_TIME == 0:  # Trigger epoch every `settings.EPOCH_PERIOD` seconds
+            if current_time % EPOCH_TIME == 0:  # Trigger epoch every `EPOCH_TIME` seconds
                 # First round handling : make sure the timestamp is checked before being active
-                if self.first_round:
-                    
-                    #Start servers
-                    await self.run_fetch_server(port=self.fetch_port)
-                    await self.run_client_server(port=self.aiohttp_port) 
-                    
-                    self.first_round = False # set flag to False after the first round
-
-                await self.run_step(timeout=settings.NEURON_TIMEOUT, sync_time = current_time)           
+                
+                commit_readiness = settings.SUBTENSOR.commit(wallet=settings.WALLET, netuid=settings.NETUID, data=str(current_time))
+                await self.run_step(timeout=settings.NEURON_TIMEOUT, sync_time = current_time)   
+                        
             await asyncio.sleep(1) 
 
 
@@ -483,19 +471,6 @@ class Validator(BaseValidatorNeuron):
         """Implements the abstract handle challenge method."""
         await asyncio.sleep(1)
 
-    
-
-async def cleanup_servers():
-    """Handles the cleanup of the fetch and client servers."""
-    global fetch_runner, client_runner
-    if fetch_runner:
-        await fetch_runner.cleanup()
-        logger.info("Fetch server cleaned up.")
-    if client_runner:
-        await client_runner.cleanup()
-        logger.info("Client server cleaned up.")
-
-
 async def shutdown(signal=None):
     """
     Handle shutdown signals gracefully, reverting any locked miners first.
@@ -508,9 +483,6 @@ async def shutdown(signal=None):
     
     # Mark the validator for exit
     validator_instance.should_exit = True
-    
-    # Cleanup servers
-    await cleanup_servers()
     
     logger.info("Validator shutdown complete.")
 
