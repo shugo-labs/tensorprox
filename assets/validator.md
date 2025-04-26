@@ -72,13 +72,6 @@ For proper operation, the validator must ensure that the following ports are ope
 
 While **AXON_PORT** is used for axon serving, ports **AXON_PORT + UID + 1** and **AXON_PORT + UID + 2** are critical for synchronizing the active validator count across the network. Failing to expose these ports may lead to incomplete peer discovery or inconsistent validator state.
 
-To safeguard your exposed ports, you must implement a rate-limiting rule in your iptables (below is an example) :
-
-```text
-iptables -A INPUT -p tcp --dport 8080 -m limit --limit 10/min --limit-burst 5 -j ACCEPT
-iptables -A INPUT -p tcp --dport 8080 -j DROP
-```
-
 
 3. Also, make sure to include your WANDB_API_KEY in the .env file :
 
