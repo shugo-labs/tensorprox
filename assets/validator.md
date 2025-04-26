@@ -66,13 +66,6 @@ HOTKEY = # Name of your hotkey associated with above wallet
 AXON_PORT = # TCP Port Number. The port must be open
 ```
 
-🔔 **Nota Bene**:
-
-For proper operation, the validator must ensure that the following ports are open: **AXON_PORT**, **AXON_PORT + UID + 1** and **AXON_PORT + UID + 2** !
-
-While **AXON_PORT** is used for axon serving, ports **AXON_PORT + UID + 1** and **AXON_PORT + UID + 2** are critical for synchronizing the active validator count across the network. Failing to expose these ports may lead to incomplete peer discovery or inconsistent validator state.
-
-
 3. Also, make sure to include your WANDB_API_KEY in the .env file :
 
 ```text
