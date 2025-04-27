@@ -235,8 +235,9 @@ class ChallengeRewardModel(BaseModel):
                 total_benign_sent += benign
 
             # Average RTT across tgens
-            rtt = max(sum(rtt_list) / len(rtt_list), 0) if rtt_list else 1e9
-
+            valid_rtt_list = [rtt for rtt in rtt_list if rtt is not None]
+            rtt = max(sum(valid_rtt_list) / len(valid_rtt_list), 0) if valid_rtt_list else 1e9
+            
             total_packets_sent = total_attacks_sent + total_benign_sent
             total_reaching_attacks = sum(king_counts.get(label, 0) for label in attack_labels) # total attacks reaching King
             total_reaching_benign = king_counts.get("BENIGN", 0) # total benign reaching King
