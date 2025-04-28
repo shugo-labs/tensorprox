@@ -53,6 +53,8 @@ import logging
 import math
 from tensorprox import *
 
+MTU_GRE=1465
+
 class ChallengeRewardEvent(BaseModel):
     """
     Represents a detailed reward event resulting from a challenge evaluation.
@@ -76,9 +78,6 @@ class ChallengeRewardEvent(BaseModel):
     bdr: list[float]
     ama: list[float]
     sps: list[float]
-    exp_bdr: list[float]
-    exp_ama: list[float]
-    exp_sps: list[float]
     rtc: list[float]
     vps: list[float]
     rtt_value: list[float]
@@ -110,9 +109,6 @@ class ChallengeRewardEvent(BaseModel):
             "bdr": self.bdr,
             "ama": self.ama,
             "sps": self.sps,
-            "exp_bdr": self.exp_bdr,
-            "exp_ama": self.exp_ama,
-            "exp_sps": self.exp_sps,
             "rtc": self.rtc,
             "vps": self.vps,
             "rtt_value": self.rtt_value,
@@ -141,9 +137,6 @@ class BatchRewardOutput(BaseModel):
     bdr: np.ndarray
     ama: np.ndarray
     sps: np.ndarray
-    exp_bdr: np.ndarray
-    exp_ama: np.ndarray
-    exp_sps: np.ndarray
     rtc: np.ndarray
     vps: np.ndarray
     rtt_value: np.ndarray
@@ -194,8 +187,8 @@ class ChallengeRewardModel(BaseModel):
 
         #Initialize metrics lists
         scores = []
-        bdr, ama, sps, exp_bdr, exp_ama, exp_sps, rtc, vps, lf, ttl_packets_sent, ttl_attacks_sent = [[0]*256 for _ in range(11)]
-        rtt_value = [1e9]*256
+        bdr, ama, sps, exp_bdr, exp_ama, exp_sps, rtc, vps, lf, ttl_packets_sent, ttl_attacks_sent = [[0]*settings.SUBNET_NEURON_SIZE for _ in range(11)]
+        rtt_value = [1e9]*settings.SUBNET_NEURON_SIZE
 
 
         # Track max throughput for normalization
@@ -260,10 +253,9 @@ class ChallengeRewardModel(BaseModel):
 
             # logging.info(f"PACKET DATA : {packet_data}")
 
-
         global_purity = global_reaching_benign / global_reaching_packets if global_reaching_packets > 0 else 0
-        global_capacity = global_reaching_benign / CHALLENGE_DURATION if CHALLENGE_DURATION > 0 else 0
-        global_bandwidth = global_packets_sent / CHALLENGE_DURATION if CHALLENGE_DURATION > 0 else 0
+        global_capacity = (global_reaching_benign / CHALLENGE_DURATION) * MTU_GRE * 8 / 1e6 if CHALLENGE_DURATION > 0 else 0
+        global_bandwidth = (global_packets_sent / CHALLENGE_DURATION) * MTU_GRE * 8 / 1e6 if CHALLENGE_DURATION > 0 else 0
 
         # Calculate rewards and store metrics
         best_miner_score = -float('inf')
@@ -285,21 +277,18 @@ class ChallengeRewardModel(BaseModel):
 
             # Benign Delivery Rate
             BDR = min(max(total_reaching_benign / total_benign_sent, 0), 1) if total_benign_sent > 0 else 0
-            reward_BDR = self.exponential_ratio(BDR)
-
+            
             # Attack Penalty Score
             AMA = min(max(1 - (total_reaching_attacks / total_attacks_sent), 0), 1) if total_attacks_sent > 0 else 1
-            reward_AMA = self.exponential_ratio(AMA)
 
             # Selective Processing Score
             SPS = min(max(total_reaching_benign / total_reaching_packets, 0), 1) if total_reaching_packets > 0 else 0
-            reward_SPS = self.exponential_ratio(SPS)
 
             # Relative Throughput Capacity (benign only)
-            RTC = total_reaching_benign / max_reaching_benign if max_reaching_benign > 0 else 0
+            RTC =  min(max(total_reaching_benign / max_reaching_benign, 0), 1) if max_reaching_benign > 0 else 0
 
             # Volume Processing Score (normalized to 0-1)
-            VPS = total_packets_sent / max_total_packets_sent if max_total_packets_sent > 0 else 0
+            VPS = min(max(total_packets_sent / max_total_packets_sent, 0), 1) if max_total_packets_sent > 0 else 0
         
             # Latency Factor
             LF = self.normalize_rtt(rtt)
@@ -316,25 +305,21 @@ class ChallengeRewardModel(BaseModel):
             beta = 0.25   # Efficiency component
             gamma = 0.25  # Throughput component
             delta = 0.25  # Latency component
-            
-            # Volume weight - determines how much to consider volume in scoring
-            volume_weight = 0.2
-            
+
+            volume_weight = 0.2 # Volume weight
+
             # Accuracy component (AMA & BDR)
             accuracy = self.exponential_ratio(BDR * AMA)
-            
-            # Efficiency component (SPS)
-            # Scale up SPS importance linearly with volume, but cap at max 2x importance
-            efficiency_boost = 1 + (VPS * volume_weight)  # 1.0 to 1.2 scaling
-            efficiency = min(1.0, reward_SPS * efficiency_boost)
-            
-            # Throughput component (combination of RTC and VPS)
-            # Higher volume gets more weight in throughput score
-            throughput = (RTC * (1 - volume_weight)) + (VPS * volume_weight)
-            
+    
+            # Efficiency component (combination of SPS & RTC with bandwidth bonus)
+            efficiency = self.exponential_ratio(RTC * SPS)
+
+            # Throughput component (combination of VPS & RTC with bandwidth bonus)
+            throughput = self.exponential_ratio(RTC * VPS)
+                        
             # Latency component (LF with slight tolerance for higher volumes)
             # For high volume, we're slightly more tolerant of latency
-            latency_tolerance = VPS * volume_weight * 0.5  # 0 to 0.1 range
+            latency_tolerance = VPS * volume_weight * 0.5 # 0 to 0.1 range
             latency = min(1.0, LF + latency_tolerance)
                         
             # logging.info(f"BDR for UID {uid} : {BDR}")
@@ -360,8 +345,8 @@ class ChallengeRewardModel(BaseModel):
             best_miner_data = packet_data[best_miner_uid]
             best_bdr = best_miner_data["total_reaching_benign"]/best_miner_data["total_benign_sent"] if best_miner_data["total_benign_sent"] > 0 else 0
             best_purity = best_miner_data["total_reaching_benign"] / best_miner_data["total_reaching_packets"] if best_miner_data["total_reaching_packets"] > 0 else 0
-            best_bandwidth = best_miner_data["total_packets_sent"] / CHALLENGE_DURATION if CHALLENGE_DURATION > 0 else 0
-            best_capacity = best_miner_data["total_reaching_benign"] / CHALLENGE_DURATION if CHALLENGE_DURATION > 0 else 0
+            best_bandwidth = (best_miner_data["total_packets_sent"] / CHALLENGE_DURATION) * MTU_GRE * 8 / 1e6 if CHALLENGE_DURATION > 0 else 0
+            best_capacity = (best_miner_data["total_reaching_benign"] / CHALLENGE_DURATION) * MTU_GRE * 8 / 1e6 if CHALLENGE_DURATION > 0 else 0
         else:
             best_bdr, best_purity, best_bandwidth, best_capacity = 0, 0, 0, 0
 
@@ -370,9 +355,6 @@ class ChallengeRewardModel(BaseModel):
             bdr=np.array(bdr),
             ama=np.array(ama),
             sps=np.array(sps),
-            exp_bdr=np.array(exp_bdr),
-            exp_ama=np.array(exp_ama),
-            exp_sps=np.array(exp_sps),
             rtc=np.array(rtc),
             vps=np.array(vps),
             rtt_value=np.array(rtt_value),
