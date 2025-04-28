@@ -52,6 +52,9 @@ from pydantic import BaseModel, ConfigDict
 import logging
 import math
 from tensorprox import *
+from tensorprox import settings
+settings.settings = settings.Settings.load(mode="validator")
+settings = settings.settings
 
 MTU_GRE=1465
 
@@ -65,9 +68,6 @@ class ChallengeRewardEvent(BaseModel):
         bdr (list[float]): Block-Drop Ratio values for each UID.
         ama (list[float]): Allow-Miss Accuracy values for each UID.
         sps (list[float]): Samples per second processed for each UID.
-        exp_bdr (list[float]): Expected Block-Drop Ratio used as a reward signal for each UID.
-        exp_ama (list[float]): Expected Allow-Miss Accuracy used as a reward signal for each UID.
-        exp_sps (list[float]): Expected Samples per second used as a reward signal for each UID.
         rtc (list[float]): Real-Time Constraint (or similar performance metric) values for each UID.
         rtt_value (list[float]): Round-trip time values recorded for each UID.
         lf (list[float]): Latency factor or final penalty scores for each UID.
@@ -187,7 +187,7 @@ class ChallengeRewardModel(BaseModel):
 
         #Initialize metrics lists
         scores = []
-        bdr, ama, sps, exp_bdr, exp_ama, exp_sps, rtc, vps, lf, ttl_packets_sent, ttl_attacks_sent = [[0]*settings.SUBNET_NEURON_SIZE for _ in range(11)]
+        bdr, ama, sps, rtc, vps, lf, ttl_packets_sent, ttl_attacks_sent = [[0]*settings.SUBNET_NEURON_SIZE for _ in range(8)]
         rtt_value = [1e9]*settings.SUBNET_NEURON_SIZE
 
 
@@ -251,7 +251,7 @@ class ChallengeRewardModel(BaseModel):
                 "rtt": rtt,
             }
 
-            # logging.info(f"PACKET DATA : {packet_data}")
+            logging.info(f"PACKET DATA : {packet_data}")
 
         global_purity = global_reaching_benign / global_reaching_packets if global_reaching_packets > 0 else 0
         global_capacity = (global_reaching_benign / CHALLENGE_DURATION) * MTU_GRE * 8 / 1e6 if CHALLENGE_DURATION > 0 else 0
@@ -295,8 +295,8 @@ class ChallengeRewardModel(BaseModel):
 
             # Store all metrics for reporting
             for arr, val in zip(
-                [bdr, ama, sps, exp_bdr, exp_ama, exp_sps, rtc, vps, lf, rtt_value, vps, ttl_attacks_sent, ttl_packets_sent],
-                [BDR, AMA, SPS, reward_BDR, reward_AMA, reward_SPS, RTC, VPS, LF, rtt, VPS, total_attacks_sent, total_packets_sent]
+                [bdr, ama, sps, rtc, vps, lf, rtt_value, vps, ttl_attacks_sent, ttl_packets_sent],
+                [BDR, AMA, SPS, RTC, VPS, LF, rtt, VPS, total_attacks_sent, total_packets_sent]
             ):
                 arr[uid] = val
 
@@ -322,13 +322,13 @@ class ChallengeRewardModel(BaseModel):
             latency_tolerance = VPS * volume_weight * 0.5 # 0 to 0.1 range
             latency = min(1.0, LF + latency_tolerance)
                         
-            # logging.info(f"BDR for UID {uid} : {BDR}")
-            # logging.info(f"AMA for UID {uid} : {AMA}")
-            # logging.info(f"SPS for UID {uid} : {SPS}")
-            # logging.info(f"RTC for UID {uid} : {RTC}")
-            # logging.info(f"VPS for UID {uid} : {VPS}")
-            # logging.info(f"Average RTT for UID {uid} : {rtt} ms")
-            # logging.info(f"LF for UID {uid} : {LF}")
+            logging.info(f"BDR for UID {uid} : {BDR}")
+            logging.info(f"AMA for UID {uid} : {AMA}")
+            logging.info(f"SPS for UID {uid} : {SPS}")
+            logging.info(f"RTC for UID {uid} : {RTC}")
+            logging.info(f"VPS for UID {uid} : {VPS}")
+            logging.info(f"Average RTT for UID {uid} : {rtt} ms")
+            logging.info(f"LF for UID {uid} : {LF}")
                 
             # Final reward calculation
             reward = alpha * accuracy + beta * efficiency + gamma * throughput + delta * latency
@@ -410,9 +410,6 @@ class BaseRewardConfig(BaseModel):
             bdr=batch_rewards_output.bdr.tolist(),
             ama=batch_rewards_output.ama.tolist(),
             sps=batch_rewards_output.sps.tolist(),
-            exp_bdr=batch_rewards_output.exp_bdr.tolist(),
-            exp_ama=batch_rewards_output.exp_ama.tolist(),
-            exp_sps=batch_rewards_output.exp_sps.tolist(),
             rtc=batch_rewards_output.rtc.tolist(),
             vps=batch_rewards_output.vps.tolist(),
             rtt_value=batch_rewards_output.rtt_value.tolist(),                        
