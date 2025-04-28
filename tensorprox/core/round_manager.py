@@ -655,14 +655,13 @@ class RoundManager(BaseModel):
         )
 
 
-    async def check_machines_availability(self, uids: List[int]) -> Tuple[List[PingSynapse], List[dict]]:
+    async def check_machines_availability(self, uids: List[int], timeout: float = QUERY_AVAILABILITY_TIMEOUT) -> Tuple[List[PingSynapse], List[dict]]:
         """
-        Asynchronously checks the availability of a list of miners by their unique IDs.
-
-        This method queries each miner's status concurrently and aggregates the results.
+        Asynchronously checks the availability of a list of miners by their unique IDs with a timeout.
 
         Args:
             uids (List[int]): A list of unique identifiers (UIDs) corresponding to the miners.
+            timeout (float): Maximum time in seconds to wait for each miner's response.
 
         Returns:
             Tuple[List[Synapse], List[dict]]: 
@@ -670,12 +669,31 @@ class RoundManager(BaseModel):
                 - A list of dictionaries containing availability status for each miner.
         """
         
-        tasks = [self.check_miner(uid) for uid in uids]  # Call the existing check_miner method
+        async def check_with_timeout(uid):
+            try:
+                return await asyncio.wait_for(self.check_miner(uid), timeout=timeout)
+            except asyncio.TimeoutError:
+                # Build a dummy synapse and an error dictionary
+                dummy_synapse = PingSynapse(machine_availabilities=MachineConfig())
+                uid_status_availability = {
+                    "uid": uid,
+                    "ping_status_message": "Timeout while checking availability.",
+                    "ping_status_code": 408,  # 408 Request Timeout
+                }
+                return dummy_synapse, uid_status_availability
+            except Exception as e:
+                # General exception fallback (optional, but good practice)
+                dummy_synapse = PingSynapse(machine_availabilities=MachineConfig())
+                uid_status_availability = {
+                    "uid": uid,
+                    "ping_status_message": f"Error: {str(e)}",
+                    "ping_status_code": 500,  # Internal server error
+                }
+                return dummy_synapse, uid_status_availability
+
+        tasks = [check_with_timeout(uid) for uid in uids]  # Call the existing check_miner method
         results = await asyncio.gather(*tasks)
-        if results:
-            synapses, all_miners_availability = zip(*results)
-        else:
-            synapses, all_miners_availability = [], []
+        synapses, all_miners_availability = zip(*results) if results else ([], [])
 
         return list(synapses), list(all_miners_availability)
 
