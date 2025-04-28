@@ -202,12 +202,17 @@ Measures traffic purity: out of all packets that reached the King, what percenta
 
    - Selective Processing Score (SPS): Percentage of benign packets among all packets reaching the King. 
    ```
-    SPS = (exp((total_reaching_benign / total_reaching_packets)**2) - 1) / (exp(1) - 1)
+    SPS = total_reaching_benign / total_reaching_packets
    ```
-   - Includes a dynamic efficiency boost based on volume to scale the importance of SPS :
+
+   - Relative Throughput Capacity (RTC): Measures the ratio of benign traffic forwarded compared to the top-performing miner.
    ```
-   efficiency_boost = 1 + (VPS * volume_weight)
-   efficiency = min(1.0, SPS * efficiency_boost)
+    RTC = total_reaching_benign / max_reaching_benign 
+   ```
+
+   - Efficiency Boost: We multiply SPS by RTC to avoid giving a high SPS value for small packet forwarding, ensuring that high SPS scores are awarded only for larger volumes of traffic handling.
+   ```
+   efficiency = (exp((SPS * RTC)**2) - 1) / (exp(1) - 1)
    ```
 
 
@@ -225,7 +230,7 @@ Rewards miners that process and handle more traffic effectively.
    ```
    - Combined with a weight split :
    ```
-   throughput = (RTC * (1 - volume_weight)) + (VPS * volume_weight)
+   throughput = (exp((VPS * RTC)**2) - 1) / (exp(1) - 1)
    ```
 
 
