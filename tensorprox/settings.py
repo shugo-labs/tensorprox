@@ -8,13 +8,19 @@ import dotenv
 from loguru import logger
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
-
+from bittensor.core.metagraph import Metagraph
+from bittensor.core.subtensor import Subtensor
 from tensorprox.utils.config import config
-
+import time
 
 dotenv.load_dotenv()
 
 class Settings(BaseSettings):
+
+    _last_metagraph: Metagraph = None
+    _last_update_time: float = 0
+    _subtensor: Subtensor | None = None
+    
     mode: Literal["miner", "validator"]
 
     #Subnet parameters
@@ -106,22 +112,46 @@ class Settings(BaseSettings):
 
         return values
 
-
     @cached_property
     def WALLET(self):
         logger.info(f"Instantiating wallet with name: {self.WALLET_NAME}, hotkey: {self.HOTKEY}")
         return bt.wallet(name=self.WALLET_NAME, hotkey=self.HOTKEY)
     
     @cached_property
-    def SUBTENSOR(self) -> bt.subtensor:
-        subtensor_network = os.environ.get("SUBTENSOR_CHAIN_ENDPOINT", "wss://test.finney.opentensor.ai:443") 
+    def SUBTENSOR(self) -> Subtensor:
+        """Lazy subtensor initialization."""
+        if self._subtensor is not None:
+            return self._subtensor
+        # TODO: Move chain-related stuff out of settings.
+        subtensor_network = self.SUBTENSOR_NETWORK or os.environ.get("SUBTENSOR_NETWORK", "local")
+        # bt_config = config()
+        if subtensor_network.lower() == "local":
+            subtensor_network = os.environ.get("SUBTENSOR_CHAIN_ENDPOINT")  # bt_config.subtensor.chain_endpoint or
+        else:
+            subtensor_network = subtensor_network.lower()
         logger.info(f"Instantiating subtensor with network: {subtensor_network}")
-        return bt.subtensor(network=subtensor_network)
+        self._subtensor = Subtensor(network=subtensor_network)
+        return self._subtensor
 
-    @cached_property
-    def METAGRAPH(self) -> bt.metagraph:
-        logger.info(f"Instantiating metagraph with NETUID: {self.NETUID}")
-        return bt.metagraph(netuid=self.NETUID, network=self.SUBTENSOR_NETWORK, sync=True, lite=True)
+    @property
+    def METAGRAPH(self) -> Metagraph:
+        if time.time() - self._last_update_time > 1200:
+            try:
+                logger.info(f"Fetching new METAGRAPH for NETUID={self.NETUID}")
+                meta = self.SUBTENSOR.metagraph(netuid=self.NETUID)
+                self._last_metagraph = meta
+                self._last_update_time = time.time()
+                return meta
+            except Exception as e:
+                logger.error(f"Failed to fetch new METAGRAPH for NETUID={self.NETUID}: {e}")
+                if self._last_metagraph is not None:
+                    logger.warning("Falling back to the previous METAGRAPH.")
+                    return self._last_metagraph
+                else:
+                    logger.error("No previous METAGRAPH is available; re-raising exception.")
+                    raise
+        else:
+            return self._last_metagraph
 
     @cached_property
     def DENDRITE(self) -> bt.dendrite:
