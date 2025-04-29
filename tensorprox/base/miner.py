@@ -54,9 +54,9 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
             priority_fn=self.priority_challenge,
         )
 
-        self.uid = settings.METAGRAPH.hotkeys.index(settings.WALLET.hotkey.ss58_address)
+        self.uid = settings.STATIC_METAGRAPH.hotkeys.index(settings.WALLET.hotkey.ss58_address)
         logger.info(f"Axon created: {self.axon}; miner uid: {self.uid}")
-        self.axon.serve(netuid=settings.NETUID, subtensor=settings.SUBTENSOR)
+        self.axon.serve(netuid=settings.NETUID, subtensor=settings.STATIC_SUBTENSOR)
 
         if settings.WANDB_ON:
             init_wandb(neuron="miner")
@@ -96,12 +96,12 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
         # Start  starts the miner's axon, making it active on the network.
         self.axon.start()
 
-        logger.info(f"Miner starting at block: {settings.SUBTENSOR.get_current_block()}")
+        logger.info(f"Miner starting at block: {settings.STATIC_SUBTENSOR.get_current_block()}")
         last_update_block = 0
         # This loop maintains the miner's operations until intentionally stopped.
         try:
             while not self.should_exit:
-                while settings.SUBTENSOR.get_current_block() - last_update_block < settings.NEURON_EPOCH_LENGTH:
+                while settings.STATIC_SUBTENSOR.get_current_block() - last_update_block < settings.NEURON_EPOCH_LENGTH:
                     # Wait before checking again.
                     time.sleep(1)
 
@@ -111,7 +111,7 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
 
                 # Sync metagraph and potentially set weights.
                 self.sync()
-                last_update_block = settings.SUBTENSOR.get_current_block()
+                last_update_block = settings.STATIC_SUBTENSOR.get_current_block()
                 self.step += 1
 
         # If someone intentionally stops the miner, it'll safely terminate operations.
@@ -179,7 +179,7 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
         logger.info("resync_metagraph()")
 
         # Sync the metagraph.
-        settings.METAGRAPH.sync(subtensor=settings.SUBTENSOR)
+        settings.STATIC_METAGRAPH.sync(subtensor=settings.STATIC_SUBTENSOR)
 
 
     async def availability_blacklist(self, synapse: AvailabilitySynapse) -> Tuple[bool, str]:
@@ -217,7 +217,7 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
 
         Otherwise, allow the request to be processed further.
         """
-        if synapse.dendrite.hotkey not in settings.METAGRAPH.hotkeys:
+        if synapse.dendrite.hotkey not in settings.STATIC_METAGRAPH.hotkeys:
             # Ignore requests from unrecognized entities.
             logger.trace(f"Blacklisting unrecognized hotkey {synapse.dendrite.hotkey}")
             return True, "Unrecognized hotkey"
@@ -257,7 +257,7 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
 
         Otherwise, allow the request to be processed further.
         """
-        if synapse.dendrite.hotkey not in settings.METAGRAPH.hotkeys:
+        if synapse.dendrite.hotkey not in settings.STATIC_METAGRAPH.hotkeys:
             # Ignore requests from unrecognized entities.
             logger.trace(f"Blacklisting unrecognized hotkey {synapse.dendrite.hotkey}")
             return True, "Unrecognized hotkey"
@@ -288,8 +288,8 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
         Example priority logic:
         - A higher stake results in a higher priority value.
         """
-        caller_uid = settings.METAGRAPH.hotkeys.index(synapse.dendrite.hotkey)  # Get the caller index.
-        priority = float(settings.METAGRAPH.S[caller_uid])  # Return the stake as the priority.
+        caller_uid = settings.STATIC_METAGRAPH.hotkeys.index(synapse.dendrite.hotkey)  # Get the caller index.
+        priority = float(settings.STATIC_METAGRAPH.S[caller_uid])  # Return the stake as the priority.
         logger.trace(f"Prioritizing {synapse.dendrite.hotkey} with value: ", priority)
         return priority
     
@@ -313,8 +313,8 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
         Example priority logic:
         - A higher stake results in a higher priority value.
         """
-        caller_uid = settings.METAGRAPH.hotkeys.index(synapse.dendrite.hotkey)  # Get the caller index.
-        priority = float(settings.METAGRAPH.S[caller_uid])  # Return the stake as the priority.
+        caller_uid = settings.STATIC_METAGRAPH.hotkeys.index(synapse.dendrite.hotkey)  # Get the caller index.
+        priority = float(settings.STATIC_METAGRAPH.S[caller_uid])  # Return the stake as the priority.
         logger.trace(f"Prioritizing {synapse.dendrite.hotkey} with value: ", priority)
         return priority
 
@@ -325,30 +325,30 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
         challenges: list[dict],
         prediction: str,
     ):
-        dendrite_uid = settings.METAGRAPH.hotkeys.index(synapse.dendrite.hotkey)
+        dendrite_uid = settings.STATIC_METAGRAPH.hotkeys.index(synapse.dendrite.hotkey)
         event = MinerLoggingEvent(
             epoch_time=timing,
             validator_uid=dendrite_uid,
             validator_ip=synapse.dendrite.ip,
-            validator_coldkey=settings.METAGRAPH.coldkeys[dendrite_uid],
-            validator_hotkey=settings.METAGRAPH.hotkeys[dendrite_uid],
-            validator_stake=settings.METAGRAPH.S[dendrite_uid].item(),
-            validator_trust=settings.METAGRAPH.T[dendrite_uid].item(),
-            validator_incentive=settings.METAGRAPH.I[dendrite_uid].item(),
-            validator_consensus=settings.METAGRAPH.C[dendrite_uid].item(),
-            validator_dividends=settings.METAGRAPH.D[dendrite_uid].item(),
-            miner_stake=settings.METAGRAPH.S[self.uid].item(),
-            miner_trust=settings.METAGRAPH.T[self.uid].item(),
-            miner_incentive=settings.METAGRAPH.I[self.uid].item(),
-            miner_consensus=settings.METAGRAPH.C[self.uid].item(),
-            miner_dividends=settings.METAGRAPH.D[self.uid].item(),
+            validator_coldkey=settings.STATIC_METAGRAPH.coldkeys[dendrite_uid],
+            validator_hotkey=settings.STATIC_METAGRAPH.hotkeys[dendrite_uid],
+            validator_stake=settings.STATIC_METAGRAPH.S[dendrite_uid].item(),
+            validator_trust=settings.STATIC_METAGRAPH.T[dendrite_uid].item(),
+            validator_incentive=settings.STATIC_METAGRAPH.I[dendrite_uid].item(),
+            validator_consensus=settings.STATIC_METAGRAPH.C[dendrite_uid].item(),
+            validator_dividends=settings.STATIC_METAGRAPH.D[dendrite_uid].item(),
+            miner_stake=settings.STATIC_METAGRAPH.S[self.uid].item(),
+            miner_trust=settings.STATIC_METAGRAPH.T[self.uid].item(),
+            miner_incentive=settings.STATIC_METAGRAPH.I[self.uid].item(),
+            miner_consensus=settings.STATIC_METAGRAPH.C[self.uid].item(),
+            miner_dividends=settings.STATIC_METAGRAPH.D[self.uid].item(),
         )
 
         logger.info("Logging event to wandb...", event)
         log_event(event)
 
     def log_status(self):
-        m = settings.METAGRAPH
+        m = settings.STATIC_METAGRAPH
         logger.info(
-            f"Miner running:: network: {settings.SUBTENSOR.network} | step: {self.step} | uid: {self.uid} | trust: {m.trust[self.uid]:.3f} | stake {m.stake[self.uid]:.3f} | emission {m.emission[self.uid]:.3f} | consensus {m.consensus[self.uid]:.5f} | incentive {m.incentive[self.uid]:.5f}"
+            f"Miner running:: network: {settings.STATIC_SUBTENSOR.network} | step: {self.step} | uid: {self.uid} | trust: {m.trust[self.uid]:.3f} | stake {m.stake[self.uid]:.3f} | emission {m.emission[self.uid]:.3f} | consensus {m.consensus[self.uid]:.5f} | incentive {m.incentive[self.uid]:.5f}"
         )

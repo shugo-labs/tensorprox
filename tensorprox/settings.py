@@ -116,7 +116,18 @@ class Settings(BaseSettings):
     def WALLET(self):
         logger.info(f"Instantiating wallet with name: {self.WALLET_NAME}, hotkey: {self.HOTKEY}")
         return bt.wallet(name=self.WALLET_NAME, hotkey=self.HOTKEY)
-    
+
+    @cached_property
+    def STATIC_SUBTENSOR(self) -> bt.subtensor:
+        subtensor_network = os.environ.get("SUBTENSOR_CHAIN_ENDPOINT", "wss://entrypoint-finney.opentensor.ai:443") 
+        logger.info(f"Instantiating subtensor with network: {subtensor_network}")
+        return bt.subtensor(network=subtensor_network)
+
+    @cached_property
+    def STATIC_METAGRAPH(self) -> bt.metagraph:
+        logger.info(f"Instantiating metagraph with NETUID: {self.NETUID}")
+        return bt.metagraph(netuid=self.NETUID, network=self.SUBTENSOR_NETWORK, sync=True, lite=True)
+        
     @cached_property
     def SUBTENSOR(self) -> Subtensor:
         """Lazy subtensor initialization."""
