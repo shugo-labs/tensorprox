@@ -329,8 +329,8 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
         """Returns a list of validator hotkeys that are permitted based on stake."""
         return [
             neuron.hotkey
-            for neuron in settings.STATIC_METAGRAPH.neurons
-            if neuron.validator_permit and settings.STATIC_METAGRAPH.S[neuron.uid] >= settings.NEURON_VPERMIT_TAO_LIMIT
+            for neuron in settings.METAGRAPH.neurons
+            if neuron.validator_permit and settings.METAGRAPH.S[neuron.uid] >= settings.NEURON_VPERMIT_TAO_LIMIT
         ]
     
     def log_event(
