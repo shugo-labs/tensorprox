@@ -13,7 +13,7 @@ __spec_version__ = _version_to_int(__version__)
 
 #Inner parameters
 EPSILON: int = 180 # 3 minutes
-DELTA: int = 480 # 8 minutes
+DELTA: int = 420 # 8 minutes
 CHALLENGE_DURATION: int = 900 #15 minutes
 MIN_TGENS = 2
 MAX_TGENS = 8
