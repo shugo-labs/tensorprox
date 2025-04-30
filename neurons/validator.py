@@ -50,6 +50,7 @@ from loguru import logger
 from tensorprox.base.validator import BaseValidatorNeuron
 from tensorprox.base.dendrite import DendriteResponseEvent
 from tensorprox.utils.logging import ErrorLoggingEvent
+from concurrent.futures import ThreadPoolExecutor
 from tensorprox.core.round_manager import RoundManager
 from tensorprox.utils.utils import create_random_playlist, get_remaining_time, generate_random_hashes
 from tensorprox.rewards.scoring import task_scorer
@@ -59,6 +60,8 @@ from datetime import datetime, timezone
 import random
 import time
 import hashlib
+
+executor = ThreadPoolExecutor(max_workers=1)
 
 # Global variables to store the runner references
 EPOCH_TIME = ROUND_TIMEOUT + EPSILON
@@ -91,7 +94,13 @@ class Validator(BaseValidatorNeuron):
     def fetch_active_validators(self, data: str):
         all_commitments = settings.SUBTENSOR.get_all_commitments(netuid=settings.NETUID) 
         matching_hotkeys = [hotkey for hotkey, value in all_commitments.items() if value == data]
-        uids = [neuron.uid for neuron in settings.METAGRAPH.neurons if neuron.hotkey in matching_hotkeys]
+        uids = [
+            neuron.uid
+            for neuron in settings.METAGRAPH.neurons
+            if neuron.hotkey in matching_hotkeys
+            and neuron.validator_permit
+            and settings.METAGRAPH.S[neuron.uid] >= settings.NEURON_VPERMIT_TAO_LIMIT
+        ]
         return uids
 
     def sync_shuffle_uids(self, uids: list, active_count: int, seed: int):
@@ -166,9 +175,9 @@ class Validator(BaseValidatorNeuron):
         try:
             async with self._lock:
 
-                logger.info("Waiting 30s before fetching active count..")
+                logger.info("Waiting 60s before fetching active count..")
 
-                await asyncio.sleep(30)
+                await asyncio.sleep(60)
 
                 active_validators_uids = self.fetch_active_validators(str(sync_time))
 
@@ -275,15 +284,27 @@ class Validator(BaseValidatorNeuron):
 
                 logger.info(f"🐛 Committing active count data : {current_time}")
 
-                commit_readiness = settings.SUBTENSOR.commit(
-                    wallet=settings.WALLET, 
-                    netuid=settings.NETUID, 
-                    data=str(current_time)
-                )
+                try:
+                    loop = asyncio.get_running_loop()
+                    # Wrap the commit call in run_in_executor to make it awaitable
+                    await asyncio.wait_for(
+                        loop.run_in_executor(
+                            executor,
+                            lambda: settings.SUBTENSOR.commit(
+                                wallet=settings.WALLET,
+                                netuid=settings.NETUID,
+                                data=str(current_time)
+                            )
+                        ),
+                        timeout=55
+                    )
+                    logger.info(f"⚡️ Time after commit : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC.")
+                    await self.run_step(timeout=settings.NEURON_TIMEOUT, sync_time=current_time, start_time=datetime.now())
 
-                logger.info(f"⚡️ Time after commit : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC.")
-
-                await self.run_step(timeout=settings.NEURON_TIMEOUT, sync_time = current_time, start_time = datetime.now())   
+                except asyncio.TimeoutError:
+                    logger.error("❌ Commit timed out after 55 seconds. Skipping step.")
+                except Exception as e:
+                    logger.error(f"❌ Commit failed: {e}. Skipping step.")
                         
             await asyncio.sleep(1) 
 
