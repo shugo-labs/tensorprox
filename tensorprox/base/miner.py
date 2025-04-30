@@ -217,11 +217,8 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
 
         Otherwise, allow the request to be processed further.
         """
-        whitelisted_hotkeys = [
-            neuron.hotkey
-            for neuron in settings.STATIC_METAGRAPH.neurons
-            if neuron.validator_permit and settings.STATIC_METAGRAPH.S[neuron.uid] >= settings.NEURON_VPERMIT_TAO_LIMIT
-        ]
+        
+        whitelisted_hotkeys = self.get_whitelisted_hotkeys()
         
         if synapse.dendrite.hotkey not in whitelisted_hotkeys:
             # Ignore requests from unrecognized entities.
@@ -263,12 +260,8 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
 
         Otherwise, allow the request to be processed further.
         """
-        
-        whitelisted_hotkeys = [
-            neuron.hotkey
-            for neuron in settings.STATIC_METAGRAPH.neurons
-            if neuron.validator_permit and settings.STATIC_METAGRAPH.S[neuron.uid] >= settings.NEURON_VPERMIT_TAO_LIMIT
-        ]
+
+        whitelisted_hotkeys = self.get_whitelisted_hotkeys()
         
         if synapse.dendrite.hotkey not in whitelisted_hotkeys:
             # Ignore requests from unrecognized entities.
@@ -331,6 +324,14 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
         logger.trace(f"Prioritizing {synapse.dendrite.hotkey} with value: ", priority)
         return priority
 
+    def get_whitelisted_hotkeys(self) -> list[str]:
+        """Returns a list of validator hotkeys that are permitted based on stake."""
+        return [
+            neuron.hotkey
+            for neuron in settings.STATIC_METAGRAPH.neurons
+            if neuron.validator_permit and settings.STATIC_METAGRAPH.S[neuron.uid] >= settings.NEURON_VPERMIT_TAO_LIMIT
+        ]
+    
     def log_event(
         self,
         synapse: PingSynapse,
