@@ -91,7 +91,13 @@ class Validator(BaseValidatorNeuron):
     def fetch_active_validators(self, data: str):
         all_commitments = settings.SUBTENSOR.get_all_commitments(netuid=settings.NETUID) 
         matching_hotkeys = [hotkey for hotkey, value in all_commitments.items() if value == data]
-        uids = [neuron.uid for neuron in settings.METAGRAPH.neurons if neuron.hotkey in matching_hotkeys]
+        uids = [
+            neuron.uid
+            for neuron in settings.METAGRAPH.neurons
+            if neuron.hotkey in matching_hotkeys
+            and neuron.validator_permit
+            and settings.METAGRAPH.S[neuron.uid] >= settings.NEURON_VPERMIT_TAO_LIMIT
+        ]
         return uids
 
     def sync_shuffle_uids(self, uids: list, active_count: int, seed: int):
