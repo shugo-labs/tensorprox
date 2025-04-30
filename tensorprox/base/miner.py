@@ -217,7 +217,13 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
 
         Otherwise, allow the request to be processed further.
         """
-        if synapse.dendrite.hotkey not in settings.STATIC_METAGRAPH.hotkeys:
+        whitelisted_hotkeys = [
+            neuron.hotkey
+            for neuron in settings.STATIC_METAGRAPH.neurons
+            if neuron.validator_permit and settings.STATIC_METAGRAPH.S[neuron.uid] >= settings.NEURON_VPERMIT_TAO_LIMIT
+        ]
+        
+        if synapse.dendrite.hotkey not in whitelisted_hotkeys:
             # Ignore requests from unrecognized entities.
             logger.trace(f"Blacklisting unrecognized hotkey {synapse.dendrite.hotkey}")
             return True, "Unrecognized hotkey"
@@ -257,7 +263,14 @@ class BaseMinerNeuron(BaseModel, BaseNeuron):
 
         Otherwise, allow the request to be processed further.
         """
-        if synapse.dendrite.hotkey not in settings.STATIC_METAGRAPH.hotkeys:
+        
+        whitelisted_hotkeys = [
+            neuron.hotkey
+            for neuron in settings.STATIC_METAGRAPH.neurons
+            if neuron.validator_permit and settings.STATIC_METAGRAPH.S[neuron.uid] >= settings.NEURON_VPERMIT_TAO_LIMIT
+        ]
+        
+        if synapse.dendrite.hotkey not in whitelisted_hotkeys:
             # Ignore requests from unrecognized entities.
             logger.trace(f"Blacklisting unrecognized hotkey {synapse.dendrite.hotkey}")
             return True, "Unrecognized hotkey"
