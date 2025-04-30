@@ -13,7 +13,8 @@ from pydantic import BaseModel, model_validator, ConfigDict
 from typing import Tuple
 from tensorprox.utils.logging import init_wandb, MinerLoggingEvent, log_event
 from tensorprox.base.protocol import AvailabilitySynapse
-
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
 class BaseMinerNeuron(BaseModel, BaseNeuron):
     """
