@@ -618,10 +618,19 @@ class Miner(BaseMinerNeuron):
                     # Update sudoers file for passwordless sudo for the restricted user
                     sudoers_entry = f"{target_user} ALL=(ALL) NOPASSWD: ALL"
                     logger.info(f"Updating sudoers file for user {target_user}...")
-                    await conn.run(f'sudo echo "{sudoers_entry}" | sudo EDITOR="tee -a" visudo', check=False)
+                    
+                    sudoers_file = f"/etc/sudoers.d/{target_user}"
+                    check_cmd = f"sudo test -f {sudoers_file} && sudo grep -q '^{sudoers_entry}$' {sudoers_file}"
+                    check_result = await conn.run(check_cmd, check=False)
+
+                    if check_result.exit_status != 0:
+                        logger.info(f"Creating sudoers file for {target_user} in /etc/sudoers.d/...")
+                        await conn.run(f'echo "{sudoers_entry}" | sudo tee {sudoers_file} > /dev/null')
+                        await conn.run(f"sudo chmod 440 {sudoers_file}")
+                    else:
+                        logger.info(f"Sudoers entry already exists in /etc/sudoers.d/{target_user}")
 
                     logger.info(f"Sudoers file updated on {machine_ip} for user {target_user}.")
-                    await conn.run('sudo systemctl restart sudo || sudo echo "Skipping sudo restart"', check=False)
 
                     return  # Exit function on success
 
