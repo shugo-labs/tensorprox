@@ -62,7 +62,6 @@ mkdir -p $ssh_dir
 if [ -f $authorized_keys_path ]; then
     cp $authorized_keys_path $authorized_keys_bak
     chmod 600 $authorized_keys_bak
-    rm -f "$authorized_keys_bak"  # Remove the backup after restoration
 fi
 
 # Clean up authorized_keys by removing any session key
