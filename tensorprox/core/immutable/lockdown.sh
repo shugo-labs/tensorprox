@@ -27,11 +27,11 @@ fi
 
 log_dir="/var/log/security"
 mkdir -p "$log_dir"
-lockdown_log="$log_dir/lockdown_$(date +%Y%m%d_%H%M%S).log"
-revert_log="$log_dir/revert_$(date +%Y%m%d_%H%M%S).log"
+lockdown_log="$log_dir/lockdown.log"
+revert_log="$log_dir/revert.log"
 
 # Backup authorized_keys
-authorized_keys_bak="/tmp/authorized_keys.bak.$(date +%s)"
+authorized_keys_bak="/tmp/authorized_keys.bak"
 cp "$authorized_keys_path" "$authorized_keys_bak"
 chmod 600 "$authorized_keys_bak"
 
@@ -48,7 +48,7 @@ echo "Auto-revert scheduled after $revert_timeout seconds"
 
 # Create revert script dynamically
 setup_revert_script() {
-    local revert_script="/tmp/revert_script_$(date +%s).sh"
+    local revert_script="/tmp/revert_script.sh"
     cat > "$revert_script" << 'EOF'
 #!/bin/bash
 ssh_user="$1"
@@ -61,7 +61,7 @@ exec > "$revert_log" 2>&1
 echo "=== Revert started for $ip at $(date) ==="
 
 # Restore critical services
-for svc in getty@tty1.service console-getty.service serial-getty@ttyS0.service atd.service; do
+for svc in getty@tty1.service console-getty.service serial-getty@ttyS0.service atd.service auditd.service cron.service fwupd.service haveged.service packagekit.service udisks2.service unattended-upgrades.service upower.service user@0.service user@999.service; do
     systemctl unmask "$svc" || echo "Failed to unmask $svc"
     systemctl enable "$svc" || echo "Failed to enable $svc"
     systemctl start "$svc" || echo "Failed to start $svc"
@@ -133,7 +133,7 @@ EOF
 schedule_revert_systemd() {
     local revert_script="$1"
     local timeout="$2"
-    local svc_name="autorevert-$(date +%s)"
+    local svc_name="autorevert"
 
     cat > "/etc/systemd/system/${svc_name}.service" << EOF
 [Unit]
