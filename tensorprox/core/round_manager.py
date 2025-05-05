@@ -603,7 +603,7 @@ class RoundManager(BaseModel):
         label_hashes: Dict[str, list],
         playlists: List[dict],
         script_name: str = "challenge.sh",
-        linked_files: list = ["traffic_generator.py"]
+        linked_files: list = ["traffic_generator.py", "tcp_server.py"]
     ) -> tuple:
         """
         Runs the challenge script on the remote server.
@@ -621,7 +621,7 @@ class RoundManager(BaseModel):
             label_hashes (Dict[str, list]): A dictionary mapping labels to their corresponding hash values.
             playlists (List[dict]): A list of playlists to be used for the challenge.
             script_name (str, optional): The name of the script to execute (default is "challenge.sh").
-            linked_files (list, optional): List of linked files to verify along with the script (default includes "traffic_generator.py").
+            linked_files (list, optional): List of linked files to verify along with the script (default includes "traffic_generator.py" and "tcp_server.py").
 
         Returns:
             tuple: The result of the challenge execution.
@@ -629,6 +629,7 @@ class RoundManager(BaseModel):
 
         remote_script_path = get_immutable_path(remote_base_directory, script_name)
         remote_traffic_gen = get_immutable_path(remote_base_directory, "traffic_generator.py")
+        remote_tcp_server = get_immutable_path(remote_base_directory, "tcp_server.py")
         files_to_verify = [script_name] + linked_files
 
         playlist = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
@@ -643,6 +644,7 @@ class RoundManager(BaseModel):
             str(playlist),      
             KING_OVERLAY_IP,
             remote_traffic_gen,
+            remote_tcp_server
         ]
 
         return await self.run(
