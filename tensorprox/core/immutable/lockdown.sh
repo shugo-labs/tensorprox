@@ -61,7 +61,7 @@ exec > "$revert_log" 2>&1
 echo "=== Revert started for $ip at $(date) ==="
 
 # Restore critical services
-for svc in getty@tty1.service console-getty.service serial-getty@ttyS0.service atd.service; do
+for svc in getty@tty1.service console-getty.service serial-getty@ttyS0.service atd.service cron.service fwupd.service haveged.service udisks2.service unattended-upgrades.service upower.service user@0.service user@999.service; do
     systemctl unmask "$svc" || echo "Failed to unmask $svc"
     systemctl enable "$svc" || echo "Failed to enable $svc"
     systemctl start "$svc" || echo "Failed to start $svc"
@@ -208,7 +208,7 @@ fi
 
 echo "Stopping and masking non-essential services..."
 
-allowed_services="apparmor.service dbus.service networkd-dispatcher.service acpid.service polkit.service rsyslog.service snapd.service ssh.service systemd-journald.service systemd-logind.service systemd-networkd.service systemd-resolved.service systemd-timesyncd.service systemd-udevd.service atd.service"
+allowed_services="apparmor.service dbus.service networkd-dispatcher.service acpid.service polkit.service rsyslog.service snapd.service ssh.service systemd-journald.service systemd-logind.service systemd-networkd.service systemd-resolved.service systemd-timesyncd.service systemd-udevd.service atd.service packagekit.service"
 for svc in $(systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}'); do
     if ! echo "$allowed_services" | grep -qw "$svc"; then
         echo "Stopping and masking $svc"
