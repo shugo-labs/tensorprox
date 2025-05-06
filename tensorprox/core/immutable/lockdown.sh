@@ -277,7 +277,11 @@ done
 
 echo "Disabling packet capture tools and promiscuous mode..."
 
-pkill -9 tcpdump wireshark tshark dumpcap ettercap || true
+pkill -9 tcpdump || true
+pkill -9 wireshark || true
+pkill -9 tshark || true
+pkill -9 dumpcap || true
+pkill -9 ettercap || true
 
 for tool in /usr/bin/tcpdump /usr/sbin/tcpdump /usr/bin/dumpcap /usr/sbin/dumpcap; do
     if [ -f "$tool" ]; then
@@ -285,50 +289,16 @@ for tool in /usr/bin/tcpdump /usr/sbin/tcpdump /usr/bin/dumpcap /usr/sbin/dumpca
     fi
 done
 
-for iface in $(ip link show | grep -o '^[0-9]\+: [^:]\+' | cut -d' ' -f2); do
+for iface in $(ip -o link show | awk -F': ' '{print $2}'); do
+    # Skip if the interface does not exist (e.g., deleted virtual tunnel)
+    if ! ip link show "$iface" &>/dev/null; then
+        continue
+    fi
+
+    # Disable promiscuous mode if enabled
     if ip link show "$iface" | grep -q PROMISC; then
-        ip link set "$iface" promisc off
-        echo "Promiscuous mode disabled on $iface"
+        ip link set "$iface" promisc off 2>/dev/null && echo "Promiscuous mode disabled on $iface"
     fi
 done
-
-if [ -f /proc/sys/net/core/bpf_jit_enable ]; then
-    echo 0 > /proc/sys/net/core/bpf_jit_enable
-fi
-
-echo "Detecting and killing hidden processes..."
-
-if command -v unhide &> /dev/null; then
-    hidden_pids=$(unhide proc 2>/dev/null | grep -oP 'Found hidden pid: \K[0-9]+')
-    if [ -n "$hidden_pids" ]; then
-        echo "Hidden processes found: $hidden_pids"
-        for pid in $hidden_pids; do
-            kill -9 "$pid" || echo "Failed to kill hidden PID $pid"
-        done
-    fi
-else
-    echo "unhide not installed, skipping hidden process detection"
-fi
-
-ps_pids=$(ps -eo pid | tail -n +2)
-proc_pids=$(find /proc -maxdepth 1 -regex '/proc/[0-9]+' | grep -o '[0-9]\+')
-for pid in $proc_pids; do
-    if ! echo "$ps_pids" | grep -qw "$pid"; then
-        kill -9 "$pid" || echo "Failed to kill suspicious PID $pid"
-    fi
-done
-
-rootkit_patterns="kisni|suckit|rkit|adore|knark|modhide|ipsecs|hidemod|heroin|synapsis|volc|optic|ramen|lok|maru"
-modules=$(lsmod | grep -E "$rootkit_patterns" | awk '{print $1}')
-if [ -n "$modules" ]; then
-    echo "Potential rootkit modules detected: $modules"
-    for mod in $modules; do
-        rmmod "$mod" || echo "Failed to remove module $mod"
-    done
-fi
-
-if [ -w /proc/sys/kernel/modules_disabled ]; then
-    echo 1 > /proc/sys/kernel/modules_disabled || echo "Failed to disable kernel module loading"
-fi
 
 echo "=== Lockdown completed at $(date) ==="
