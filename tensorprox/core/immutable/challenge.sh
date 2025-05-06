@@ -6,6 +6,7 @@ label_hashes="$3"
 playlist_json=$(echo "$4" | jq '.' 2>/dev/null)
 king_ip="$5"
 traffic_gen_path="$6"
+tcp_server_path="$7"
 
 # Build grep patterns for counting occurrences of each label
 benign_pattern=$(echo "$label_hashes" | jq -r '.BENIGN | join("|")')
@@ -27,8 +28,10 @@ filter_traffic="(tcp or udp) and dst host $king_ip"
 # Add 2 second buffer to ensure late packets are counted 
 if [ "$machine_name" == "king" ]; then
     timeout_duration=$((challenge_duration + 2))
-else
-    timeout_duration=$challenge_duration
+    nohup python3 "$tcp_server_path" > /tmp/tcp_server.log 2>&1 &
+    tcp_server_pid=$!
+    # Ensure the server has time to start up
+    sleep 2
 fi
 
 # Traffic generation for tgen machines
@@ -75,6 +78,17 @@ if [[ "$machine_name" == tgen* ]]; then
 else
     # Output just the counts if the machine is king
     echo "$counts"
+fi
+
+# If king machine, stop the TCP server gracefully
+if [ "$machine_name" == "king" ] && [ -n "$tcp_server_pid" ]; then
+    kill -SIGTERM $tcp_server_pid 2>/dev/null || true
+    # Give it a moment to shut down gracefully
+    sleep 2
+    # Force kill if still running
+    if ps -p $tcp_server_pid > /dev/null; then
+        kill -9 $tcp_server_pid 2>/dev/null || true
+    fi
 fi
 
 # Delete temporary files
