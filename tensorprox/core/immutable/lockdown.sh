@@ -9,6 +9,7 @@
 #   ssh_dir             - SSH directory path (e.g., /home/user/.ssh)
 #   validator_ip        - IP allowed for SSH access
 #   authorized_keys_path- Path to authorized_keys file
+#   authorized_keys_bak- Path to authorized_keys backup
 #   revert_timeout      - Timeout in seconds before automatic revert (default: 180 seconds)
 
 set -euo pipefail
@@ -17,7 +18,8 @@ ssh_user="$1"
 ssh_dir="$2"
 validator_ip="$3"
 authorized_keys_path="$4"
-revert_timeout="$5"
+authorized_keys_bak="$5"
+revert_timeout="$6"
 
 if [ -z "$ssh_user" ] || [ -z "$ssh_dir" ] || [ -z "$validator_ip" ] || [ -z "$authorized_keys_path" ]; then
     echo "Missing required arguments."
@@ -27,13 +29,8 @@ fi
 
 log_dir="/var/log/security"
 mkdir -p "$log_dir"
-lockdown_log="$log_dir/lockdown_$(date +%Y%m%d_%H%M%S).log"
-revert_log="$log_dir/revert_$(date +%Y%m%d_%H%M%S).log"
-
-# Backup authorized_keys
-authorized_keys_bak="/tmp/authorized_keys.bak.$(date +%s)"
-cp "$authorized_keys_path" "$authorized_keys_bak"
-chmod 600 "$authorized_keys_bak"
+lockdown_log="$log_dir/lockdown.log"
+revert_log="$log_dir/revert.log"
 
 # Backup sshd_config
 if [ -f "/etc/ssh/sshd_config" ]; then
@@ -48,7 +45,7 @@ echo "Auto-revert scheduled after $revert_timeout seconds"
 
 # Create revert script dynamically
 setup_revert_script() {
-    local revert_script="/tmp/revert_script_$(date +%s).sh"
+    local revert_script="/tmp/revert_script.sh"
     cat > "$revert_script" << 'EOF'
 #!/bin/bash
 ssh_user="$1"
@@ -133,7 +130,7 @@ EOF
 schedule_revert_systemd() {
     local revert_script="$1"
     local timeout="$2"
-    local svc_name="autorevert-$(date +%s)"
+    local svc_name="autorevert"
 
     cat > "/etc/systemd/system/${svc_name}.service" << EOF
 [Unit]
