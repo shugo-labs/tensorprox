@@ -17,8 +17,7 @@ ssh_user="$1"
 ssh_dir="$2"
 validator_ip="$3"
 authorized_keys_path="$4"
-authorized_keys_bak="$5"
-revert_timeout="$6"
+revert_timeout="$5"
 
 if [ -z "$ssh_user" ] || [ -z "$ssh_dir" ] || [ -z "$validator_ip" ] || [ -z "$authorized_keys_path" ]; then
     echo "Missing required arguments."
@@ -28,8 +27,13 @@ fi
 
 log_dir="/var/log/security"
 mkdir -p "$log_dir"
-lockdown_log="$log_dir/lockdown.log"
-revert_log="$log_dir/revert.log"
+lockdown_log="$log_dir/lockdown_$(date +%Y%m%d_%H%M%S).log"
+revert_log="$log_dir/revert_$(date +%Y%m%d_%H%M%S).log"
+
+# Backup authorized_keys
+authorized_keys_bak="/tmp/authorized_keys.bak.$(date +%s)"
+cp "$authorized_keys_path" "$authorized_keys_bak"
+chmod 600 "$authorized_keys_bak"
 
 # Backup sshd_config
 if [ -f "/etc/ssh/sshd_config" ]; then
@@ -44,7 +48,7 @@ echo "Auto-revert scheduled after $revert_timeout seconds"
 
 # Create revert script dynamically
 setup_revert_script() {
-    local revert_script="/tmp/revert_script.sh"
+    local revert_script="/tmp/revert_script_$(date +%s).sh"
     cat > "$revert_script" << 'EOF'
 #!/bin/bash
 ssh_user="$1"
@@ -57,7 +61,7 @@ exec > "$revert_log" 2>&1
 echo "=== Revert started for $ip at $(date) ==="
 
 # Restore critical services
-for svc in getty@tty1.service console-getty.service serial-getty@ttyS0.service atd.service auditd.service cron.service fwupd.service haveged.service packagekit.service udisks2.service unattended-upgrades.service upower.service user@0.service user@999.service; do
+for svc in getty@tty1.service console-getty.service serial-getty@ttyS0.service atd.service cron.service fwupd.service haveged.service udisks2.service unattended-upgrades.service upower.service user@0.service user@999.service; do
     systemctl unmask "$svc" || echo "Failed to unmask $svc"
     systemctl enable "$svc" || echo "Failed to enable $svc"
     systemctl start "$svc" || echo "Failed to start $svc"
@@ -129,7 +133,7 @@ EOF
 schedule_revert_systemd() {
     local revert_script="$1"
     local timeout="$2"
-    local svc_name="autorevert"
+    local svc_name="autorevert-$(date +%s)"
 
     cat > "/etc/systemd/system/${svc_name}.service" << EOF
 [Unit]
@@ -204,7 +208,7 @@ fi
 
 echo "Stopping and masking non-essential services..."
 
-allowed_services="apparmor.service dbus.service networkd-dispatcher.service acpid.service polkit.service rsyslog.service snapd.service ssh.service systemd-journald.service systemd-logind.service systemd-networkd.service systemd-resolved.service systemd-timesyncd.service systemd-udevd.service atd.service"
+allowed_services="apparmor.service dbus.service networkd-dispatcher.service acpid.service polkit.service rsyslog.service snapd.service ssh.service systemd-journald.service systemd-logind.service systemd-networkd.service systemd-resolved.service systemd-timesyncd.service systemd-udevd.service atd.service packagekit.service"
 for svc in $(systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}'); do
     if ! echo "$allowed_services" | grep -qw "$svc"; then
         echo "Stopping and masking $svc"
@@ -273,7 +277,11 @@ done
 
 echo "Disabling packet capture tools and promiscuous mode..."
 
-pkill -9 tcpdump wireshark tshark dumpcap ettercap || true
+pkill -9 tcpdump || true
+pkill -9 wireshark || true
+pkill -9 tshark || true
+pkill -9 dumpcap || true
+pkill -9 ettercap || true
 
 for tool in /usr/bin/tcpdump /usr/sbin/tcpdump /usr/bin/dumpcap /usr/sbin/dumpcap; do
     if [ -f "$tool" ]; then
@@ -287,44 +295,5 @@ for iface in $(ip link show | grep -o '^[0-9]\+: [^:]\+' | cut -d' ' -f2); do
         echo "Promiscuous mode disabled on $iface"
     fi
 done
-
-if [ -f /proc/sys/net/core/bpf_jit_enable ]; then
-    echo 0 > /proc/sys/net/core/bpf_jit_enable
-fi
-
-echo "Detecting and killing hidden processes..."
-
-if command -v unhide &> /dev/null; then
-    hidden_pids=$(unhide proc 2>/dev/null | grep -oP 'Found hidden pid: \K[0-9]+')
-    if [ -n "$hidden_pids" ]; then
-        echo "Hidden processes found: $hidden_pids"
-        for pid in $hidden_pids; do
-            kill -9 "$pid" || echo "Failed to kill hidden PID $pid"
-        done
-    fi
-else
-    echo "unhide not installed, skipping hidden process detection"
-fi
-
-ps_pids=$(ps -eo pid | tail -n +2)
-proc_pids=$(find /proc -maxdepth 1 -regex '/proc/[0-9]+' | grep -o '[0-9]\+')
-for pid in $proc_pids; do
-    if ! echo "$ps_pids" | grep -qw "$pid"; then
-        kill -9 "$pid" || echo "Failed to kill suspicious PID $pid"
-    fi
-done
-
-rootkit_patterns="kisni|suckit|rkit|adore|knark|modhide|ipsecs|hidemod|heroin|synapsis|volc|optic|ramen|lok|maru"
-modules=$(lsmod | grep -E "$rootkit_patterns" | awk '{print $1}')
-if [ -n "$modules" ]; then
-    echo "Potential rootkit modules detected: $modules"
-    for mod in $modules; do
-        rmmod "$mod" || echo "Failed to remove module $mod"
-    done
-fi
-
-if [ -w /proc/sys/kernel/modules_disabled ]; then
-    echo 1 > /proc/sys/kernel/modules_disabled || echo "Failed to disable kernel module loading"
-fi
 
 echo "=== Lockdown completed at $(date) ==="

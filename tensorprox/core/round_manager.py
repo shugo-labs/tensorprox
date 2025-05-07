@@ -435,7 +435,6 @@ class RoundManager(BaseModel):
         remote_base_directory: str,
         ssh_dir: str,
         authorized_keys_path: str,
-        authorized_keys_bak: str,
         revert_timeout: int,
         script_name: str = "lockdown.sh",
         linked_files: list = []
@@ -470,7 +469,6 @@ class RoundManager(BaseModel):
             ssh_dir, 
             self.validator_ip,
             authorized_keys_path,
-            authorized_keys_bak,
             str(revert_timeout)
         ]
 
@@ -828,7 +826,6 @@ class RoundManager(BaseModel):
                             remote_base_directory,
                             ssh_dir,
                             authorized_keys_path,
-                            authorized_keys_bak,
                             revert_timeout
                         )
                     elif task == "revert":
