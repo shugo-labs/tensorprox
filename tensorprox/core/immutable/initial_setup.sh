@@ -9,6 +9,9 @@
 #   authorized_keys_path (str): The path to the authorized_keys file.
 #   authorized_keys_bak (str): The backup path for the authorized_keys file.
 
+#Log all output to /tmp/initial_setup.log
+exec > >(tee -a /tmp/initial_setup.log) 2>&1
+
 # Extract arguments
 ssh_user="$1"
 ssh_dir="$2"
