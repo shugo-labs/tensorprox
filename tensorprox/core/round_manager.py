@@ -603,7 +603,6 @@ class RoundManager(BaseModel):
         challenge_duration: int,
         label_hashes: Dict[str, list],
         playlists: List[dict],
-        spoofed_ips_path: str = os.path.join(BASE_DIR, "ips_data.pkl"),
         script_name: str = "challenge.sh",
         linked_files: list = ["traffic_generator.py", "tcp_server.py"]
     ) -> tuple:
@@ -636,7 +635,6 @@ class RoundManager(BaseModel):
 
         playlist = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
         label_hashes = json.dumps(label_hashes)
-        spoofed_ips = json.dumps(load_ips_from_file())
         
         args = [
             "/usr/bin/bash",
@@ -645,7 +643,6 @@ class RoundManager(BaseModel):
             str(challenge_duration),
             str(label_hashes),  
             str(playlist),    
-            str(spoofed_ips),
             KING_OVERLAY_IP,
             remote_traffic_gen,
             remote_tcp_server,
