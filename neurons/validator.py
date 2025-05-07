@@ -201,9 +201,6 @@ class Validator(BaseValidatorNeuron):
                 # Ensure that each validator gets a unique subset of shuffled UIDs based on idx_permutation
                 subset_miners = sync_shuffled_uids[idx_permutation]
 
-                #Generate random ip samples for spoofing
-                ip_data = generate_ips()
-
                 #Random generate soft/aggressive random playlist pairs
                 playlists = {}
                 random_int = random.randint(1, 10000)
