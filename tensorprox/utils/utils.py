@@ -91,37 +91,36 @@ def get_subnet(interface):
             return str(ip_network)
     return None  # No IPv4 address found
 
-def generate_ips(num_ips=1000000, benign_percentage=0.1, excluded_ips=[KING_OVERLAY_IP], save_to="ips_data.pkl"):
+def generate_ips(num_ips=1000000, benign_percentage=0.1, excluded_ips=None, save_to="ips_data.pkl", seed=None):
     if excluded_ips is None:
-        excluded_ips = []
+        excluded_ips = [KING_OVERLAY_IP]
+
+    # Use the provided seed or generate one
+    if seed is None:
+        seed = random.randint(0, 2**32 - 1)
+
+    np.random.seed(seed)
+    random.seed(seed)
 
     start = int(ipaddress.IPv4Address("10.0.0.0"))
     end = int(ipaddress.IPv4Address("10.255.255.255"))
 
-    # All possible IPs in range
     all_ips = np.arange(start, end + 1, dtype=np.uint32)
 
-    # Exclude given IPs
     excluded_set = set(int(ipaddress.IPv4Address(ip)) for ip in excluded_ips)
     allowed_ips = np.setdiff1d(all_ips, list(excluded_set), assume_unique=False)
 
     try:
         if len(allowed_ips) < num_ips:
-            # print(f"[generate_ips] Warning: Only {len(allowed_ips)} IPs available after exclusion. Using all of them.")
-            sampled_ips = allowed_ips  # Use all remaining if not enough
-            num_ips = len(sampled_ips)  # Adjust downstream count
+            sampled_ips = allowed_ips
+            num_ips = len(sampled_ips)
         else:
-            # Sample without replacement
             sampled_ips = np.random.choice(allowed_ips, size=num_ips, replace=False)
-                
     except Exception as e:
-        # print(f"[generate_ips] Exception occurred: {e}")
-        # print("[generate_ips] Falling back to first N IPs after exclusions.")
         sampled_ips = allowed_ips[:num_ips]
     
     ip_strs = [str(ipaddress.IPv4Address(int(ip))) for ip in sampled_ips]
 
-    # Shuffle and split
     random.shuffle(ip_strs)
     benign_count = int(num_ips * benign_percentage)
     benign_ips = ip_strs[:benign_count]
@@ -129,10 +128,10 @@ def generate_ips(num_ips=1000000, benign_percentage=0.1, excluded_ips=[KING_OVER
 
     ip_data = {
         "benign": benign_ips,
-        "attack": attack_ips
+        "attack": attack_ips,
+        "seed": seed  # Include the seed in the returned data
     }
 
-    # Save to pickle file
     if save_to is not None:
         with open(save_to, 'wb') as f:
             pickle.dump(ip_data, f)
@@ -143,12 +142,12 @@ def load_ips_from_file(filename="ips_data.pkl"):
     try:
         if not os.path.exists(filename):
             # print(f"[load_ips_from_file] Warning: {filename} does not exist. Returning empty IP data.")
-            return {"benign": [], "attack": []}
+            return {"benign": [], "attack": [], "seed": 0}
         with open(filename, 'rb') as f:
             return pickle.load(f)
     except Exception as e:
         # print(f"[load_ips_from_file] Exception occurred while loading: {e}")
-        return {"benign": [], "attack": []}
+        return {"benign": [], "attack": [], "seed": 0}
 
 def log_message(level: str, message: str):
     """

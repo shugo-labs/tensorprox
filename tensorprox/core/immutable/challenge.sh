@@ -4,13 +4,9 @@ machine_name="$1"
 challenge_duration="$2"
 label_hashes="$3"
 playlist_json=$(echo "$4" | jq '.' 2>/dev/null)
-spoofed_ips="$5"
 king_ip="$6"
 traffic_gen_path="$7"
 tcp_server_path="$8"
-
-# Debug: Log spoofed IPs to /tmp/debug.log
-echo "[spoofed_ips] $spoofed_ips" >> /tmp/debug.log
 
 # Build grep patterns for counting occurrences of each label
 benign_pattern=$(echo "$label_hashes" | jq -r '.BENIGN | join("|")')
