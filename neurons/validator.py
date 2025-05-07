@@ -42,7 +42,6 @@ import asyncio
 import signal
 import bittensor as bt
 from tensorprox import *
-from tensorprox.utils.utils import *
 from tensorprox import settings
 settings.settings = settings.Settings.load(mode="validator")
 settings = settings.settings
@@ -52,7 +51,7 @@ from tensorprox.base.dendrite import DendriteResponseEvent
 from tensorprox.utils.logging import ErrorLoggingEvent
 from concurrent.futures import ThreadPoolExecutor
 from tensorprox.core.round_manager import RoundManager
-from tensorprox.utils.utils import create_random_playlist, get_remaining_time, generate_random_hashes
+from tensorprox.utils.utils import create_random_playlist, get_remaining_time, generate_random_hashes, generate_ips, load_ips_from_file
 from tensorprox.rewards.scoring import task_scorer
 from tensorprox.utils.timer import Timer
 from tensorprox.rewards.weight_setter import weight_setter
@@ -201,6 +200,9 @@ class Validator(BaseValidatorNeuron):
 
                 # Ensure that each validator gets a unique subset of shuffled UIDs based on idx_permutation
                 subset_miners = sync_shuffled_uids[idx_permutation]
+
+                #Generate random ip samples for spoofing
+                ip_data = generate_ips()
 
                 #Random generate soft/aggressive random playlist pairs
                 playlists = {}
