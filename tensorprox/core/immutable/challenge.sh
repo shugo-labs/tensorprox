@@ -27,11 +27,11 @@ filter_traffic="(tcp or udp) and dst host $king_ip"
 
 # Add 2 second buffer to ensure late packets are counted 
 if [ "$machine_name" == "king" ]; then
-    timeout_duration=$((challenge_duration + 2))
+    timeout_duration=$((challenge_duration + 1))
     nohup python3 "$tcp_server_path" > /tmp/tcp_server.log 2>&1 &
     tcp_server_pid=$!
-    # Ensure the server has time to start up
-    sleep 2
+else
+    timeout_duration=$challenge_duration
 fi
 
 # Traffic generation for tgen machines
