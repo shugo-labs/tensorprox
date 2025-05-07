@@ -28,13 +28,11 @@ filter_traffic="(tcp or udp) and dst host $king_ip"
 # Add 2 second buffer to ensure late packets are counted 
 if [ "$machine_name" == "king" ]; then
     timeout_duration=$((challenge_duration + 2))
-    # Start tcp_server.py in background
-    nohup python3 $tcp_server_path > /tmp/tcp_server.log 2>&1 &
+    nohup python3 "$tcp_server_path" > /tmp/tcp_server.log 2>&1 &
     tcp_server_pid=$!
-else
-    timeout_duration=$challenge_duration
+    # Ensure the server has time to start up
+    sleep 2
 fi
-
 
 # Traffic generation for tgen machines
 if [[ "$machine_name" == tgen* ]]; then
@@ -84,13 +82,12 @@ fi
 
 # If king machine, stop the TCP server gracefully
 if [ "$machine_name" == "king" ] && [ -n "$tcp_server_pid" ]; then
-    echo "Stopping TCP server with PID: $tcp_server_pid"
-    kill -SIGTERM $tcp_server_pid
+    kill -SIGTERM $tcp_server_pid 2>/dev/null || true
     # Give it a moment to shut down gracefully
     sleep 2
     # Force kill if still running
     if ps -p $tcp_server_pid > /dev/null; then
-        kill -9 $tcp_server_pid
+        kill -9 $tcp_server_pid 2>/dev/null || true
     fi
 fi
 

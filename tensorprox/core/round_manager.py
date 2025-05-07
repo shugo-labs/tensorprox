@@ -215,6 +215,7 @@ class RoundManager(BaseModel):
         """
 
         try:
+
             # Parse the result to get the counts from stdout
             counts_and_rtt = result.stdout.strip().split(", ")
 
