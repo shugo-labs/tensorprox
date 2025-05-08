@@ -8,6 +8,8 @@ from tensorprox import *
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 stop_event = threading.Event()  # Global event to signal thread shutdown
 
+KING_OVERLAY_IP = "10.0.0.1"
+
 def handle_client(client_socket, client_address):
     """Handle an individual client connection."""
     logging.info(f"Connection established with {client_address}")
