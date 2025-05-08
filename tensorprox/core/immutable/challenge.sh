@@ -82,16 +82,17 @@ fi
 # If king machine, stop the TCP server gracefully
 if [ "$machine_name" == "king" ]; then
     # Gracefully stop all matching tcp_server.py processes
-    pkill -f "python3 $tcp_server_path" 2>/dev/null || true
+    pkill -f "python3 $tcp_server_path" &>/dev/null || true
     sleep 2
     # Force kill if still running
-    pkill -9 -f "python3 $tcp_server_path" 2>/dev/null || true
+    pkill -9 -f "python3 $tcp_server_path" &>/dev/null || true
 else
     # Gracefully stop all matching traffic_generator.py processes for tgens
-    pkill -f "python3 $traffic_gen_path" 2>/dev/null || true
+    pkill -f "python3 $traffic_gen_path" &>/dev/null || true
     sleep 2
     # Force kill if still running
-    pkill -9 -f "python3 $traffic_gen_path" 2>/dev/null || true  
+    pkill -9 -f "python3 $traffic_gen_path" &>/dev/null || true
+fi
 
 # Delete temporary files
 rm -f /tmp/playlist.json
