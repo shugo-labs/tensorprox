@@ -29,7 +29,6 @@ filter_traffic="(tcp or udp) and dst host $king_ip"
 if [ "$machine_name" == "king" ]; then
     timeout_duration=$((challenge_duration + 1))
     nohup python3 "$tcp_server_path" > /tmp/tcp_server.log 2>&1 &
-    tcp_server_pid=$!
 else
     timeout_duration=$challenge_duration
 fi
@@ -81,15 +80,18 @@ else
 fi
 
 # If king machine, stop the TCP server gracefully
-if [ "$machine_name" == "king" ] && [ -n "$tcp_server_pid" ]; then
-    kill -SIGTERM $tcp_server_pid 2>/dev/null || true
-    # Give it a moment to shut down gracefully
+if [ "$machine_name" == "king" ]; then
+    # Gracefully stop all matching tcp_server.py processes
+    pkill -f "python3 $tcp_server_path" 2>/dev/null || true
     sleep 2
     # Force kill if still running
-    if ps -p $tcp_server_pid > /dev/null; then
-        kill -9 $tcp_server_pid 2>/dev/null || true
-    fi
-fi
+    pkill -9 -f "python3 $tcp_server_path" 2>/dev/null || true
+else
+    # Gracefully stop all matching traffic_generator.py processes for tgens
+    pkill -f "python3 $traffic_gen_path" 2>/dev/null || true
+    sleep 2
+    # Force kill if still running
+    pkill -9 -f "python3 $traffic_gen_path" 2>/dev/null || true  
 
 # Delete temporary files
 rm -f /tmp/playlist.json
