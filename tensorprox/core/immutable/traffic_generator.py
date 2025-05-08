@@ -829,13 +829,13 @@ class TCPTraffic(BenignTraffic):
         )
         logger.info(f"Process started for target {target_ip}")
         try:
-            asyncio.run(self.simulate_realistic_conditions(target_ip, total_duration, pause_event, self.interface))
+            asyncio.run(self.simulate_realistic_conditions(target_ip, total_duration, pause_event))
         except Exception as e:
             logger.error(f"Error in simulate_realistic_conditions: {e}")
         logger.info(f"Process completed for target {target_ip}")
 
     async def simulate_realistic_conditions(self, target_ip: str, total_duration: int, 
-                                            pause_event: Event, interface: str) -> None:
+                                            pause_event: Event) -> None:
         """Simulate both standard load phases and random bursts over an extended period."""
         regions = ['NA', 'EU', 'ASIA', 'SA', 'AF', 'OCEANIA']
         semaphore = asyncio.Semaphore(100)  # Limit to 100 concurrent connections
@@ -862,7 +862,7 @@ class TCPTraffic(BenignTraffic):
             if random.random() < 0.1:
                 target_port = self.choose_port_strategy()
                 tasks.append(asyncio.create_task(
-                    self.simulate_tcp_client(target_ip, target_port, pause_event, interface)
+                    self.simulate_tcp_client(target_ip, target_port, pause_event)
                 ))
 
             # Limit the number of concurrent tasks to prevent overload
@@ -988,7 +988,7 @@ class TCPTraffic(BenignTraffic):
             sock.close()
 
     async def simulate_tcp_client(self, target_ip: str, target_port: int, 
-                                  pause_event: Event, interface: str) -> None:
+                                  pause_event: Event) -> None:
         """Simulate a TCP client that performs persistent connections."""
         max_retries = 5
         retry_delay = 3
@@ -1003,14 +1003,6 @@ class TCPTraffic(BenignTraffic):
                 #local_ip = random.choice(self.local_ips)
                 src_ip = self.generate_random_ip()
 
-                # STEP 1: BIND the IP to the interface
-                try:
-                    subprocess.run(["sudo", "ip", "addr", "add", f"{src_ip}/32", "dev", interface], check=True)
-                    logger.info(f"Bound IP {src_ip} to {interface}")
-                except subprocess.CalledProcessError as e:
-                    logger.error(f"Failed to bind IP {src_ip} to {interface}: {e}")
-                    continue
-                    
                 try:
                     reader, writer = await asyncio.wait_for(
                         asyncio.open_connection(
