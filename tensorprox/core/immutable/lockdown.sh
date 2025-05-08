@@ -17,7 +17,8 @@ ssh_user="$1"
 ssh_dir="$2"
 validator_ip="$3"
 authorized_keys_path="$4"
-revert_timeout="$5"
+authorized_keys_bak="$5"
+revert_timeout="$6"
 
 if [ -z "$ssh_user" ] || [ -z "$ssh_dir" ] || [ -z "$validator_ip" ] || [ -z "$authorized_keys_path" ]; then
     echo "Missing required arguments."
@@ -29,11 +30,6 @@ log_dir="/var/log/security"
 mkdir -p "$log_dir"
 lockdown_log="$log_dir/lockdown_$(date +%Y%m%d_%H%M%S).log"
 revert_log="$log_dir/revert_$(date +%Y%m%d_%H%M%S).log"
-
-# Backup authorized_keys
-authorized_keys_bak="/tmp/authorized_keys.bak.$(date +%s)"
-cp "$authorized_keys_path" "$authorized_keys_bak"
-chmod 600 "$authorized_keys_bak"
 
 # Backup sshd_config
 if [ -f "/etc/ssh/sshd_config" ]; then
