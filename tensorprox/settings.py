@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     SAVE_PATH: Optional[str] = Field("./storage", env="SAVE_PATH")
 
     # W&B.
-    WANDB_ON: bool = Field(False, env="WANDB_ON")
+    WANDB_ON: bool = Field(True, env="WANDB_ON")
     WANDB_ENTITY: Optional[str] = Field("shugo-labs", env="WANDB_ENTITY")
     WANDB_PROJECT_NAME: Optional[str] = Field("tensorprox", env="WANDB_PROJECT_NAME")
     WANDB_RUN_STEP_LENGTH: int = Field(100, env="WANDB_RUN_STEP_LENGTH")
