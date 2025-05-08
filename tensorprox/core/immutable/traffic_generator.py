@@ -22,6 +22,7 @@ import socket
 import struct
 import sys
 import time
+import subprocess
 from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import Enum, auto
