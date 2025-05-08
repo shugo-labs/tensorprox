@@ -3,6 +3,7 @@ import threading
 import logging
 import signal
 import time
+from tensorprox import *
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 stop_event = threading.Event()  # Global event to signal thread shutdown
@@ -40,9 +41,9 @@ def start_server(port):
     try:
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind(("0.0.0.0", port))
+        server.bind((KING_OVERLAY_IP, port))
         server.listen(100)  # Increased backlog
-        logging.info(f"Listening on 0.0.0.0:{port}")
+        logging.info(f"Listening on {KING_OVERLAY_IP}:{port}")
         server.settimeout(1.0)  # Set timeout outside the loop
         while not stop_event.is_set():
             try:
@@ -71,10 +72,10 @@ def tcp_server(target_ports=[80, 443, 21, 3306, 53, 8080, 8443, 2121, 2022, 5432
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s.bind(("0.0.0.0", port))  # If successful, the port is free
+                s.bind((KING_OVERLAY_IP, port))  # If successful, the port is free
                 available_ports.append(port)
         except OSError:
-            logging.warning(f"Port {port} is in use or unavailable.")
+            logging.warning(f"Port {port} is in use or unavailable on {KING_OVERLAY_IP}.")
 
     if not available_ports:
         logging.error("No available target ports. Exiting.")

@@ -1007,9 +1007,9 @@ class TCPTraffic(BenignTraffic):
                 # STEP 1: BIND the IP to the interface
                 try:
                     subprocess.run(["sudo", "ip", "addr", "add", f"{src_ip}/32", "dev", interface], check=True)
-                    logger.info(f"Bound IP {src_ip} to {interface}")
+                    # logger.info(f"Bound IP {src_ip} to {interface}")
                 except subprocess.CalledProcessError as e:
-                    logger.error(f"Failed to bind IP {src_ip} to {interface}: {e}")
+                    # logger.error(f"Failed to bind IP {src_ip} to {interface}: {e}")
                     continue
                     
                 try:
