@@ -3,7 +3,6 @@ import threading
 import logging
 import signal
 import time
-from tensorprox import *
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 stop_event = threading.Event()  # Global event to signal thread shutdown
