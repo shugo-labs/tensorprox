@@ -155,8 +155,8 @@ def log_event(event: BaseEvent):
         logger.info(f"{event}")
 
     if settings.WANDB_ON:
-        if should_reinit_wandb():
-            reinit_wandb()
+        # if should_reinit_wandb():
+        #     reinit_wandb()
         unpacked_event = unpack_events(event)
         unpacked_event = convert_arrays_to_lists(unpacked_event)
         wandb.log(unpacked_event)
