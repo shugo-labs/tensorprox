@@ -1489,9 +1489,7 @@ class GRESetup:
         self.run_cmd(["ip", "link", "set", ipip_tunnel_name, "mtu", str(IPIP_MTU)])
         self.run_cmd(["ip", "addr", "add", f"{overlay_ip}/32", "dev", ipip_tunnel_name])
         self.run_cmd(["ip", "link", "set", ipip_tunnel_name, "up"])
-        
-        if self.node_type == "tgen":
-            self.run_cmd(["ip", "addr", "add", f"{overlay_ip}/8", "dev", ipip_tunnel_name])
+
 
         # Apply tunnel-specific optimizations
         self.optimize_tunnel_interface(ipip_tunnel_name)

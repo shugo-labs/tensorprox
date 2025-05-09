@@ -1001,35 +1001,27 @@ class TCPTraffic(BenignTraffic):
                     await asyncio.sleep(1)
                     continue
 
-                #local_ip = random.choice(self.local_ips)
-                src_ip = self.generate_random_ip()
-
-                # STEP 1: BIND the IP to the interface
-                try:
-                    subprocess.run(["sudo", "ip", "addr", "add", f"{src_ip}/32", "dev", interface], check=True)
-                    # logger.info(f"Bound IP {src_ip} to {interface}")
-                except subprocess.CalledProcessError as e:
-                    # logger.error(f"Failed to bind IP {src_ip} to {interface}: {e}")
-                    continue
+                local_ip = random.choice(self.local_ips)
+                # src_ip = self.generate_random_ip()
                     
                 try:
                     reader, writer = await asyncio.wait_for(
                         asyncio.open_connection(
-                            host=target_ip, port=target_port, local_addr=(src_ip, 0)
+                            host=target_ip, port=target_port, local_addr=(local_ip, 0)
                         ),
                         timeout=10
                     )
-                    logger.info(f"TCP connection established to {target_ip}:{target_port} from {src_ip}")
+                    logger.info(f"TCP connection established to {target_ip}:{target_port} from {local_ip}")
                 except ConnectionRefusedError:
-                    logger.error(f"Connection refused by {target_ip}:{target_port} from {src_ip}")
+                    logger.error(f"Connection refused by {target_ip}:{target_port} from {local_ip}")
                     await asyncio.sleep(retry_delay)
                     continue
                 except asyncio.TimeoutError:
-                    logger.error(f"Timeout while attempting to connect to {target_ip}:{target_port} from {src_ip}")
+                    logger.error(f"Timeout while attempting to connect to {target_ip}:{target_port} from {local_ip}")
                     await asyncio.sleep(retry_delay)
                     continue
                 except Exception as e:
-                    logger.error(f"Unexpected error while connecting to {target_ip}:{target_port} from {src_ip}: {e}")
+                    logger.error(f"Unexpected error while connecting to {target_ip}:{target_port} from {local_ip}: {e}")
                     await asyncio.sleep(retry_delay)
                     continue
 
@@ -1043,36 +1035,36 @@ class TCPTraffic(BenignTraffic):
 
                     payload = self.generate_payload("BENIGN-TCP-", self.packet_factory.max_tcp_payload_size)
                     writer.write(payload.encode())
-                    logger.debug(f"Sent BENIGN payload to {target_ip}:{target_port} from {src_ip}")
+                    logger.debug(f"Sent BENIGN payload to {target_ip}:{target_port} from {local_ip}")
                     await writer.drain()
 
-                    logger.debug(f"Awaiting response from {target_ip}:{target_port} to {src_ip}")
+                    logger.debug(f"Awaiting response from {target_ip}:{target_port} to {local_ip}")
                     try:
                         data = await asyncio.wait_for(reader.read(1500), timeout=10)
                         if data:
                             if b"ACK" in data:
-                                logger.info(f"ACK received from {target_ip}:{target_port} for {src_ip}")
+                                logger.info(f"ACK received from {target_ip}:{target_port} for {local_ip}")
                             elif b"ERR" in data:
-                                logger.warning(f"Error received from {target_ip}:{target_port} for {src_ip}")
+                                logger.warning(f"Error received from {target_ip}:{target_port} for {local_ip}")
                             else:
-                                logger.warning(f"Unrecognized response from {target_ip}:{target_port} for {src_ip}: {data}")
+                                logger.warning(f"Unrecognized response from {target_ip}:{target_port} for {local_ip}: {data}")
                         else:
-                            logger.warning(f"No response received from {target_ip}:{target_port} for {src_ip}")
+                            logger.warning(f"No response received from {target_ip}:{target_port} for {local_ip}")
                     except asyncio.TimeoutError:
-                        logger.warning(f"No response received from {target_ip}:{target_port} for {src_ip} within timeout period.")
+                        logger.warning(f"No response received from {target_ip}:{target_port} for {local_ip} within timeout period.")
 
                     if random.random() < 0.1:
-                        logger.info(f"Randomly deciding to close the connection to {target_ip}:{target_port} from {src_ip}")
+                        logger.info(f"Randomly deciding to close the connection to {target_ip}:{target_port} from {local_ip}")
                         break
 
                     inter_packet_delay = random.uniform(0.5, 5)
-                    logger.info(f"Waiting for {inter_packet_delay:.2f} seconds before sending next payload to {target_ip}:{target_port} from {src_ip}")
+                    logger.info(f"Waiting for {inter_packet_delay:.2f} seconds before sending next payload to {target_ip}:{target_port} from {local_ip}")
                     await asyncio.sleep(inter_packet_delay)
 
-                logger.info(f"Closing TCP connection with {target_ip}:{target_port} from {src_ip}")
+                logger.info(f"Closing TCP connection with {target_ip}:{target_port} from {local_ip}")
                 writer.close()
                 await writer.wait_closed()
-                logger.info(f"TCP connection closed with {target_ip}:{target_port} from {src_ip}")
+                logger.info(f"TCP connection closed with {target_ip}:{target_port} from {local_ip}")
 
             except Exception as e:
                 logger.error(f"Error in TCP client to {target_ip}:{target_port}: {e}")
