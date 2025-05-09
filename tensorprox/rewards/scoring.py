@@ -162,6 +162,7 @@ class TaskScorer(AsyncLoopRunner):
             global_bandwidth=reward_event.global_bandwidth,
             global_capacity=reward_event.global_capacity,
             global_purity=reward_event.global_purity,
+            global_bdr=reward_event.global_bdr,
         ))
 
 
