@@ -1203,154 +1203,154 @@ class GRESetup:
             # Continue even if compilation fails
             return True
 
-    def create_enhanced_afxdp_program(self, interface, resource_plan):
-        """Create AF_XDP program optimized for VM environments"""
-        log("[INFO] Creating enhanced AF_XDP program for {0}".format(self.node_type), level=1)
+    # def create_enhanced_afxdp_program(self, interface, resource_plan):
+    #     """Create AF_XDP program optimized for VM environments"""
+    #     log("[INFO] Creating enhanced AF_XDP program for {0}".format(self.node_type), level=1)
         
-        # Ensure directories exist with proper permissions
-        self.ensure_directory(XDP_PROGRAM_DIR)
-        self.ensure_directory(XDP_LOG_DIR)
+    #     # Ensure directories exist with proper permissions
+    #     self.ensure_directory(XDP_PROGRAM_DIR)
+    #     self.ensure_directory(XDP_LOG_DIR)
         
-        # Determine CPU cores for AF_XDP
-        cpu_cores = resource_plan["isolated_cpus"] if resource_plan["isolated_cpus"] else "0"
+    #     # Determine CPU cores for AF_XDP
+    #     cpu_cores = resource_plan["isolated_cpus"] if resource_plan["isolated_cpus"] else "0"
         
-        # Enhanced AF_XDP program with zero-copy and CPU pinning
-        afxdp_code = f"""#!/usr/bin/env python3
-    # Enhanced AF_XDP Acceleration for VMs
-    import os
-    import sys
-    import time
-    import socket
-    import struct
-    import signal
-    import multiprocessing
-    import threading
-    import ctypes
-    import fcntl
-    from datetime import datetime
-    import numpy as np  # For efficient memory operations
+    #     # Enhanced AF_XDP program with zero-copy and CPU pinning
+    #     afxdp_code = f"""#!/usr/bin/env python3
+    # # Enhanced AF_XDP Acceleration for VMs
+    # import os
+    # import sys
+    # import time
+    # import socket
+    # import struct
+    # import signal
+    # import multiprocessing
+    # import threading
+    # import ctypes
+    # import fcntl
+    # from datetime import datetime
+    # import numpy as np  # For efficient memory operations
 
-    # Configuration with VM-specific tuning
-    INTERFACE = "{interface}"
-    NODE_TYPE = "{self.node_type}"
-    BATCH_SIZE = 128  # Increased batch size for better throughput
-    QUEUES = {resource_plan["dpdk_cores"]}
-    LOG_FILE = "{XDP_LOG_DIR}/{self.node_type}_afxdp.log"
-    USE_ZEROCOPY = True
-    CPU_CORES = [int(core) for core in "{cpu_cores}".split(',') if core]
+    # # Configuration with VM-specific tuning
+    # INTERFACE = "{interface}"
+    # NODE_TYPE = "{self.node_type}"
+    # BATCH_SIZE = 128  # Increased batch size for better throughput
+    # QUEUES = {resource_plan["dpdk_cores"]}
+    # LOG_FILE = "{XDP_LOG_DIR}/{self.node_type}_afxdp.log"
+    # USE_ZEROCOPY = True
+    # CPU_CORES = [int(core) for core in "{cpu_cores}".split(',') if core]
 
-    # Import specialized libraries if available
-    try:
-        from pyroute2 import IPRoute
-        HAVE_PYROUTE2 = True
-    except ImportError:
-        HAVE_PYROUTE2 = False
-        print("[WARN] pyroute2 not available, performance will be limited")
+    # # Import specialized libraries if available
+    # try:
+    #     from pyroute2 import IPRoute
+    #     HAVE_PYROUTE2 = True
+    # except ImportError:
+    #     HAVE_PYROUTE2 = False
+    #     print("[WARN] pyroute2 not available, performance will be limited")
 
-    # Global counters with numpy for atomic operations
-    counters = {{
-        'processed_packets': np.zeros(1, dtype=np.uint64),
-        'processed_bytes': np.zeros(1, dtype=np.uint64),
-        'errors': np.zeros(1, dtype=np.uint64)
-    }}
+    # # Global counters with numpy for atomic operations
+    # counters = {{
+    #     'processed_packets': np.zeros(1, dtype=np.uint64),
+    #     'processed_bytes': np.zeros(1, dtype=np.uint64),
+    #     'errors': np.zeros(1, dtype=np.uint64)
+    # }}
 
-    # Global control flag
-    running = True
+    # # Global control flag
+    # running = True
 
-    def log_message(message):
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        try:
-            os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-            with open(LOG_FILE, "a") as f:
-                f.write(f"[{{timestamp}}] {{message}}\\n")
-        except:
-            pass
+    # def log_message(message):
+    #     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    #     try:
+    #         os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+    #         with open(LOG_FILE, "a") as f:
+    #             f.write(f"[{{timestamp}}] {{message}}\\n")
+    #     except:
+    #         pass
 
-    def signal_handler(sig, frame):
-        global running
-        print("Stopping AF_XDP workers...")
-        running = False
+    # def signal_handler(sig, frame):
+    #     global running
+    #     print("Stopping AF_XDP workers...")
+    #     running = False
 
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    # signal.signal(signal.SIGINT, signal_handler)
+    # signal.signal(signal.SIGTERM, signal_handler)
 
-    # Rest of the code remains the same...
-    """
+    # # Rest of the code remains the same...
+    # """
         
-        # Write the AF_XDP program to file with proper permissions
-        program_file = os.path.join(XDP_PROGRAM_DIR, f"{self.node_type}_afxdp.py")
+    #     # Write the AF_XDP program to file with proper permissions
+    #     program_file = os.path.join(XDP_PROGRAM_DIR, f"{self.node_type}_afxdp.py")
         
-        # Write to a temp file first for safety
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
-            temp_path = temp_file.name
-            temp_file.write(afxdp_code)
+    #     # Write to a temp file first for safety
+    #     with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
+    #         temp_path = temp_file.name
+    #         temp_file.write(afxdp_code)
         
-        # Copy to destination with proper permissions
-        if not IS_ROOT:
-            # Ensure directory exists
-            self.ensure_directory(os.path.dirname(program_file))
-            # Copy and set proper permissions
-            self.run_cmd(["sudo", "-n", "cp", temp_path, program_file], quiet=True)
-            self.run_cmd(["sudo", "-n", "chmod", "755", program_file], quiet=True)  # Executable
-            # Make accessible to current user
-            self.run_cmd(["sudo", "-n", "chown", f"{os.getuid()}:{os.getgid()}", program_file], quiet=True)
-        else:
-            self.run_cmd(["cp", temp_path, program_file], quiet=True)
-            self.run_cmd(["chmod", "755", program_file], quiet=True)  # Executable
+    #     # Copy to destination with proper permissions
+    #     if not IS_ROOT:
+    #         # Ensure directory exists
+    #         self.ensure_directory(os.path.dirname(program_file))
+    #         # Copy and set proper permissions
+    #         self.run_cmd(["sudo", "-n", "cp", temp_path, program_file], quiet=True)
+    #         self.run_cmd(["sudo", "-n", "chmod", "755", program_file], quiet=True)  # Executable
+    #         # Make accessible to current user
+    #         self.run_cmd(["sudo", "-n", "chown", f"{os.getuid()}:{os.getgid()}", program_file], quiet=True)
+    #     else:
+    #         self.run_cmd(["cp", temp_path, program_file], quiet=True)
+    #         self.run_cmd(["chmod", "755", program_file], quiet=True)  # Executable
         
-        # Clean up temp file
-        try:
-            os.unlink(temp_path)
-        except:
-            pass
+    #     # Clean up temp file
+    #     try:
+    #         os.unlink(temp_path)
+    #     except:
+    #         pass
         
-        # Create a systemd service file with proper permissions
-        service_file = f"/etc/systemd/system/afxdp-{self.node_type}.service"
-        service_content = f"""[Unit]
-    Description=Enhanced AF_XDP Acceleration for {self.node_type}
-    After=network.target
+    #     # Create a systemd service file with proper permissions
+    #     service_file = f"/etc/systemd/system/afxdp-{self.node_type}.service"
+    #     service_content = f"""[Unit]
+    # Description=Enhanced AF_XDP Acceleration for {self.node_type}
+    # After=network.target
 
-    [Service]
-    Type=simple
-    ExecStart={XDP_PROGRAM_DIR}/{self.node_type}_afxdp.py
-    Restart=on-failure
-    RestartSec=5
-    CPUSchedulingPolicy=fifo
-    CPUSchedulingPriority=99
-    IOSchedulingClass=realtime
-    IOSchedulingPriority=0
-    LimitMEMLOCK=infinity
+    # [Service]
+    # Type=simple
+    # ExecStart={XDP_PROGRAM_DIR}/{self.node_type}_afxdp.py
+    # Restart=on-failure
+    # RestartSec=5
+    # CPUSchedulingPolicy=fifo
+    # CPUSchedulingPriority=99
+    # IOSchedulingClass=realtime
+    # IOSchedulingPriority=0
+    # LimitMEMLOCK=infinity
 
-    [Install]
-    WantedBy=multi-user.target
-    """
+    # [Install]
+    # WantedBy=multi-user.target
+    # """
         
-        # Write to a temp file first
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
-            temp_path = temp_file.name
-            temp_file.write(service_content)
+    #     # Write to a temp file first
+    #     with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
+    #         temp_path = temp_file.name
+    #         temp_file.write(service_content)
         
-        # Copy to destination with proper permissions
-        if not IS_ROOT:
-            self.run_cmd(["sudo", "-n", "cp", temp_path, service_file], quiet=True)
-            self.run_cmd(["sudo", "-n", "chmod", "644", service_file], quiet=True)
-        else:
-            self.run_cmd(["cp", temp_path, service_file], quiet=True)
-            self.run_cmd(["chmod", "644", service_file], quiet=True)
+    #     # Copy to destination with proper permissions
+    #     if not IS_ROOT:
+    #         self.run_cmd(["sudo", "-n", "cp", temp_path, service_file], quiet=True)
+    #         self.run_cmd(["sudo", "-n", "chmod", "644", service_file], quiet=True)
+    #     else:
+    #         self.run_cmd(["cp", temp_path, service_file], quiet=True)
+    #         self.run_cmd(["chmod", "644", service_file], quiet=True)
         
-        # Clean up temp file
-        try:
-            os.unlink(temp_path)
-        except:
-            pass
+    #     # Clean up temp file
+    #     try:
+    #         os.unlink(temp_path)
+    #     except:
+    #         pass
         
-        # Reload systemd and enable/start the service
-        self.run_cmd(["systemctl", "daemon-reload"], quiet=True)
-        self.run_cmd(["systemctl", "enable", f"afxdp-{self.node_type}"], quiet=True)
-        self.run_cmd(["systemctl", "start", f"afxdp-{self.node_type}"], quiet=True)
+    #     # Reload systemd and enable/start the service
+    #     self.run_cmd(["systemctl", "daemon-reload"], quiet=True)
+    #     self.run_cmd(["systemctl", "enable", f"afxdp-{self.node_type}"], quiet=True)
+    #     self.run_cmd(["systemctl", "start", f"afxdp-{self.node_type}"], quiet=True)
         
-        log("[INFO] Enhanced AF_XDP acceleration enabled for {0} on {1}".format(self.node_type, interface), level=1)
-        return True
+    #     log("[INFO] Enhanced AF_XDP acceleration enabled for {0} on {1}".format(self.node_type, interface), level=1)
+    #     return True
 
     def setup_enhanced_acceleration(self, interface, resource_plan):
         """Set up enhanced hybrid acceleration with intelligent scaling and improved reliability"""
@@ -1381,9 +1381,9 @@ class GRESetup:
             self.optimize_dpdk_for_virtio(resource_plan)
             log("[INFO] DPDK optimization complete", level=1)
             
-            # 7. Create enhanced AF_XDP program
-            self.create_enhanced_afxdp_program(interface, resource_plan)
-            log("[INFO] AF_XDP program creation complete", level=1)
+            # # 7. Create enhanced AF_XDP program
+            # self.create_enhanced_afxdp_program(interface, resource_plan)
+            # log("[INFO] AF_XDP program creation complete", level=1)
             
             log("[INFO] Enhanced acceleration setup complete for {0}".format(self.node_type), level=1)
             return True
