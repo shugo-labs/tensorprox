@@ -102,6 +102,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 create_session_key_dir()
 
+BATCH_SIZE = 10
+BATCH_DELAY = 2
+
 ######################################################################
 # CLASS ROUND MANAGER
 ######################################################################
@@ -945,9 +948,21 @@ class RoundManager(BaseModel):
                     f"{task}_status_message": f"Timeout: Miner {task} aborted. Skipping miner {uid} for this round."
                 }
             
+        # Split miners into batches
+        batch_tasks = []
+        for i in range(0, len(miners), BATCH_SIZE):
+            batch = miners[i:i + BATCH_SIZE]
 
-        # Process all miners in parallel
-        await asyncio.gather(*[setup_miner_with_timeout(uid, synapse) for uid, synapse in miners])
+            async def launch_batch(batch, delay):
+                await asyncio.sleep(delay)
+                await asyncio.gather(*[
+                    setup_miner_with_timeout(uid, synapse) for uid, synapse in batch
+                ])
+
+            batch_tasks.append(launch_batch(batch, i // BATCH_SIZE * BATCH_DELAY))
+
+        # Await all batch launches
+        await asyncio.gather(*batch_tasks)
 
         # Mark assigned miners that are not in ready_miners as unavailable
         available_miner_ids = {uid for uid, _ in miners}
