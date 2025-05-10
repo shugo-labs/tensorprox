@@ -755,8 +755,7 @@ class RoundManager(BaseModel):
         """
             
         task_status = {}
-        semaphore = asyncio.Semaphore(20)
-        
+
         async def process_miner(uid, synapse):
             """
             Process all machines for a given miner and apply the specified task.
@@ -947,12 +946,8 @@ class RoundManager(BaseModel):
                 }
             
 
-        async def semaphore_wrapper(uid, synapse):
-            async with semaphore:
-                await setup_miner_with_timeout(uid, synapse)
-
         # Process all miners in parallel
-        await asyncio.gather(*[semaphore_wrapper(uid, synapse) for uid, synapse in miners])
+        await asyncio.gather(*[setup_miner_with_timeout(uid, synapse) for uid, synapse in miners])
 
         # Mark assigned miners that are not in ready_miners as unavailable
         available_miner_ids = {uid for uid, _ in miners}
@@ -964,3 +959,4 @@ class RoundManager(BaseModel):
                 }
         
         return [{"uid": uid, **status} for uid, status in task_status.items()]
+
