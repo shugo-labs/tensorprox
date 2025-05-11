@@ -89,6 +89,7 @@ def set_weights(weights: np.ndarray, step: int = 0):
 
     except Exception as ex:
         logger.exception(f"Issue with setting weights: {ex}")
+        return  # Prevent undefined variable usage
 
     # Create a dataframe from weights and uids and save it as a csv file, with the current step as the filename.
     if settings.LOG_WEIGHTS:
@@ -115,22 +116,32 @@ def set_weights(weights: np.ndarray, step: int = 0):
         logger.debug(f"Set weights disabled: {settings.NEURON_DISABLE_SET_WEIGHTS}")
         return
 
-
     # Set the weights on chain via our subtensor connection.
-    result = settings.SUBTENSOR.set_weights(
-        wallet=settings.WALLET,
-        netuid=settings.NETUID,
-        uids=uint_uids,
-        weights=uint_weights,
-        wait_for_finalization=True,
-        wait_for_inclusion=True,
-        version_key=__spec_version__,
-    )
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            result = settings.SUBTENSOR.set_weights(
+                wallet=settings.WALLET,
+                netuid=settings.NETUID,
+                uids=uint_uids,
+                weights=uint_weights,
+                wait_for_finalization=True,
+                wait_for_inclusion=True,
+                version_key=__spec_version__,
+            )
 
-    if result[0]:
-        logger.info("Successfully set weights on chain")
-    else:
-        logger.error(f"Failed to set weights on chain: {result}")
+            if result[0]:
+                logger.info(f"✅ Successfully set weights on chain (attempt {attempt})")
+                return
+            else:
+                logger.warning(f"⚠️ Failed to set weights (attempt {attempt}): {result}")
+
+        except Exception as ex:
+            logger.warning(f"⚠️ Exception during set_weights (attempt {attempt}): {ex}")
+
+        time.sleep(2)  # Delay before retrying
+
+    logger.error("❌ All attempts to set weights failed.")
 
 
 class WeightSetter(AsyncLoopRunner):

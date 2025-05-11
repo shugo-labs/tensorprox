@@ -42,6 +42,7 @@ import asyncio
 import signal
 import bittensor as bt
 from tensorprox import *
+from tensorprox.utils.utils import *
 from tensorprox import settings
 settings.settings = settings.Settings.load(mode="validator")
 settings = settings.settings
@@ -51,7 +52,7 @@ from tensorprox.base.dendrite import DendriteResponseEvent
 from tensorprox.utils.logging import ErrorLoggingEvent
 from concurrent.futures import ThreadPoolExecutor
 from tensorprox.core.round_manager import RoundManager
-from tensorprox.utils.utils import create_random_playlist, get_remaining_time, generate_random_hashes, generate_ips, load_ips_from_file
+from tensorprox.utils.utils import create_random_playlist, get_remaining_time, generate_random_hashes
 from tensorprox.rewards.scoring import task_scorer
 from tensorprox.utils.timer import Timer
 from tensorprox.rewards.weight_setter import weight_setter
@@ -281,30 +282,38 @@ class Validator(BaseValidatorNeuron):
 
                 logger.info(f"📢 Starting new round at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC.")
 
-                logger.info(f"🐛 Committing active count data : {current_time}")
+                logger.info(f"🐛 Committing Proof of Activity : {current_time}")
+    
+                async def try_commit_with_retries():
+                    attempt = 1
+                    while attempt <= 3:
+                        try:
+                            loop = asyncio.get_running_loop()
+                            await loop.run_in_executor(
+                                executor,
+                                lambda: settings.SUBTENSOR.commit(
+                                    wallet=settings.WALLET,
+                                    netuid=settings.NETUID,
+                                    data=str(current_time)
+                                )
+                            )
+                            logger.info(f"✅ Commit succeeded on attempt {attempt}")
+                            return True
+                        except Exception as e:
+                            logger.warning(f"⚠️ Commit attempt {attempt} failed: {e}")
+                            await asyncio.sleep(1)               
+                        attempt +=1
+                    return False
 
                 try:
-                    loop = asyncio.get_running_loop()
-                    # Wrap the commit call in run_in_executor to make it awaitable
-                    await asyncio.wait_for(
-                        loop.run_in_executor(
-                            executor,
-                            lambda: settings.SUBTENSOR.commit(
-                                wallet=settings.WALLET,
-                                netuid=settings.NETUID,
-                                data=str(current_time)
-                            )
-                        ),
-                        timeout=55
-                    )
-                    logger.info(f"⚡️ Time after commit : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC.")
-                    await self.run_step(timeout=settings.NEURON_TIMEOUT, sync_time=current_time, start_time=datetime.now())
-
+                    success = await asyncio.wait_for(try_commit_with_retries(), timeout=55)
+                    if not success:
+                        logger.error("❌ All commit attempts failed. Skipping step.")
+                    else:
+                        await self.run_step(timeout=settings.NEURON_TIMEOUT, sync_time=current_time, start_time=datetime.now())
                 except asyncio.TimeoutError:
-                    logger.error("❌ Commit timed out after 55 seconds. Skipping step.")
-                except Exception as e:
-                    logger.error(f"❌ Commit failed: {e}. Skipping step.")
-                        
+                    logger.error("❌ Commit process timed out after 55 seconds. Skipping step.")
+
             await asyncio.sleep(1) 
 
 
