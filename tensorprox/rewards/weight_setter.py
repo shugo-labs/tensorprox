@@ -87,50 +87,50 @@ def set_weights(weights: np.ndarray, step: int = 0):
         # Convert to uint16 weights and uids.
         (uint_uids,uint_weights) = bt.utils.weight_utils.convert_weights_and_uids_for_emit(uids=processed_weight_uids, weights=processed_weights)
 
+        # Create a dataframe from weights and uids and save it as a csv file, with the current step as the filename.
+        if settings.LOG_WEIGHTS:
+            try:
+                logger.debug(f"Lengths... UIDS: {len(uint_uids)}, WEIGHTS: {len(processed_weights.flatten())}, RAW_WEIGHTS: {len(weights.flatten())}, UINT_WEIGHTS: {len(uint_weights)}")
+                weights_df = pd.DataFrame(
+                    {
+                        "step": step,
+                        "uids": uint_uids,
+                        "weights": processed_weights.flatten(),
+                        "raw_weights": str(list(weights.flatten())),
+                        "averaged_weights": str(list(averaged_weights.flatten())),
+                        "block": ttl_get_block(),
+                    }
+                )
+                step_filename = "weights.csv"
+                file_exists = os.path.isfile(step_filename)
+                # Append to the file if it exists, otherwise write a new file.
+                weights_df.to_csv(step_filename, mode="a", index=False, header=not file_exists)
+            except Exception as ex:
+                logger.exception(f"Couldn't write to df: {ex}")
+
+        if settings.NEURON_DISABLE_SET_WEIGHTS:
+            logger.debug(f"Set weights disabled: {settings.NEURON_DISABLE_SET_WEIGHTS}")
+            return
+
+
+        # Set the weights on chain via our subtensor connection.
+        result = settings.SUBTENSOR.set_weights(
+            wallet=settings.WALLET,
+            netuid=settings.NETUID,
+            uids=uint_uids,
+            weights=uint_weights,
+            wait_for_finalization=True,
+            wait_for_inclusion=True,
+            version_key=__spec_version__,
+        )
+
+        if result[0]:
+            logger.info("Successfully set weights on chain")
+        else:
+            logger.error(f"Failed to set weights on chain: {result}")
+
     except Exception as ex:
         logger.exception(f"Issue with setting weights: {ex}")
-
-    # Create a dataframe from weights and uids and save it as a csv file, with the current step as the filename.
-    if settings.LOG_WEIGHTS:
-        try:
-            logger.debug(f"Lengths... UIDS: {len(uint_uids)}, WEIGHTS: {len(processed_weights.flatten())}, RAW_WEIGHTS: {len(weights.flatten())}, UINT_WEIGHTS: {len(uint_weights)}")
-            weights_df = pd.DataFrame(
-                {
-                    "step": step,
-                    "uids": uint_uids,
-                    "weights": processed_weights.flatten(),
-                    "raw_weights": str(list(weights.flatten())),
-                    "averaged_weights": str(list(averaged_weights.flatten())),
-                    "block": ttl_get_block(),
-                }
-            )
-            step_filename = "weights.csv"
-            file_exists = os.path.isfile(step_filename)
-            # Append to the file if it exists, otherwise write a new file.
-            weights_df.to_csv(step_filename, mode="a", index=False, header=not file_exists)
-        except Exception as ex:
-            logger.exception(f"Couldn't write to df: {ex}")
-
-    if settings.NEURON_DISABLE_SET_WEIGHTS:
-        logger.debug(f"Set weights disabled: {settings.NEURON_DISABLE_SET_WEIGHTS}")
-        return
-
-
-    # Set the weights on chain via our subtensor connection.
-    result = settings.SUBTENSOR.set_weights(
-        wallet=settings.WALLET,
-        netuid=settings.NETUID,
-        uids=uint_uids,
-        weights=uint_weights,
-        wait_for_finalization=True,
-        wait_for_inclusion=True,
-        version_key=__spec_version__,
-    )
-
-    if result[0]:
-        logger.info("Successfully set weights on chain")
-    else:
-        logger.error(f"Failed to set weights on chain: {result}")
 
 
 class WeightSetter(AsyncLoopRunner):

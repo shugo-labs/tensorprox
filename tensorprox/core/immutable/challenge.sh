@@ -14,18 +14,13 @@ udp_flood_pattern=$(echo "$label_hashes" | jq -r '.UDP_FLOOD | join("|")')
 tcp_syn_flood_pattern=$(echo "$label_hashes" | jq -r '.TCP_SYN_FLOOD | join("|")')
 INTERFACE_IP=$(ip -4 addr show ipip-"$machine_name" | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 
-# Default values for counts
-benign_count=0
-udp_flood_count=0
-tcp_syn_flood_count=0
-
 # Default RTT value
 rtt_avg=1000000000
 
-# Define the traffic filtering
+# Define the traffic filtering - pre-filter as much as possible at tcpdump level
 filter_traffic="(tcp or udp) and dst host $king_ip"
 
-# Add 2 second buffer to ensure late packets are counted 
+# Add buffer to ensure late packets are counted
 if [ "$machine_name" == "king" ]; then
     timeout_duration=$((challenge_duration + 1))
     nohup python3 "$tcp_server_path" > /tmp/tcp_server.log 2>&1 &
@@ -35,7 +30,6 @@ fi
 
 # Traffic generation for tgen machines
 if [[ "$machine_name" == tgen* ]]; then
-
     # Dump playlist into temporary json file
     echo "$playlist_json" > /tmp/playlist.json
 
@@ -44,17 +38,95 @@ if [[ "$machine_name" == tgen* ]]; then
 
     # Start continuous ping in background
     nohup ping -I "$INTERFACE_IP" -c "$challenge_duration" "$king_ip" > /tmp/rtt.txt 2>&1 &
-
 fi
 
+# Create a temporary file for patterns
+echo "$benign_pattern" > /tmp/benign_pattern.txt
+echo "$udp_flood_pattern" > /tmp/udp_flood_pattern.txt
+echo "$tcp_syn_flood_pattern" > /tmp/tcp_syn_flood_pattern.txt
+
+# Optimized approach: Use Perl instead of AWK for faster hash computation
+# Perl has built-in MD5 without calling external commands
 sudo timeout "$timeout_duration" tcpdump -A -l -i "gre-moat" "$filter_traffic" 2>/dev/null | \
-    awk 'BEGIN { benign=0; udp_flood=0; tcp_syn_flood=0 } 
-    {
-        if ($0 ~ /'"$udp_flood_pattern"'/) udp_flood++;
-        else if ($0 ~ /'"$tcp_syn_flood_pattern"'/) tcp_syn_flood++;
-        else if ($0 ~ /'"$benign_pattern"'/) benign++;
+perl -w -MDigest::MD5=md5_hex -e '
+    use strict;
+
+    # Read pattern files
+    open(my $benign_fh, "<", "/tmp/benign_pattern.txt") or die "Cannot open benign pattern file";
+    my $benign_pat = <$benign_fh>;
+    chomp($benign_pat);
+    close($benign_fh);
+
+    open(my $udp_fh, "<", "/tmp/udp_flood_pattern.txt") or die "Cannot open UDP pattern file";
+    my $udp_pat = <$udp_fh>;
+    chomp($udp_pat);
+    close($udp_fh);
+
+    open(my $tcp_fh, "<", "/tmp/tcp_syn_flood_pattern.txt") or die "Cannot open TCP pattern file";
+    my $tcp_pat = <$tcp_fh>;
+    chomp($tcp_pat);
+    close($tcp_fh);
+
+    # Define counters
+    my $benign = 0;
+    my $udp_flood = 0;
+    my $tcp_syn_flood = 0;
+
+    # Define hash sets for seen packets
+    my %seen_benign = ();
+    my %seen_udp_flood = ();
+    my %seen_tcp_syn_flood = ();
+
+    # Packet assembly variables
+    my $packet = "";
+    my $is_new_packet = 0;
+
+    # Process each line from tcpdump
+    while (my $line = <STDIN>) {
+        # Check if this is the start of a new packet
+        if ($line =~ /^[0-9]+:[0-9]+:[0-9]+\.[0-9]+ /) {
+            # Process previous packet if it exists
+            if ($packet ne "") {
+                process_packet($packet);
+            }
+            # Start a new packet
+            $packet = $line;
+        } else {
+            # Continue building current packet
+            $packet .= "\n" . $line;
+        }
     }
-    END { print "BENIGN:"benign", UDP_FLOOD:"udp_flood", TCP_SYN_FLOOD:"tcp_syn_flood }' > /tmp/counts.txt &
+
+    # Process the last packet if any
+    if ($packet ne "") {
+        process_packet($packet);
+    }
+
+    # Output results
+    print "BENIGN:$benign, UDP_FLOOD:$udp_flood, TCP_SYN_FLOOD:$tcp_syn_flood\n";
+
+    # Function to process a complete packet
+    sub process_packet {
+        my ($pkt) = @_;
+        
+        # Generate MD5 hash directly in Perl - much faster than shell commands
+        my $hash = md5_hex($pkt);
+        
+        # Classify packet based on patterns - order by expected frequency
+        if ($pkt =~ /$udp_pat/ && !exists $seen_udp_flood{$hash}) {
+            $seen_udp_flood{$hash} = 1;
+            $udp_flood++;
+        }
+        elsif ($pkt =~ /$benign_pat/ && !exists $seen_benign{$hash}) {
+            $seen_benign{$hash} = 1;
+            $benign++;
+        }
+        elsif ($pkt =~ /$tcp_pat/ && !exists $seen_tcp_syn_flood{$hash}) {
+            $seen_tcp_syn_flood{$hash} = 1;
+            $tcp_syn_flood++;
+        }
+    }
+' > /tmp/counts.txt &
 
 wait  # Ensure tcpdump finishes before reading counts
 
@@ -63,8 +135,7 @@ counts=$(cat /tmp/counts.txt)
 
 # Measure RTT if the machine is tgen
 if [[ "$machine_name" == tgen* ]]; then
-
-    # Extract average RTT from the ping output (assuming the ping command ran successfully)
+    # Extract average RTT from the ping output
     extracted_rtt=$(grep -oP 'rtt min/avg/max/mdev = \d+\.\d+/(\d+\.\d+)' /tmp/rtt.txt | awk -F'/' '{print $5}')
 
     # Update rtt_avg only if extracted_rtt is not empty
@@ -98,3 +169,8 @@ fi
 rm -f /tmp/playlist.json
 rm -f /tmp/rtt.txt
 rm -f /tmp/counts.txt
+rm -f /tmp/benign_pattern.txt
+rm -f /tmp/udp_flood_pattern.txt
+rm -f /tmp/tcp_syn_flood_pattern.txt
+
+exit 0
