@@ -1,6 +1,7 @@
 import os, sys
 sys.path.append(os.path.expanduser("~/tensorprox"))
 
+from tensorprox import EPOCH_TIME
 from functools import cached_property
 from typing import Any, Literal, Optional
 import bittensor as bt
@@ -25,7 +26,7 @@ class Settings(BaseSettings):
 
     #Subnet parameters
     SUBNET_NEURON_SIZE: int = 256
-    WEIGHT_SETTER_STEP: int = 28800 # set weights every 8 hours
+    WEIGHT_SETTER_STEP: int = EPOCH_TIME
 
     SAVE_PATH: Optional[str] = Field("./storage", env="SAVE_PATH")
 
