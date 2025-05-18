@@ -152,7 +152,7 @@ class WeightSetter(AsyncLoopRunner):
     previous_event_count: int = 0
 
     # Define window size for the sliding window approach
-    window_size: int = 3 
+    window_size: int = 14 
     
     # Store the sliding window of reward events
     reward_events_window: list = []
