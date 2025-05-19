@@ -8,18 +8,18 @@ def _version_to_int(version_str: str) -> int:
     return (10000 * major) + (100 * minor) + patch
 
 #Release version
-__version__ = "0.1.1" 
+__version__ = "0.1.2" 
 __spec_version__ = _version_to_int(__version__)
 
 #Inner parameters
-EPSILON: int = 60 # 3 minutes
-DELTA: int = 30 # 8 minutes
-CHALLENGE_DURATION: int = 60 #15 minutes
+EPSILON: int = 180 # 3 minutes
+DELTA: int = 420 # 8 minutes
+CHALLENGE_DURATION: int = 900 #15 minutes
 MIN_TGENS = 2
 MAX_TGENS = 8
 
 #Timeouts
-ROUND_TIMEOUT: int = 480 # 33 minutes
+ROUND_TIMEOUT: int = 1980 # 33 minutes
 QUERY_AVAILABILITY_TIMEOUT: int = 60 # 1 minute
 INITIAL_SETUP_TIMEOUT: int = 120 # 2 minutes
 LOCKDOWN_TIMEOUT: int = 120 # 2 minutes
