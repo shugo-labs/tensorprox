@@ -66,11 +66,10 @@ my $tcp_pat = <$tcp_fh>;
 chomp($tcp_pat);
 close($tcp_fh);
 
-# Define counters and track unique payloads
-my %seen_payloads = ();
-my $benign = 0;
-my $udp_flood = 0;
-my $tcp_syn_flood = 0;
+# Define sets to track unique payloads by category
+my %benign_payloads = ();
+my %udp_flood_payloads = ();
+my %tcp_syn_flood_payloads = ();
 
 # Debug file
 open(my $debug_fh, ">/tmp/payload_debug.txt");
@@ -78,45 +77,36 @@ open(my $debug_fh, ">/tmp/payload_debug.txt");
 # Process each payload directly from tshark
 while (my $hex_payload = <STDIN>) {
     chomp($hex_payload);
-    next if $hex_payload eq "";
+    next if $hex_payload eq "" || length($hex_payload) < 2;
     
     # Convert hex to ASCII
     my $full_payload = pack("H*", $hex_payload);
-    
-    # Extract just the application payload (skip the first 28 bytes which are headers)
-    # The 28 bytes offset is based on the analysis of your packets
-    my $app_payload = substr($full_payload, 28);
-    
-    print $debug_fh "FULL PACKET: [$full_payload]\n";
-    print $debug_fh "APPLICATION PAYLOAD: [$app_payload]\n";
-    
-    # Skip if we have seen this application payload before
-    if (exists $seen_payloads{$app_payload}) {
-        print $debug_fh "DUPLICATE APP PAYLOAD SKIPPED: [$app_payload]\n";
-        next;
+
+    # Check if this payload contains any of our patterns
+    if ($full_payload =~ /$benign_pat/i) {
+        # Store this unique payload in the benign set
+        $benign_payloads{$hex_payload} = 1;
     }
     
-    # Mark this application payload as seen
-    $seen_payloads{$app_payload} = 1;
-    print $debug_fh "NEW UNIQUE APP PAYLOAD: [$app_payload]\n";
+    if ($full_payload =~ /$udp_pat/i) {
+        # Store this unique payload in the UDP flood set
+        $udp_flood_payloads{$hex_payload} = 1;
+    }
     
-    # Now classify based on content patterns
-    if ($app_payload =~ /$benign_pat/i) {
-        $benign++;
-        print $debug_fh "BENIGN UNIQUE: [$app_payload] COUNT: $benign\n";
-    }
-    elsif ($app_payload =~ /$udp_pat/i) {
-        $udp_flood++;
-        print $debug_fh "UDP UNIQUE: [$app_payload] COUNT: $udp_flood\n";
-    }
-    elsif ($app_payload =~ /$tcp_pat/i) {
-        $tcp_syn_flood++;
-        print $debug_fh "TCP UNIQUE: [$app_payload] COUNT: $tcp_syn_flood\n";
+    if ($full_payload =~ /$tcp_pat/i) {
+        # Store this unique payload in the TCP SYN flood set
+        $tcp_syn_flood_payloads{$hex_payload} = 1;
     }
 }
 
+# Count unique payloads in each category
+my $benign = scalar(keys %benign_payloads);
+my $udp_flood = scalar(keys %udp_flood_payloads);
+my $tcp_syn_flood = scalar(keys %tcp_syn_flood_payloads);
+
 close($debug_fh);
-print "BENIGN:$benign, UDP_FLOOD:$udp_flood, TCP_SYN_FLOOD:$tcp_syn_flood\n";
+
+print "BENIGN:$benign, UDP_FLOOD:$udp_flood, TCP_SYN_FLOOD:$tcp_syn_flood";
 ' > /tmp/counts.txt &
 
 wait  # Ensure tcpdump finishes before reading counts
