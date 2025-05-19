@@ -8,7 +8,7 @@ def _version_to_int(version_str: str) -> int:
     return (10000 * major) + (100 * minor) + patch
 
 #Release version
-__version__ = "0.1.1" 
+__version__ = "0.1.2" 
 __spec_version__ = _version_to_int(__version__)
 
 #Inner parameters
