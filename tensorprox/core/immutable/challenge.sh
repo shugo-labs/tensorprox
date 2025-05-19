@@ -75,53 +75,29 @@ perl -w -MDigest::MD5=md5_hex -e '
     my %seen_udp_flood = ();
     my %seen_tcp_syn_flood = ();
 
-    # Extract only the hex data for fingerprinting
-    sub extract_hex_data {
-        my ($full_packet) = @_;
-        my @hex_lines = ();
-        
-        # Extract lines that start with 0x (hex data)
-        foreach my $line (split /\n/, $full_packet) {
-            if ($line =~ /^\s*0x[0-9a-f]+:\s+((?:[0-9a-f]{2,4}\s+)+)/) {
-                push @hex_lines, $1;
-            }
-        }
-        
-        # Join all hex data into a single string and remove whitespace
-        my $hex_data = join("", @hex_lines);
-        $hex_data =~ s/\s+//g;  # Remove all whitespace
-        
-        return $hex_data;
-    }
-
-    # Variables for packet processing
-    my $current_packet = "";
-    my $in_packet = 0;
+    # Packet assembly variables
+    my $packet = "";
+    my $is_new_packet = 0;
 
     # Process each line from tcpdump
     while (my $line = <STDIN>) {
-        chomp($line);
-        
         # Check if this is the start of a new packet
         if ($line =~ /^[0-9]+:[0-9]+:[0-9]+\.[0-9]+ /) {
-            # Process previous packet if exists
-            if ($current_packet) {
-                process_packet($current_packet);
+            # Process previous packet if it exists
+            if ($packet ne "") {
+                process_packet($packet);
             }
-            
-            # Start new packet
-            $current_packet = "";
-            $in_packet = 1;
-        }
-        elsif ($in_packet) {
-            # Add line to current packet
-            $current_packet .= "$line\n";
+            # Start a new packet
+            $packet = $line;
+        } else {
+            # Continue building current packet
+            $packet .= "\n" . $line;
         }
     }
 
     # Process the last packet if any
-    if ($current_packet) {
-        process_packet($current_packet);
+    if ($packet ne "") {
+        process_packet($packet);
     }
 
     # Output results
@@ -131,18 +107,17 @@ perl -w -MDigest::MD5=md5_hex -e '
     sub process_packet {
         my ($pkt) = @_;
         
-        # Extract only hex data for fingerprinting
-        my $hex_data = extract_hex_data($pkt);
-        my $hash = md5_hex($hex_data);
+        # Generate MD5 hash directly in Perl - much faster than shell commands
+        my $hash = md5_hex($pkt);
         
-        # Classify packet based on patterns
-        if ($pkt =~ /$benign_pat/ && !exists $seen_benign{$hash}) {
-            $seen_benign{$hash} = 1;
-            $benign++;
-        }
-        elsif ($pkt =~ /$udp_pat/ && !exists $seen_udp_flood{$hash}) {
+        # Classify packet based on patterns - order by expected frequency
+        if ($pkt =~ /$udp_pat/ && !exists $seen_udp_flood{$hash}) {
             $seen_udp_flood{$hash} = 1;
             $udp_flood++;
+        }
+        elsif ($pkt =~ /$benign_pat/ && !exists $seen_benign{$hash}) {
+            $seen_benign{$hash} = 1;
+            $benign++;
         }
         elsif ($pkt =~ /$tcp_pat/ && !exists $seen_tcp_syn_flood{$hash}) {
             $seen_tcp_syn_flood{$hash} = 1;
