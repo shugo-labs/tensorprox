@@ -45,85 +45,78 @@ echo "$tcp_syn_flood_pattern" > /tmp/tcp_syn_flood_pattern.txt
 
 # Optimized approach: Use Perl instead of AWK for faster hash computation
 # Perl has built-in MD5 without calling external commands
-sudo timeout "$timeout_duration" tcpdump -A -l -i "gre-moat" "$filter_traffic" 2>/dev/null | \
+sudo timeout "$timeout_duration" tshark -i "gre-moat" -f "$filter_traffic" -T fields -e data 2>/dev/null | \
 perl -w -MDigest::MD5=md5_hex -e '
-    use strict;
+use strict;
+use Digest::MD5 qw(md5_hex);
 
-    # Read pattern files
-    open(my $benign_fh, "<", "/tmp/benign_pattern.txt") or die "Cannot open benign pattern file";
-    my $benign_pat = <$benign_fh>;
-    chomp($benign_pat);
-    close($benign_fh);
+# Read pattern files
+open(my $benign_fh, "<", "/tmp/benign_pattern.txt") or die "Cannot open benign pattern file";
+my $benign_pat = <$benign_fh>;
+chomp($benign_pat);
+close($benign_fh);
 
-    open(my $udp_fh, "<", "/tmp/udp_flood_pattern.txt") or die "Cannot open UDP pattern file";
-    my $udp_pat = <$udp_fh>;
-    chomp($udp_pat);
-    close($udp_fh);
+open(my $udp_fh, "<", "/tmp/udp_flood_pattern.txt") or die "Cannot open UDP pattern file";
+my $udp_pat = <$udp_fh>;
+chomp($udp_pat);
+close($udp_fh);
 
-    open(my $tcp_fh, "<", "/tmp/tcp_syn_flood_pattern.txt") or die "Cannot open TCP pattern file";
-    my $tcp_pat = <$tcp_fh>;
-    chomp($tcp_pat);
-    close($tcp_fh);
+open(my $tcp_fh, "<", "/tmp/tcp_syn_flood_pattern.txt") or die "Cannot open TCP pattern file";
+my $tcp_pat = <$tcp_fh>;
+chomp($tcp_pat);
+close($tcp_fh);
 
-    # Define counters
-    my $benign = 0;
-    my $udp_flood = 0;
-    my $tcp_syn_flood = 0;
+# Define counters and track unique payloads
+my %seen_payloads = ();
+my $benign = 0;
+my $udp_flood = 0;
+my $tcp_syn_flood = 0;
 
-    # Define hash sets for seen packets
-    my %seen_benign = ();
-    my %seen_udp_flood = ();
-    my %seen_tcp_syn_flood = ();
+# Debug file
+open(my $debug_fh, ">/tmp/payload_debug.txt");
 
-    # Packet assembly variables
-    my $packet = "";
-    my $is_new_packet = 0;
-
-    # Process each line from tcpdump
-    while (my $line = <STDIN>) {
-        # Check if this is the start of a new packet
-        if ($line =~ /^[0-9]+:[0-9]+:[0-9]+\.[0-9]+ /) {
-            # Process previous packet if it exists
-            if ($packet ne "") {
-                process_packet($packet);
-            }
-            # Start a new packet
-            $packet = $line;
-        } else {
-            # Continue building current packet
-            $packet .= "\n" . $line;
-        }
+# Process each payload directly from tshark
+while (my $hex_payload = <STDIN>) {
+    chomp($hex_payload);
+    next if $hex_payload eq "";
+    
+    # Convert hex to ASCII
+    my $full_payload = pack("H*", $hex_payload);
+    
+    # Extract just the application payload (skip the first 28 bytes which are headers)
+    # The 28 bytes offset is based on the analysis of your packets
+    my $app_payload = substr($full_payload, 28);
+    
+    print $debug_fh "FULL PACKET: [$full_payload]\n";
+    print $debug_fh "APPLICATION PAYLOAD: [$app_payload]\n";
+    
+    # Skip if we have seen this application payload before
+    if (exists $seen_payloads{$app_payload}) {
+        print $debug_fh "DUPLICATE APP PAYLOAD SKIPPED: [$app_payload]\n";
+        next;
     }
-
-    # Process the last packet if any
-    if ($packet ne "") {
-        process_packet($packet);
+    
+    # Mark this application payload as seen
+    $seen_payloads{$app_payload} = 1;
+    print $debug_fh "NEW UNIQUE APP PAYLOAD: [$app_payload]\n";
+    
+    # Now classify based on content patterns
+    if ($app_payload =~ /$benign_pat/i) {
+        $benign++;
+        print $debug_fh "BENIGN UNIQUE: [$app_payload] COUNT: $benign\n";
     }
-
-    # Output results
-    print "BENIGN:$benign, UDP_FLOOD:$udp_flood, TCP_SYN_FLOOD:$tcp_syn_flood\n";
-
-    # Function to process a complete packet
-    sub process_packet {
-        my ($pkt) = @_;
-        
-        # Generate MD5 hash directly in Perl - much faster than shell commands
-        my $hash = md5_hex($pkt);
-        
-        # Classify packet based on patterns - order by expected frequency
-        if ($pkt =~ /$udp_pat/ && !exists $seen_udp_flood{$hash}) {
-            $seen_udp_flood{$hash} = 1;
-            $udp_flood++;
-        }
-        elsif ($pkt =~ /$benign_pat/ && !exists $seen_benign{$hash}) {
-            $seen_benign{$hash} = 1;
-            $benign++;
-        }
-        elsif ($pkt =~ /$tcp_pat/ && !exists $seen_tcp_syn_flood{$hash}) {
-            $seen_tcp_syn_flood{$hash} = 1;
-            $tcp_syn_flood++;
-        }
+    elsif ($app_payload =~ /$udp_pat/i) {
+        $udp_flood++;
+        print $debug_fh "UDP UNIQUE: [$app_payload] COUNT: $udp_flood\n";
     }
+    elsif ($app_payload =~ /$tcp_pat/i) {
+        $tcp_syn_flood++;
+        print $debug_fh "TCP UNIQUE: [$app_payload] COUNT: $tcp_syn_flood\n";
+    }
+}
+
+close($debug_fh);
+print "BENIGN:$benign, UDP_FLOOD:$udp_flood, TCP_SYN_FLOOD:$tcp_syn_flood\n";
 ' > /tmp/counts.txt &
 
 wait  # Ensure tcpdump finishes before reading counts
