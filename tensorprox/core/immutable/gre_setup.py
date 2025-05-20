@@ -1058,299 +1058,299 @@ class GRESetup:
         log("[INFO] DPDK optimized for virtualized environment", level=1)
         return True
 
-    def create_optimized_xdp_program(self, interface):
-        """Create optimized XDP program for virtio environments"""
-        log("[INFO] Creating optimized XDP program for {0}".format(self.node_type), level=1)
+    # def create_optimized_xdp_program(self, interface):
+    #     """Create optimized XDP program for virtio environments"""
+    #     log("[INFO] Creating optimized XDP program for {0}".format(self.node_type), level=1)
         
-        # Create XDP program directory if it doesn't exist with appropriate permissions
-        self.ensure_directory(XDP_PROGRAM_DIR)
+    #     # Create XDP program directory if it doesn't exist with appropriate permissions
+    #     self.ensure_directory(XDP_PROGRAM_DIR)
         
-        # XDP program content is the same...
-        xdp_program = """
-    #include <linux/bpf.h>
-    #include <linux/if_ether.h>
-    #include <linux/ip.h>
-    #include <linux/in.h>
-    #include <linux/udp.h>
-    #include <linux/tcp.h>
-    #include <bpf/bpf_helpers.h>
-    #include <bpf/bpf_endian.h>
+    #     # XDP program content is the same...
+    #     xdp_program = """
+    # #include <linux/bpf.h>
+    # #include <linux/if_ether.h>
+    # #include <linux/ip.h>
+    # #include <linux/in.h>
+    # #include <linux/udp.h>
+    # #include <linux/tcp.h>
+    # #include <bpf/bpf_helpers.h>
+    # #include <bpf/bpf_endian.h>
 
-    // Performance-optimized tunnel traffic processor for virtio
-    #define GRE_PROTO 47
-    #define IPIP_PROTO 4
-    #define OVERLAY_NETWORK 0x0A000000 // 10.0.0.0
-    #define OVERLAY_MASK    0xFF000000 // /8
+    # // Performance-optimized tunnel traffic processor for virtio
+    # #define GRE_PROTO 47
+    # #define IPIP_PROTO 4
+    # #define OVERLAY_NETWORK 0x0A000000 // 10.0.0.0
+    # #define OVERLAY_MASK    0xFF000000 // /8
 
-    // Packet verdict counter map
-    struct {
-        __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-        __uint(key_size, sizeof(__u32));
-        __uint(value_size, sizeof(__u64));
-        __uint(max_entries, 4);
-    } packet_stats SEC(".maps");
+    # // Packet verdict counter map
+    # struct {
+    #     __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    #     __uint(key_size, sizeof(__u32));
+    #     __uint(value_size, sizeof(__u64));
+    #     __uint(max_entries, 4);
+    # } packet_stats SEC(".maps");
 
-    // Packet forwarding map for direct transmission
-    struct {
-        __uint(type, BPF_MAP_TYPE_DEVMAP);
-        __uint(key_size, sizeof(__u32));
-        __uint(value_size, sizeof(__u32));
-        __uint(max_entries, 64);
-    } tx_port SEC(".maps");
+    # // Packet forwarding map for direct transmission
+    # struct {
+    #     __uint(type, BPF_MAP_TYPE_DEVMAP);
+    #     __uint(key_size, sizeof(__u32));
+    #     __uint(value_size, sizeof(__u32));
+    #     __uint(max_entries, 64);
+    # } tx_port SEC(".maps");
 
-    // Count packets for monitoring
-    static __always_inline void count_packet(__u32 type) {
-        __u64 *counter = bpf_map_lookup_elem(&packet_stats, &type);
-        if (counter)
-            __sync_fetch_and_add(counter, 1);
-    }
+    # // Count packets for monitoring
+    # static __always_inline void count_packet(__u32 type) {
+    #     __u64 *counter = bpf_map_lookup_elem(&packet_stats, &type);
+    #     if (counter)
+    #         __sync_fetch_and_add(counter, 1);
+    # }
 
-    // Fast packet parser (optimized for virtio)
-    static __always_inline __u32 parse_and_classify(struct xdp_md *ctx) {
-        void *data_end = (void *)(long)ctx->data_end;
-        void *data = (void *)(long)ctx->data;
-        __u32 action = XDP_PASS;
+    # // Fast packet parser (optimized for virtio)
+    # static __always_inline __u32 parse_and_classify(struct xdp_md *ctx) {
+    #     void *data_end = (void *)(long)ctx->data_end;
+    #     void *data = (void *)(long)ctx->data;
+    #     __u32 action = XDP_PASS;
 
-        struct ethhdr *eth = data;
-        if (eth + 1 > data_end)
-            return XDP_PASS;
+    #     struct ethhdr *eth = data;
+    #     if (eth + 1 > data_end)
+    #         return XDP_PASS;
 
-        if (eth->h_proto != bpf_htons(ETH_P_IP))
-            return XDP_PASS;
+    #     if (eth->h_proto != bpf_htons(ETH_P_IP))
+    #         return XDP_PASS;
 
-        struct iphdr *iph = (struct iphdr *)(eth + 1);
-        if (iph + 1 > data_end)
-            return XDP_PASS;
+    #     struct iphdr *iph = (struct iphdr *)(eth + 1);
+    #     if (iph + 1 > data_end)
+    #         return XDP_PASS;
 
-        // Check for tunnel traffic or overlay IPs with minimal branching
-        __u32 is_tunnel = (iph->protocol == GRE_PROTO || iph->protocol == IPIP_PROTO);
-        __u32 is_overlay = ((iph->saddr & bpf_htonl(OVERLAY_MASK)) == bpf_htonl(OVERLAY_NETWORK)) || 
-                        ((iph->daddr & bpf_htonl(OVERLAY_MASK)) == bpf_htonl(OVERLAY_NETWORK));
+    #     // Check for tunnel traffic or overlay IPs with minimal branching
+    #     __u32 is_tunnel = (iph->protocol == GRE_PROTO || iph->protocol == IPIP_PROTO);
+    #     __u32 is_overlay = ((iph->saddr & bpf_htonl(OVERLAY_MASK)) == bpf_htonl(OVERLAY_NETWORK)) || 
+    #                     ((iph->daddr & bpf_htonl(OVERLAY_MASK)) == bpf_htonl(OVERLAY_NETWORK));
 
-        if (is_tunnel || is_overlay) {
-            count_packet(is_tunnel ? 0 : 1);
-            return XDP_PASS;  // Faster pass for tunnel traffic in virtio
-        }
+    #     if (is_tunnel || is_overlay) {
+    #         count_packet(is_tunnel ? 0 : 1);
+    #         return XDP_PASS;  // Faster pass for tunnel traffic in virtio
+    #     }
 
-        return XDP_PASS;
-    }
+    #     return XDP_PASS;
+    # }
 
-    SEC("xdp")
-    int xdp_tunnel_func(struct xdp_md *ctx) {
-        return parse_and_classify(ctx);
-    }
+    # SEC("xdp")
+    # int xdp_tunnel_func(struct xdp_md *ctx) {
+    #     return parse_and_classify(ctx);
+    # }
 
-    char _license[] SEC("license") = "GPL";
-    """
+    # char _license[] SEC("license") = "GPL";
+    # """
         
-        # Write the XDP program to file with proper permissions
-        program_file = os.path.join(XDP_PROGRAM_DIR, f"{self.node_type}_xdp.c")
+    #     # Write the XDP program to file with proper permissions
+    #     program_file = os.path.join(XDP_PROGRAM_DIR, f"{self.node_type}_xdp.c")
         
-        # Write to a temp file first for safety
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
-            temp_path = temp_file.name
-            temp_file.write(xdp_program)
+    #     # Write to a temp file first for safety
+    #     with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
+    #         temp_path = temp_file.name
+    #         temp_file.write(xdp_program)
         
-        # Copy to destination with proper permissions
-        if not IS_ROOT:
-            # Create directory if it doesn't exist
-            self.ensure_directory(os.path.dirname(program_file))
-            # Copy file with sudo
-            self.run_cmd(["sudo", "-n", "cp", temp_path, program_file], quiet=True)
-            self.run_cmd(["sudo", "-n", "chmod", "644", program_file], quiet=True)
-            # Make file accessible
-            self.run_cmd(["sudo", "-n", "chown", f"{os.getuid()}:{os.getgid()}", program_file], quiet=True)
-        else:
-            self.run_cmd(["cp", temp_path, program_file], quiet=True)
-            self.run_cmd(["chmod", "644", program_file], quiet=True)
+    #     # Copy to destination with proper permissions
+    #     if not IS_ROOT:
+    #         # Create directory if it doesn't exist
+    #         self.ensure_directory(os.path.dirname(program_file))
+    #         # Copy file with sudo
+    #         self.run_cmd(["sudo", "-n", "cp", temp_path, program_file], quiet=True)
+    #         self.run_cmd(["sudo", "-n", "chmod", "644", program_file], quiet=True)
+    #         # Make file accessible
+    #         self.run_cmd(["sudo", "-n", "chown", f"{os.getuid()}:{os.getgid()}", program_file], quiet=True)
+    #     else:
+    #         self.run_cmd(["cp", temp_path, program_file], quiet=True)
+    #         self.run_cmd(["chmod", "644", program_file], quiet=True)
         
-        # Clean up temp file
-        try:
-            os.unlink(temp_path)
-        except:
-            pass
+    #     # Clean up temp file
+    #     try:
+    #         os.unlink(temp_path)
+    #     except:
+    #         pass
         
-        # Install clang and LLVM if needed
-        self.install_packages_resilient(["clang", "llvm"])
+    #     # Install clang and LLVM if needed
+    #     self.install_packages_resilient(["clang", "llvm"])
         
-        # Compile the XDP program
-        object_file = os.path.join(XDP_PROGRAM_DIR, f"{self.node_type}_xdp.o")
-        compile_result = self.run_cmd(["clang", "-O2", "-g", "-Wall", "-target", "bpf", "-c", program_file, "-o", object_file], quiet=True)
+    #     # Compile the XDP program
+    #     object_file = os.path.join(XDP_PROGRAM_DIR, f"{self.node_type}_xdp.o")
+    #     compile_result = self.run_cmd(["clang", "-O2", "-g", "-Wall", "-target", "bpf", "-c", program_file, "-o", object_file], quiet=True)
         
-        if compile_result.returncode == 0:
-            # Make sure the object file has the right permissions
-            if not IS_ROOT:
-                self.run_cmd(["sudo", "-n", "chmod", "644", object_file], quiet=True)
-                self.run_cmd(["sudo", "-n", "chown", f"{os.getuid()}:{os.getgid()}", object_file], quiet=True)
+    #     if compile_result.returncode == 0:
+    #         # Make sure the object file has the right permissions
+    #         if not IS_ROOT:
+    #             self.run_cmd(["sudo", "-n", "chmod", "644", object_file], quiet=True)
+    #             self.run_cmd(["sudo", "-n", "chown", f"{os.getuid()}:{os.getgid()}", object_file], quiet=True)
                 
-            # When loading XDP program
-            # primary_interface, _ = self.detect_self.primary_interface()
-            driver_info = self.run_cmd(["ethtool", "-i", self.primary_interface], quiet=True)
+    #         # When loading XDP program
+    #         # primary_interface, _ = self.detect_self.primary_interface()
+    #         driver_info = self.run_cmd(["ethtool", "-i", self.primary_interface], quiet=True)
             
-            # Always use generic mode for virtio (which is what we detect from the logs)
-            log("[INFO] Using generic XDP mode for virtio_net", level=1)
-            load_result = self.run_cmd(["ip", "link", "set", "dev", self.primary_interface, "xdpgeneric", "obj", object_file, "sec", "xdp"], quiet=True)
+    #         # Always use generic mode for virtio (which is what we detect from the logs)
+    #         log("[INFO] Using generic XDP mode for virtio_net", level=1)
+    #         load_result = self.run_cmd(["ip", "link", "set", "dev", self.primary_interface, "xdpgeneric", "obj", object_file, "sec", "xdp"], quiet=True)
             
-            if load_result.returncode == 0:
-                log("[INFO] Optimized XDP program loaded successfully on {0}".format(self.primary_interface), level=1)
-                return True
-            else:
-                log("[WARN] Failed to load XDP program", level=1)
-                # Continue even if loading fails
-                return True
-        else:
-            log("[WARN] Failed to compile XDP program", level=1)
-            # Continue even if compilation fails
-            return True
+    #         if load_result.returncode == 0:
+    #             log("[INFO] Optimized XDP program loaded successfully on {0}".format(self.primary_interface), level=1)
+    #             return True
+    #         else:
+    #             log("[WARN] Failed to load XDP program", level=1)
+    #             # Continue even if loading fails
+    #             return True
+    #     else:
+    #         log("[WARN] Failed to compile XDP program", level=1)
+    #         # Continue even if compilation fails
+    #         return True
 
-    def create_enhanced_afxdp_program(self, interface, resource_plan):
-        """Create AF_XDP program optimized for VM environments"""
-        log("[INFO] Creating enhanced AF_XDP program for {0}".format(self.node_type), level=1)
+    # def create_enhanced_afxdp_program(self, interface, resource_plan):
+    #     """Create AF_XDP program optimized for VM environments"""
+    #     log("[INFO] Creating enhanced AF_XDP program for {0}".format(self.node_type), level=1)
         
-        # Ensure directories exist with proper permissions
-        self.ensure_directory(XDP_PROGRAM_DIR)
-        self.ensure_directory(XDP_LOG_DIR)
+    #     # Ensure directories exist with proper permissions
+    #     self.ensure_directory(XDP_PROGRAM_DIR)
+    #     self.ensure_directory(XDP_LOG_DIR)
         
-        # Determine CPU cores for AF_XDP
-        cpu_cores = resource_plan["isolated_cpus"] if resource_plan["isolated_cpus"] else "0"
+    #     # Determine CPU cores for AF_XDP
+    #     cpu_cores = resource_plan["isolated_cpus"] if resource_plan["isolated_cpus"] else "0"
         
-        # Enhanced AF_XDP program with zero-copy and CPU pinning
-        afxdp_code = f"""#!/usr/bin/env python3
-    # Enhanced AF_XDP Acceleration for VMs
-    import os
-    import sys
-    import time
-    import socket
-    import struct
-    import signal
-    import multiprocessing
-    import threading
-    import ctypes
-    import fcntl
-    from datetime import datetime
-    import numpy as np  # For efficient memory operations
+    #     # Enhanced AF_XDP program with zero-copy and CPU pinning
+    #     afxdp_code = f"""#!/usr/bin/env python3
+    # # Enhanced AF_XDP Acceleration for VMs
+    # import os
+    # import sys
+    # import time
+    # import socket
+    # import struct
+    # import signal
+    # import multiprocessing
+    # import threading
+    # import ctypes
+    # import fcntl
+    # from datetime import datetime
+    # import numpy as np  # For efficient memory operations
 
-    # Configuration with VM-specific tuning
-    INTERFACE = "{interface}"
-    NODE_TYPE = "{self.node_type}"
-    BATCH_SIZE = 128  # Increased batch size for better throughput
-    QUEUES = {resource_plan["dpdk_cores"]}
-    LOG_FILE = "{XDP_LOG_DIR}/{self.node_type}_afxdp.log"
-    USE_ZEROCOPY = True
-    CPU_CORES = [int(core) for core in "{cpu_cores}".split(',') if core]
+    # # Configuration with VM-specific tuning
+    # INTERFACE = "{interface}"
+    # NODE_TYPE = "{self.node_type}"
+    # BATCH_SIZE = 128  # Increased batch size for better throughput
+    # QUEUES = {resource_plan["dpdk_cores"]}
+    # LOG_FILE = "{XDP_LOG_DIR}/{self.node_type}_afxdp.log"
+    # USE_ZEROCOPY = True
+    # CPU_CORES = [int(core) for core in "{cpu_cores}".split(',') if core]
 
-    # Import specialized libraries if available
-    try:
-        from pyroute2 import IPRoute
-        HAVE_PYROUTE2 = True
-    except ImportError:
-        HAVE_PYROUTE2 = False
-        print("[WARN] pyroute2 not available, performance will be limited")
+    # # Import specialized libraries if available
+    # try:
+    #     from pyroute2 import IPRoute
+    #     HAVE_PYROUTE2 = True
+    # except ImportError:
+    #     HAVE_PYROUTE2 = False
+    #     print("[WARN] pyroute2 not available, performance will be limited")
 
-    # Global counters with numpy for atomic operations
-    counters = {{
-        'processed_packets': np.zeros(1, dtype=np.uint64),
-        'processed_bytes': np.zeros(1, dtype=np.uint64),
-        'errors': np.zeros(1, dtype=np.uint64)
-    }}
+    # # Global counters with numpy for atomic operations
+    # counters = {{
+    #     'processed_packets': np.zeros(1, dtype=np.uint64),
+    #     'processed_bytes': np.zeros(1, dtype=np.uint64),
+    #     'errors': np.zeros(1, dtype=np.uint64)
+    # }}
 
-    # Global control flag
-    running = True
+    # # Global control flag
+    # running = True
 
-    def log_message(message):
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        try:
-            os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-            with open(LOG_FILE, "a") as f:
-                f.write(f"[{{timestamp}}] {{message}}\\n")
-        except:
-            pass
+    # def log_message(message):
+    #     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    #     try:
+    #         os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+    #         with open(LOG_FILE, "a") as f:
+    #             f.write(f"[{{timestamp}}] {{message}}\\n")
+    #     except:
+    #         pass
 
-    def signal_handler(sig, frame):
-        global running
-        print("Stopping AF_XDP workers...")
-        running = False
+    # def signal_handler(sig, frame):
+    #     global running
+    #     print("Stopping AF_XDP workers...")
+    #     running = False
 
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    # signal.signal(signal.SIGINT, signal_handler)
+    # signal.signal(signal.SIGTERM, signal_handler)
 
-    # Rest of the code remains the same...
-    """
+    # # Rest of the code remains the same...
+    # """
         
-        # Write the AF_XDP program to file with proper permissions
-        program_file = os.path.join(XDP_PROGRAM_DIR, f"{self.node_type}_afxdp.py")
+    #     # Write the AF_XDP program to file with proper permissions
+    #     program_file = os.path.join(XDP_PROGRAM_DIR, f"{self.node_type}_afxdp.py")
         
-        # Write to a temp file first for safety
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
-            temp_path = temp_file.name
-            temp_file.write(afxdp_code)
+    #     # Write to a temp file first for safety
+    #     with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
+    #         temp_path = temp_file.name
+    #         temp_file.write(afxdp_code)
         
-        # Copy to destination with proper permissions
-        if not IS_ROOT:
-            # Ensure directory exists
-            self.ensure_directory(os.path.dirname(program_file))
-            # Copy and set proper permissions
-            self.run_cmd(["sudo", "-n", "cp", temp_path, program_file], quiet=True)
-            self.run_cmd(["sudo", "-n", "chmod", "755", program_file], quiet=True)  # Executable
-            # Make accessible to current user
-            self.run_cmd(["sudo", "-n", "chown", f"{os.getuid()}:{os.getgid()}", program_file], quiet=True)
-        else:
-            self.run_cmd(["cp", temp_path, program_file], quiet=True)
-            self.run_cmd(["chmod", "755", program_file], quiet=True)  # Executable
+    #     # Copy to destination with proper permissions
+    #     if not IS_ROOT:
+    #         # Ensure directory exists
+    #         self.ensure_directory(os.path.dirname(program_file))
+    #         # Copy and set proper permissions
+    #         self.run_cmd(["sudo", "-n", "cp", temp_path, program_file], quiet=True)
+    #         self.run_cmd(["sudo", "-n", "chmod", "755", program_file], quiet=True)  # Executable
+    #         # Make accessible to current user
+    #         self.run_cmd(["sudo", "-n", "chown", f"{os.getuid()}:{os.getgid()}", program_file], quiet=True)
+    #     else:
+    #         self.run_cmd(["cp", temp_path, program_file], quiet=True)
+    #         self.run_cmd(["chmod", "755", program_file], quiet=True)  # Executable
         
-        # Clean up temp file
-        try:
-            os.unlink(temp_path)
-        except:
-            pass
+    #     # Clean up temp file
+    #     try:
+    #         os.unlink(temp_path)
+    #     except:
+    #         pass
         
-        # Create a systemd service file with proper permissions
-        service_file = f"/etc/systemd/system/afxdp-{self.node_type}.service"
-        service_content = f"""[Unit]
-    Description=Enhanced AF_XDP Acceleration for {self.node_type}
-    After=network.target
+    #     # Create a systemd service file with proper permissions
+    #     service_file = f"/etc/systemd/system/afxdp-{self.node_type}.service"
+    #     service_content = f"""[Unit]
+    # Description=Enhanced AF_XDP Acceleration for {self.node_type}
+    # After=network.target
 
-    [Service]
-    Type=simple
-    ExecStart={XDP_PROGRAM_DIR}/{self.node_type}_afxdp.py
-    Restart=on-failure
-    RestartSec=5
-    CPUSchedulingPolicy=fifo
-    CPUSchedulingPriority=99
-    IOSchedulingClass=realtime
-    IOSchedulingPriority=0
-    LimitMEMLOCK=infinity
+    # [Service]
+    # Type=simple
+    # ExecStart={XDP_PROGRAM_DIR}/{self.node_type}_afxdp.py
+    # Restart=on-failure
+    # RestartSec=5
+    # CPUSchedulingPolicy=fifo
+    # CPUSchedulingPriority=99
+    # IOSchedulingClass=realtime
+    # IOSchedulingPriority=0
+    # LimitMEMLOCK=infinity
 
-    [Install]
-    WantedBy=multi-user.target
-    """
+    # [Install]
+    # WantedBy=multi-user.target
+    # """
         
-        # Write to a temp file first
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
-            temp_path = temp_file.name
-            temp_file.write(service_content)
+    #     # Write to a temp file first
+    #     with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
+    #         temp_path = temp_file.name
+    #         temp_file.write(service_content)
         
-        # Copy to destination with proper permissions
-        if not IS_ROOT:
-            self.run_cmd(["sudo", "-n", "cp", temp_path, service_file], quiet=True)
-            self.run_cmd(["sudo", "-n", "chmod", "644", service_file], quiet=True)
-        else:
-            self.run_cmd(["cp", temp_path, service_file], quiet=True)
-            self.run_cmd(["chmod", "644", service_file], quiet=True)
+    #     # Copy to destination with proper permissions
+    #     if not IS_ROOT:
+    #         self.run_cmd(["sudo", "-n", "cp", temp_path, service_file], quiet=True)
+    #         self.run_cmd(["sudo", "-n", "chmod", "644", service_file], quiet=True)
+    #     else:
+    #         self.run_cmd(["cp", temp_path, service_file], quiet=True)
+    #         self.run_cmd(["chmod", "644", service_file], quiet=True)
         
-        # Clean up temp file
-        try:
-            os.unlink(temp_path)
-        except:
-            pass
+    #     # Clean up temp file
+    #     try:
+    #         os.unlink(temp_path)
+    #     except:
+    #         pass
         
-        # Reload systemd and enable/start the service
-        self.run_cmd(["systemctl", "daemon-reload"], quiet=True)
-        self.run_cmd(["systemctl", "enable", f"afxdp-{self.node_type}"], quiet=True)
-        self.run_cmd(["systemctl", "start", f"afxdp-{self.node_type}"], quiet=True)
+    #     # Reload systemd and enable/start the service
+    #     self.run_cmd(["systemctl", "daemon-reload"], quiet=True)
+    #     self.run_cmd(["systemctl", "enable", f"afxdp-{self.node_type}"], quiet=True)
+    #     self.run_cmd(["systemctl", "start", f"afxdp-{self.node_type}"], quiet=True)
         
-        log("[INFO] Enhanced AF_XDP acceleration enabled for {0} on {1}".format(self.node_type, interface), level=1)
-        return True
+    #     log("[INFO] Enhanced AF_XDP acceleration enabled for {0} on {1}".format(self.node_type, interface), level=1)
+    #     return True
 
     def setup_enhanced_acceleration(self, interface, resource_plan):
         """Set up enhanced hybrid acceleration with intelligent scaling and improved reliability"""
@@ -1372,18 +1372,18 @@ class GRESetup:
             # 4. Virtio-specific optimizations if applicable
             self.optimize_virtio_for_tunneling()
             log("[INFO] Virtio-specific optimizations complete", level=1)
-            
-            # 5. Create optimized XDP program
-            self.create_optimized_xdp_program(interface)
-            log("[INFO] XDP program creation complete", level=1)
-            
-            # 6. DPDK optimization - moved after XDP to allow for background installation
+
+            # 5. DPDK optimization - moved after XDP to allow for background installation
             self.optimize_dpdk_for_virtio(resource_plan)
             log("[INFO] DPDK optimization complete", level=1)
             
-            # 7. Create enhanced AF_XDP program
-            self.create_enhanced_afxdp_program(interface, resource_plan)
-            log("[INFO] AF_XDP program creation complete", level=1)
+            # # 6. Create optimized XDP program
+            # self.create_optimized_xdp_program(interface)
+            # log("[INFO] XDP program creation complete", level=1)
+            
+            # # 7. Create enhanced AF_XDP program
+            # self.create_enhanced_afxdp_program(interface, resource_plan)
+            # log("[INFO] AF_XDP program creation complete", level=1)
             
             log("[INFO] Enhanced acceleration setup complete for {0}".format(self.node_type), level=1)
             return True
@@ -1489,7 +1489,8 @@ class GRESetup:
         self.run_cmd(["ip", "link", "set", ipip_tunnel_name, "mtu", str(IPIP_MTU)])
         self.run_cmd(["ip", "addr", "add", f"{overlay_ip}/32", "dev", ipip_tunnel_name])
         self.run_cmd(["ip", "link", "set", ipip_tunnel_name, "up"])
-        
+
+
         # Apply tunnel-specific optimizations
         self.optimize_tunnel_interface(ipip_tunnel_name)
         

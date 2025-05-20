@@ -117,6 +117,7 @@ class RewardLoggingEvent(BaseEvent):
     global_bandwidth: float
     global_capacity: float
     global_purity: float
+    global_bdr: float
     response_event: DendriteResponseEvent
 
     

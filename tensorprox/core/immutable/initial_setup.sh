@@ -89,4 +89,3 @@ rm -rf $TMPDIR
 chown -R $ssh_user:$ssh_user $ssh_dir
 chmod 700 $ssh_dir
 chmod 600 $authorized_keys_path
-

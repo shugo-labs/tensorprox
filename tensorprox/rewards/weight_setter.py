@@ -87,55 +87,60 @@ def set_weights(weights: np.ndarray, step: int = 0):
         # Convert to uint16 weights and uids.
         (uint_uids,uint_weights) = bt.utils.weight_utils.convert_weights_and_uids_for_emit(uids=processed_weight_uids, weights=processed_weights)
 
+        # Create a dataframe from weights and uids and save it as a csv file, with the current step as the filename.
+        if settings.LOG_WEIGHTS:
+            try:
+                logger.debug(f"Lengths... UIDS: {len(uint_uids)}, WEIGHTS: {len(processed_weights.flatten())}, RAW_WEIGHTS: {len(weights.flatten())}, UINT_WEIGHTS: {len(uint_weights)}")
+                weights_df = pd.DataFrame(
+                    {
+                        "step": step,
+                        "uids": uint_uids,
+                        "weights": processed_weights.flatten(),
+                        "raw_weights": str(list(weights.flatten())),
+                        "averaged_weights": str(list(averaged_weights.flatten())),
+                        "block": ttl_get_block(),
+                    }
+                )
+                step_filename = "weights.csv"
+                file_exists = os.path.isfile(step_filename)
+                # Append to the file if it exists, otherwise write a new file.
+                weights_df.to_csv(step_filename, mode="a", index=False, header=not file_exists)
+            except Exception as ex:
+                logger.exception(f"Couldn't write to df: {ex}")
+
+        if settings.NEURON_DISABLE_SET_WEIGHTS:
+            logger.debug(f"Set weights disabled: {settings.NEURON_DISABLE_SET_WEIGHTS}")
+            return
+
+
+        # Set the weights on chain via our subtensor connection.
+        result = settings.SUBTENSOR.set_weights(
+            wallet=settings.WALLET,
+            netuid=settings.NETUID,
+            uids=uint_uids,
+            weights=uint_weights,
+            wait_for_finalization=True,
+            wait_for_inclusion=True,
+            version_key=__spec_version__,
+        )
+
+        if result[0]:
+            logger.info("Successfully set weights on chain")
+        else:
+            logger.error(f"Failed to set weights on chain: {result}")
+
     except Exception as ex:
         logger.exception(f"Issue with setting weights: {ex}")
-
-    # Create a dataframe from weights and uids and save it as a csv file, with the current step as the filename.
-    if settings.LOG_WEIGHTS:
-        try:
-            logger.debug(f"Lengths... UIDS: {len(uint_uids)}, WEIGHTS: {len(processed_weights.flatten())}, RAW_WEIGHTS: {len(weights.flatten())}, UINT_WEIGHTS: {len(uint_weights)}")
-            weights_df = pd.DataFrame(
-                {
-                    "step": step,
-                    "uids": uint_uids,
-                    "weights": processed_weights.flatten(),
-                    "raw_weights": str(list(weights.flatten())),
-                    "averaged_weights": str(list(averaged_weights.flatten())),
-                    "block": ttl_get_block(),
-                }
-            )
-            step_filename = "weights.csv"
-            file_exists = os.path.isfile(step_filename)
-            # Append to the file if it exists, otherwise write a new file.
-            weights_df.to_csv(step_filename, mode="a", index=False, header=not file_exists)
-        except Exception as ex:
-            logger.exception(f"Couldn't write to df: {ex}")
-
-    if settings.NEURON_DISABLE_SET_WEIGHTS:
-        logger.debug(f"Set weights disabled: {settings.NEURON_DISABLE_SET_WEIGHTS}")
-        return
-
-
-    # Set the weights on chain via our subtensor connection.
-    result = settings.SUBTENSOR.set_weights(
-        wallet=settings.WALLET,
-        netuid=settings.NETUID,
-        uids=uint_uids,
-        weights=uint_weights,
-        wait_for_finalization=True,
-        wait_for_inclusion=True,
-        version_key=__spec_version__,
-    )
-
-    if result[0]:
-        logger.info("Successfully set weights on chain")
-    else:
-        logger.error(f"Failed to set weights on chain: {result}")
 
 
 class WeightSetter(AsyncLoopRunner):
     """
     Manages the setting of validator weights based on reward events.
+
+    This implementation uses a sliding window approach where:
+    - No weights are set until at least 13 reward events are collected
+    - Once 13+ events are collected, weights are set each time a new event arrives
+    - A sliding window of 13 most recent events is maintained
 
     Attributes:
         interval (int): Time interval (in minutes) between weight updates.
@@ -143,12 +148,23 @@ class WeightSetter(AsyncLoopRunner):
 
     interval: int = settings.WEIGHT_SETTER_STEP
     
+    # Store previous reward events count to detect changes
+    previous_event_count: int = 0
+
+    # Define window size for the sliding window approach
+    window_size: int = 14 
+    
+    # Store the sliding window of reward events
+    reward_events_window: list = []
+
     async def run_step(self):
         """
         Execute a single step in the weight-setting loop.
 
-        This method processes reward events, calculates final rewards,
-        and sets the corresponding weights on the chain.
+        Implements the sliding window approach for setting weights:
+        - Waits until at least 13 reward events are collected
+        - Sets weights when a new event arrives after reaching the threshold
+        - Maintains a sliding window of the 13 most recent events
 
         Args:
             None
@@ -158,22 +174,38 @@ class WeightSetter(AsyncLoopRunner):
         """
 
         await asyncio.sleep(0.01)
-        
-        # Initialize final_rewards as None or a default array
-        final_rewards = np.zeros(settings.SUBNET_NEURON_SIZE, dtype=float)
     
+        # Initialize final_rewards as zeros array
+        final_rewards = np.zeros(settings.SUBNET_NEURON_SIZE, dtype=float)
+        
         try:
             logger.info("Reward setting loop running")
             if not global_vars.reward_events or len(global_vars.reward_events) == 0:
                 logger.warning("No reward events in queue, skipping weight setting...")
                 return
-            logger.debug(f"Found {len(global_vars.reward_events)} reward events in queue")
+
+            current_event_count = len(global_vars.reward_events)
+            
+            # If we don't have enough events yet, just log and return
+            if current_event_count < self.window_size:
+                logger.info(f"Collecting reward events: {current_event_count}/{self.window_size}")
+                self.previous_event_count = current_event_count
+                return
+                
+            # If event count hasn't changed, no need to set weights
+            if current_event_count == self.previous_event_count:
+                return
+
+            logger.info(f"Setting weights based on {self.window_size} most recent events (total events: {current_event_count})")
+
+            # Take the most recent WINDOW_SIZE events
+            window_events = global_vars.reward_events[-self.window_size:]
 
             reward_dict = {uid: 0 for uid in range(settings.SUBNET_NEURON_SIZE)}
 
             miner_rewards: dict[dict[int, float]] = {uid: {"reward": 0, "count": 0} for uid in range(settings.SUBNET_NEURON_SIZE)}
             
-            for reward_event in global_vars.reward_events:
+            for reward_event in window_events:
                 await asyncio.sleep(0.01)
 
                 # give each uid the reward they received
@@ -181,7 +213,6 @@ class WeightSetter(AsyncLoopRunner):
                     miner_rewards[uid]["reward"] += reward
                     miner_rewards[uid]["count"] += 1
 
-            # logger.debug(f"Miner rewards after processing: {miner_rewards}")
 
             # Calculate the average reward per UID
             for uid, reward_data in miner_rewards.items():
@@ -191,12 +222,16 @@ class WeightSetter(AsyncLoopRunner):
             final_rewards[final_rewards < 0] = 0
             final_rewards /= np.sum(final_rewards) + 1e-10
             logger.debug(f"Final reward dict: {final_rewards}")
+
+            # set weights on chain
+            set_weights(final_rewards, step=self.step)
+
+            # Update previous event count
+            self.previous_event_count = current_event_count
+            
         except Exception as ex:
             logger.exception(f"{ex}")
             
-        # set weights on chain
-        set_weights(final_rewards, step=self.step)
-        global_vars.reward_events = []
         await asyncio.sleep(0.01)
         return final_rewards
 
