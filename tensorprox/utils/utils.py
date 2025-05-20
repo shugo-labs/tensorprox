@@ -366,26 +366,23 @@ def create_random_playlist(total_seconds, label_hashes, role=None, seed=None):
     return playlist
 
  
-def generate_random_hashes(n=10):
-    # Function to generate a random hash
-    def generate_random_string(length=16):
+def generate_random_hashes(n=10, min_len=8, max_len=64):
+    # Function to generate a random string of variable length
+    def generate_random_string():
+        length = random.randint(min_len, max_len)
         return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
-
-    def generate_hash(value):
-        return hashlib.sha256(value.encode()).hexdigest()
     
-    # Create a dictionary to store the hashes for each label
+    # Create a dictionary to store the random strings for each label
     label_hashes = {
         "BENIGN": [],
         "TCP_SYN_FLOOD": [],
         "UDP_FLOOD": []
     }
     
-    # Generate n random hashes for each label
+    # Generate n random strings for each label
     for label in label_hashes:
         for _ in range(n):
-            random_string = generate_random_string()
-            label_hashes[label].append(generate_hash(random_string))
+            label_hashes[label].append(generate_random_string())
     
     return label_hashes
 
