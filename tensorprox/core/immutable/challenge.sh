@@ -16,12 +16,12 @@ INTERFACE_IP=$(ip -4 addr show ipip-"$machine_name" | grep -oP '(?<=inet\s)\d+(\
 # Default RTT value
 rtt_avg=1000000000
 
-# Define the traffic filtering - pre-filter as much as possible at tcpdump level
+# Define the traffic filtering
 filter_traffic="(tcp or udp) and dst host $king_ip"
 
 # Add buffer to ensure late packets are counted
 if [ "$machine_name" == "king" ]; then
-    timeout_duration=$((challenge_duration + 1))
+    timeout_duration=$((challenge_duration + 2))
 else
     timeout_duration=$challenge_duration
 fi
@@ -38,76 +38,43 @@ if [[ "$machine_name" == tgen* ]]; then
     nohup ping -I "$INTERFACE_IP" -c "$challenge_duration" "$king_ip" > /tmp/rtt.txt 2>&1 &
 fi
 
-# Create a temporary file for patterns
-echo "$benign_pattern" > /tmp/benign_pattern.txt
-echo "$udp_flood_pattern" > /tmp/udp_flood_pattern.txt
-echo "$tcp_syn_flood_pattern" > /tmp/tcp_syn_flood_pattern.txt
-
-# Optimized approach: Use Perl instead of AWK for faster hash computation
-# Perl has built-in MD5 without calling external commands
-sudo timeout "$timeout_duration" tshark -i "gre-moat" -f "$filter_traffic" -T fields -e data 2>/dev/null | \
-perl -w -MDigest::MD5=md5_hex -e '
-use strict;
-use Digest::MD5 qw(md5_hex);
-
-# Read pattern files
-open(my $benign_fh, "<", "/tmp/benign_pattern.txt") or die "Cannot open benign pattern file";
-my $benign_pat = <$benign_fh>;
-chomp($benign_pat);
-close($benign_fh);
-
-open(my $udp_fh, "<", "/tmp/udp_flood_pattern.txt") or die "Cannot open UDP pattern file";
-my $udp_pat = <$udp_fh>;
-chomp($udp_pat);
-close($udp_fh);
-
-open(my $tcp_fh, "<", "/tmp/tcp_syn_flood_pattern.txt") or die "Cannot open TCP pattern file";
-my $tcp_pat = <$tcp_fh>;
-chomp($tcp_pat);
-close($tcp_fh);
-
-# Define sets to track unique payloads by category
-my %benign_payloads = ();
-my %udp_flood_payloads = ();
-my %tcp_syn_flood_payloads = ();
-
-# Debug file
-open(my $debug_fh, ">/tmp/payload_debug.txt");
-
-# Process each payload directly from tshark
-while (my $hex_payload = <STDIN>) {
-    chomp($hex_payload);
-    next if $hex_payload eq "" || length($hex_payload) < 2;
-    
-    # Convert hex to ASCII
-    my $full_payload = pack("H*", $hex_payload);
-
-    # Check if this payload contains any of our patterns
-    if ($full_payload =~ /$benign_pat/i) {
-        # Store this unique payload in the benign set
-        $benign_payloads{$hex_payload} = 1;
+# Use fast tcpdump with custom gawk processing to handle uniqueness for benign only
+sudo timeout "$timeout_duration" tcpdump -A -l -i "gre-moat" "$filter_traffic" 2>/dev/null | \
+gawk -v benign_pat="$benign_pattern" -v udp_pat="$udp_flood_pattern" -v tcp_pat="$tcp_syn_flood_pattern" '
+BEGIN {
+    udp_flood = 0;
+    tcp_syn_flood = 0;
+}
+{
+    # Store line for benign uniqueness check
+    if ($0 ~ benign_pat) {
+        # Create a hash of the payload for uniqueness check
+        payload = $0;
+        # Store unique benign payloads
+        if (!(payload in benign_payloads)) {
+            benign_payloads[payload] = 1;
+        }
     }
     
-    if ($full_payload =~ /$udp_pat/i) {
-        # Store this unique payload in the UDP flood set
-        $udp_flood_payloads{$hex_payload} = 1;
+    # Count all occurrences for UDP flood (no uniqueness check)
+    if ($0 ~ udp_pat) {
+        udp_flood++;
     }
     
-    if ($full_payload =~ /$tcp_pat/i) {
-        # Store this unique payload in the TCP SYN flood set
-        $tcp_syn_flood_payloads{$hex_payload} = 1;
+    # Count all occurrences for TCP SYN flood (no uniqueness check)
+    if ($0 ~ tcp_pat) {
+        tcp_syn_flood++;
     }
 }
-
-# Count unique payloads in each category
-my $benign = scalar(keys %benign_payloads);
-my $udp_flood = scalar(keys %udp_flood_payloads);
-my $tcp_syn_flood = scalar(keys %tcp_syn_flood_payloads);
-
-close($debug_fh);
-
-print "BENIGN:$benign, UDP_FLOOD:$udp_flood, TCP_SYN_FLOOD:$tcp_syn_flood";
-' > /tmp/counts.txt &
+END {
+    # Count the unique benign payloads
+    benign = 0;
+    for (payload in benign_payloads) {
+        benign++;
+    }
+    
+    printf "BENIGN:%d, UDP_FLOOD:%d, TCP_SYN_FLOOD:%d", benign, udp_flood, tcp_syn_flood;
+}' > /tmp/counts.txt &
 
 wait  # Ensure tcpdump finishes before reading counts
 
@@ -135,8 +102,5 @@ fi
 rm -f /tmp/playlist.json
 rm -f /tmp/rtt.txt
 rm -f /tmp/counts.txt
-rm -f /tmp/benign_pattern.txt
-rm -f /tmp/udp_flood_pattern.txt
-rm -f /tmp/tcp_syn_flood_pattern.txt
 
 exit 0
