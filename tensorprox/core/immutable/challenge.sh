@@ -13,18 +13,13 @@ udp_flood_pattern=$(echo "$label_hashes" | jq -r '.UDP_FLOOD | join("|")')
 tcp_syn_flood_pattern=$(echo "$label_hashes" | jq -r '.TCP_SYN_FLOOD | join("|")')
 INTERFACE_IP=$(ip -4 addr show ipip-"$machine_name" | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 
-# Default values for counts
-benign_count=0
-udp_flood_count=0
-tcp_syn_flood_count=0
-
 # Default RTT value
 rtt_avg=1000000000
 
 # Define the traffic filtering
 filter_traffic="(tcp or udp) and dst host $king_ip"
 
-# Add 2 second buffer to ensure late packets are counted 
+# Add buffer to ensure late packets are counted
 if [ "$machine_name" == "king" ]; then
     timeout_duration=$((challenge_duration + 2))
 else
@@ -33,7 +28,6 @@ fi
 
 # Traffic generation for tgen machines
 if [[ "$machine_name" == tgen* ]]; then
-
     # Dump playlist into temporary json file
     echo "$playlist_json" > /tmp/playlist.json
 
@@ -42,17 +36,45 @@ if [[ "$machine_name" == tgen* ]]; then
 
     # Start continuous ping in background
     nohup ping -I "$INTERFACE_IP" -c "$challenge_duration" "$king_ip" > /tmp/rtt.txt 2>&1 &
-
 fi
 
+# Use fast tcpdump with custom gawk processing to handle uniqueness for benign only
 sudo timeout "$timeout_duration" tcpdump -A -l -i "gre-moat" "$filter_traffic" 2>/dev/null | \
-    awk 'BEGIN { benign=0; udp_flood=0; tcp_syn_flood=0 } 
-    {
-        if ($0 ~ /'"$udp_flood_pattern"'/) udp_flood++;
-        else if ($0 ~ /'"$tcp_syn_flood_pattern"'/) tcp_syn_flood++;
-        else if ($0 ~ /'"$benign_pattern"'/) benign++;
+gawk -v benign_pat="$benign_pattern" -v udp_pat="$udp_flood_pattern" -v tcp_pat="$tcp_syn_flood_pattern" '
+BEGIN {
+    udp_flood = 0;
+    tcp_syn_flood = 0;
+}
+{
+    # Store line for benign uniqueness check
+    if ($0 ~ benign_pat) {
+        # Create a hash of the payload for uniqueness check
+        payload = $0;
+        # Store unique benign payloads
+        if (!(payload in benign_payloads)) {
+            benign_payloads[payload] = 1;
+        }
     }
-    END { print "BENIGN:"benign", UDP_FLOOD:"udp_flood", TCP_SYN_FLOOD:"tcp_syn_flood }' > /tmp/counts.txt &
+    
+    # Count all occurrences for UDP flood (no uniqueness check)
+    if ($0 ~ udp_pat) {
+        udp_flood++;
+    }
+    
+    # Count all occurrences for TCP SYN flood (no uniqueness check)
+    if ($0 ~ tcp_pat) {
+        tcp_syn_flood++;
+    }
+}
+END {
+    # Count the unique benign payloads
+    benign = 0;
+    for (payload in benign_payloads) {
+        benign++;
+    }
+    
+    printf "BENIGN:%d, UDP_FLOOD:%d, TCP_SYN_FLOOD:%d", benign, udp_flood, tcp_syn_flood;
+}' > /tmp/counts.txt &
 
 wait  # Ensure tcpdump finishes before reading counts
 
@@ -61,8 +83,7 @@ counts=$(cat /tmp/counts.txt)
 
 # Measure RTT if the machine is tgen
 if [[ "$machine_name" == tgen* ]]; then
-
-    # Extract average RTT from the ping output (assuming the ping command ran successfully)
+    # Extract average RTT from the ping output
     extracted_rtt=$(grep -oP 'rtt min/avg/max/mdev = \d+\.\d+/(\d+\.\d+)' /tmp/rtt.txt | awk -F'/' '{print $5}')
 
     # Update rtt_avg only if extracted_rtt is not empty
@@ -81,3 +102,5 @@ fi
 rm -f /tmp/playlist.json
 rm -f /tmp/rtt.txt
 rm -f /tmp/counts.txt
+
+exit 0

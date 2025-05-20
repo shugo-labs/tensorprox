@@ -92,6 +92,7 @@ class ChallengeRewardEvent(BaseModel):
     global_bandwidth: float
     global_capacity: float
     global_purity: float
+    global_bdr: float
     uids: list[int]
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -123,6 +124,7 @@ class ChallengeRewardEvent(BaseModel):
             "global_bandwidth": self.global_bandwidth,
             "global_capacity": self.global_capacity,
             "global_purity": self.global_purity,
+            "global_bdr": self.global_bdr,
             "uids": self.uids,
         }
 
@@ -151,6 +153,7 @@ class BatchRewardOutput(BaseModel):
     global_bandwidth: float
     global_capacity: float
     global_purity: float
+    global_bdr: float
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 class ChallengeRewardModel(BaseModel):
@@ -198,6 +201,7 @@ class ChallengeRewardModel(BaseModel):
         global_reaching_attacks = 0
         global_reaching_packets = 0
         global_packets_sent = 0
+        global_benign_sent = 0
         packet_data = {}
 
         for uid in uids:
@@ -240,6 +244,7 @@ class ChallengeRewardModel(BaseModel):
             global_reaching_benign += total_reaching_benign
             global_reaching_packets += total_reaching_benign + total_reaching_attacks
             global_packets_sent += total_packets_sent
+            global_benign_sent += total_benign_sent
             
             packet_data[uid] = {
                 "total_attacks_sent": total_attacks_sent,
@@ -253,7 +258,8 @@ class ChallengeRewardModel(BaseModel):
 
             # logging.info(f"PACKET DATA : {packet_data}")
 
-        global_purity = global_reaching_benign / global_reaching_packets if global_reaching_packets > 0 else 0
+        global_bdr = min(max(global_reaching_benign / global_benign_sent, 0), 1) if global_benign_sent > 0 else 0
+        global_purity = min(max(global_reaching_benign / global_reaching_packets, 0), 1) if global_reaching_packets > 0 else 0
         global_capacity = (global_reaching_benign / CHALLENGE_DURATION) * MTU_GRE * 8 / 1e6 if CHALLENGE_DURATION > 0 else 0
         global_bandwidth = (global_packets_sent / CHALLENGE_DURATION) * MTU_GRE * 8 / 1e6 if CHALLENGE_DURATION > 0 else 0
 
@@ -343,8 +349,8 @@ class ChallengeRewardModel(BaseModel):
         # Get the best miner's specific metrics
         if best_miner_uid is not None:
             best_miner_data = packet_data[best_miner_uid]
-            best_bdr = best_miner_data["total_reaching_benign"]/best_miner_data["total_benign_sent"] if best_miner_data["total_benign_sent"] > 0 else 0
-            best_purity = best_miner_data["total_reaching_benign"] / best_miner_data["total_reaching_packets"] if best_miner_data["total_reaching_packets"] > 0 else 0
+            best_bdr = min(max(best_miner_data["total_reaching_benign"]/best_miner_data["total_benign_sent"], 0), 1) if best_miner_data["total_benign_sent"] > 0 else 0
+            best_purity = min(max(best_miner_data["total_reaching_benign"] / best_miner_data["total_reaching_packets"], 0), 1) if best_miner_data["total_reaching_packets"] > 0 else 0
             best_bandwidth = (best_miner_data["total_packets_sent"] / CHALLENGE_DURATION) * MTU_GRE * 8 / 1e6 if CHALLENGE_DURATION > 0 else 0
             best_capacity = (best_miner_data["total_reaching_benign"] / CHALLENGE_DURATION) * MTU_GRE * 8 / 1e6 if CHALLENGE_DURATION > 0 else 0
         else:
@@ -368,7 +374,8 @@ class ChallengeRewardModel(BaseModel):
             best_bdr=best_bdr,
             global_bandwidth=global_bandwidth,
             global_capacity=global_capacity,
-            global_purity=global_purity
+            global_purity=global_purity,
+            global_bdr=global_bdr
         )
 
 class BaseRewardConfig(BaseModel):
@@ -423,6 +430,7 @@ class BaseRewardConfig(BaseModel):
             best_bdr = batch_rewards_output.best_bdr, 
             global_bandwidth=batch_rewards_output.global_bandwidth,
             global_capacity=batch_rewards_output.global_capacity,
-            global_purity = batch_rewards_output.global_purity,                       
+            global_purity = batch_rewards_output.global_purity,    
+            global_bdr=batch_rewards_output.global_bdr,  
             uids=uids,
         )

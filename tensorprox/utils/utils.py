@@ -2,6 +2,7 @@ from requests import get
 from tensorprox import *
 import tensorprox
 import sys
+import numpy as np
 from datetime import datetime
 import subprocess
 import re
@@ -90,39 +91,63 @@ def get_subnet(interface):
             return str(ip_network)
     return None  # No IPv4 address found
 
-def generate_ips(num_ips=1000000, benign_percentage=0.1):
-    # Total number of benign and attack IPs
+def generate_ips(num_ips=1000000, benign_percentage=0.1, excluded_ips=None, save_to="ips_data.pkl", seed=None):
+    if excluded_ips is None:
+        excluded_ips = [KING_OVERLAY_IP]
+
+    # Use the provided seed or generate one
+    if seed is None:
+        seed = random.randint(0, 2**32 - 1)
+
+    np.random.seed(seed)
+    random.seed(seed)
+
+    start = int(ipaddress.IPv4Address("10.0.0.0"))
+    end = int(ipaddress.IPv4Address("10.255.255.255"))
+
+    all_ips = np.arange(start, end + 1, dtype=np.uint32)
+
+    excluded_set = set(int(ipaddress.IPv4Address(ip)) for ip in excluded_ips)
+    allowed_ips = np.setdiff1d(all_ips, list(excluded_set), assume_unique=False)
+
+    try:
+        if len(allowed_ips) < num_ips:
+            sampled_ips = allowed_ips
+            num_ips = len(sampled_ips)
+        else:
+            sampled_ips = np.random.choice(allowed_ips, size=num_ips, replace=False)
+    except Exception as e:
+        sampled_ips = allowed_ips[:num_ips]
+    
+    ip_strs = [str(ipaddress.IPv4Address(int(ip))) for ip in sampled_ips]
+
+    random.shuffle(ip_strs)
     benign_count = int(num_ips * benign_percentage)
-    attack_count = num_ips - benign_count
+    benign_ips = ip_strs[:benign_count]
+    attack_ips = ip_strs[benign_count:]
 
-    # Generate the list of IPs
-    ips = []
-    for _ in range(num_ips):
-        # Generate random IP within 10.0.0.0/8
-        ip_int = random.randint(int(ipaddress.IPv4Address("10.0.0.0")), int(ipaddress.IPv4Address("10.255.255.255")))
-        ip = str(ipaddress.IPv4Address(ip_int))
-        ips.append(ip)
-
-    # Split the list into benign and attack
-    random.shuffle(ips)
-    benign_ips = ips[:benign_count]
-    attack_ips = ips[benign_count:]
-
-    # Create a dictionary for storing
     ip_data = {
         "benign": benign_ips,
-        "attack": attack_ips
+        "attack": attack_ips,
+        "seed": seed  # Include the seed in the returned data
     }
+
+    if save_to is not None:
+        with open(save_to, 'wb') as f:
+            pickle.dump(ip_data, f)
 
     return ip_data
 
-def save_ips_to_file(ip_data, filename="ips_data.pkl"):
-    with open(filename, 'wb') as f:
-        pickle.dump(ip_data, f)
-
 def load_ips_from_file(filename="ips_data.pkl"):
-    with open(filename, 'rb') as f:
-        return pickle.load(f)
+    try:
+        if not os.path.exists(filename):
+            # print(f"[load_ips_from_file] Warning: {filename} does not exist. Returning empty IP data.")
+            return {"benign": [], "attack": [], "seed": 0}
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
+    except Exception as e:
+        # print(f"[load_ips_from_file] Exception occurred while loading: {e}")
+        return {"benign": [], "attack": [], "seed": 0}
 
 def log_message(level: str, message: str):
     """
@@ -341,26 +366,23 @@ def create_random_playlist(total_seconds, label_hashes, role=None, seed=None):
     return playlist
 
  
-def generate_random_hashes(n=10):
-    # Function to generate a random hash
-    def generate_random_string(length=16):
+def generate_random_hashes(n=10, min_len=8, max_len=64):
+    # Function to generate a random string of variable length
+    def generate_random_string():
+        length = random.randint(min_len, max_len)
         return ''.join(random.choices(string.ascii_letters + string.digits, k=length))
-
-    def generate_hash(value):
-        return hashlib.sha256(value.encode()).hexdigest()
     
-    # Create a dictionary to store the hashes for each label
+    # Create a dictionary to store the random strings for each label
     label_hashes = {
         "BENIGN": [],
         "TCP_SYN_FLOOD": [],
         "UDP_FLOOD": []
     }
     
-    # Generate n random hashes for each label
+    # Generate n random strings for each label
     for label in label_hashes:
         for _ in range(n):
-            random_string = generate_random_string()
-            label_hashes[label].append(generate_hash(random_string))
+            label_hashes[label].append(generate_random_string())
     
     return label_hashes
 

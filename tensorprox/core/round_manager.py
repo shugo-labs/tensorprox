@@ -218,6 +218,7 @@ class RoundManager(BaseModel):
         """
 
         try:
+
             # Parse the result to get the counts from stdout
             counts_and_rtt = result.stdout.strip().split(", ")
 
@@ -438,6 +439,7 @@ class RoundManager(BaseModel):
         remote_base_directory: str,
         ssh_dir: str,
         authorized_keys_path: str,
+        authorized_keys_bak: str,
         revert_timeout: int,
         script_name: str = "lockdown.sh",
         linked_files: list = []
@@ -472,6 +474,7 @@ class RoundManager(BaseModel):
             ssh_dir, 
             self.validator_ip,
             authorized_keys_path,
+            authorized_keys_bak,
             str(revert_timeout)
         ]
 
@@ -624,7 +627,7 @@ class RoundManager(BaseModel):
             label_hashes (Dict[str, list]): A dictionary mapping labels to their corresponding hash values.
             playlists (List[dict]): A list of playlists to be used for the challenge.
             script_name (str, optional): The name of the script to execute (default is "challenge.sh").
-            linked_files (list, optional): List of linked files to verify along with the script (default includes "traffic_generator.py").
+            linked_files (list, optional): List of linked files to verify along with the script (default includes "traffic_generator.py" and "tcp_server.py").
 
         Returns:
             tuple: The result of the challenge execution.
@@ -636,14 +639,14 @@ class RoundManager(BaseModel):
 
         playlist = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
         label_hashes = json.dumps(label_hashes)
-
+        
         args = [
             "/usr/bin/bash",
             remote_script_path,
             machine_name,
             str(challenge_duration),
             str(label_hashes),  
-            str(playlist),      
+            str(playlist),    
             KING_OVERLAY_IP,
             remote_traffic_gen,
         ]
@@ -819,26 +822,6 @@ class RoundManager(BaseModel):
                             authorized_keys_path,
                             authorized_keys_bak
                         )
-                    elif task == "lockdown":
-                        result = await self.process_lockdown(
-                            ip,
-                            ssh_user,
-                            key_path,
-                            remote_base_directory,
-                            ssh_dir,
-                            authorized_keys_path,
-                            revert_timeout
-                        )
-                    elif task == "revert":
-                        result = await self.process_revert(
-                            ip,
-                            ssh_user,
-                            key_path,
-                            remote_base_directory,
-                            authorized_keys_bak,
-                            authorized_keys_path,
-                            revert_log
-                        )
                     elif task == "gre_setup":
                         result = await self.process_gre_setup(
                             ip,
@@ -850,6 +833,17 @@ class RoundManager(BaseModel):
                             moat_private_ip,
                             private_ip,
                             interface
+                        )
+                    elif task == "lockdown":
+                        result = await self.process_lockdown(
+                            ip,
+                            ssh_user,
+                            key_path,
+                            remote_base_directory,
+                            ssh_dir,
+                            authorized_keys_path,
+                            authorized_keys_bak,
+                            revert_timeout
                         )
                     elif task == "challenge":
                         result = await self.process_challenge(
