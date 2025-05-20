@@ -291,7 +291,6 @@ The whitelist includes only essential commands for the validation process:
   - `initial_setup.sh`
   - `challenge.sh`
   - `lockdown.sh`
-  - `revert.sh`
   - `gre_setup.py`
   - `traffic_generator.py`
 
