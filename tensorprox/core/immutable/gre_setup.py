@@ -58,7 +58,7 @@ class GRESetup:
         self.local_ip = private_ip
         self.primary_interface = interface
 
-    def run_cmd(self, cmd, show_output=False, check=False, quiet=False, timeout=360, shell=False):
+    def run_cmd(self, cmd, show_output=False, check=False, quiet=False, timeout=120, shell=False):
         """Run command and return result with proper sudo privileges"""
         # Check if we're root
         is_root = os.geteuid() == 0
@@ -836,7 +836,7 @@ class GRESetup:
             log(f"[WARN] Error switching mirrors: {e}", level=1)
             return False
 
-    def install_packages_resilient(self, package_list, max_retries=3, timeout=600):
+    def install_packages_resilient(self, package_list, max_retries=3, timeout=120):
         """Install packages with retry logic and increased resilience"""
         log(f"[INFO] Installing packages with resilience: {' '.join(package_list)}", level=1)
         
