@@ -746,9 +746,9 @@ class GRESetup:
             
             # Use sudo for apt-get update if not root
             if IS_ROOT:
-                update_result = self.run_cmd(["apt-get", "update", "-y"], quiet=True, timeout=120)
+                update_result = self.run_cmd(["apt-get", "update", "-y"], quiet=True, timeout=60)
             else:
-                update_result = self.run_cmd(["sudo", "-n", "apt-get", "update", "-y"], quiet=True, timeout=120)
+                update_result = self.run_cmd(["sudo", "-n", "apt-get", "update", "-y"], quiet=True, timeout=60)
             
             if update_result.returncode == 0:
                 success = True
@@ -902,9 +902,9 @@ class GRESetup:
             log("[INFO] Package manager already running, cleaning up...", level=1)
             # Try to gracefully finish existing operations
             if IS_ROOT:
-                self.run_cmd(["dpkg", "--configure", "-a"], quiet=True, timeout=120)
+                self.run_cmd(["dpkg", "--configure", "-a"], quiet=True, timeout=60)
             else:
-                self.run_cmd(["sudo", "-n", "dpkg", "--configure", "-a"], quiet=True, timeout=120)
+                self.run_cmd(["sudo", "-n", "dpkg", "--configure", "-a"], quiet=True, timeout=60)
         
         # Install essential packages first (in smaller batches for better reliability)
         self.install_packages_resilient(["clang", "llvm", "libelf-dev"])
