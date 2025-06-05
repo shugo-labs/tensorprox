@@ -244,10 +244,10 @@ Captures responsiveness and speed.
    LF = 1 / (1 + log(AVG_RTT + 1)**3 / 10)
    ```
 
-   - Also allows mild tolerance for higher volumes :
+   - Also allows mild tolerance for higher volumes while ensuring latency is conditioned by accuracy :
    ```
    latency_tolerance = VPS * volume_weight * 0.5
-   latency = min(1.0, LF + latency_tolerance)
+   latency = min(1.0, LF + latency_tolerance) * (BDR * AMA)
    ```
 
 ### Scoring Method
