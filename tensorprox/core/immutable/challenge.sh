@@ -10,7 +10,6 @@ traffic_gen_path="$6"
 benign_pattern=$(echo "$label_hashes" | jq -r '.BENIGN | join("|")')
 udp_flood_pattern=$(echo "$label_hashes" | jq -r '.UDP_FLOOD | join("|")')
 tcp_syn_flood_pattern=$(echo "$label_hashes" | jq -r '.TCP_SYN_FLOOD | join("|")')
-
 INTERFACE_IP=$(ip -4 addr show ipip-"$machine_name" | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 
 # Default RTT value
