@@ -326,7 +326,7 @@ class ChallengeRewardModel(BaseModel):
             # Latency component (LF with slight tolerance for higher volumes)
             # For high volume, we're slightly more tolerant of latency
             latency_tolerance = VPS * volume_weight * 0.5 # 0 to 0.1 range
-            latency = min(1.0, LF + latency_tolerance)
+            latency = min(1.0, LF + latency_tolerance) * (BDR * AMA) # Ensure latency is coupled with accuracy
                         
             # logging.info(f"BDR for UID {uid} : {BDR}")
             # logging.info(f"AMA for UID {uid} : {AMA}")

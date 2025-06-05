@@ -1,5 +1,4 @@
 #!/bin/bash
-
 machine_name="$1"
 challenge_duration="$2"
 label_hashes="$3"
@@ -11,6 +10,7 @@ traffic_gen_path="$6"
 benign_pattern=$(echo "$label_hashes" | jq -r '.BENIGN | join("|")')
 udp_flood_pattern=$(echo "$label_hashes" | jq -r '.UDP_FLOOD | join("|")')
 tcp_syn_flood_pattern=$(echo "$label_hashes" | jq -r '.TCP_SYN_FLOOD | join("|")')
+
 INTERFACE_IP=$(ip -4 addr show ipip-"$machine_name" | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 
 # Default RTT value
@@ -21,25 +21,19 @@ filter_traffic="(tcp or udp) and dst host $king_ip"
 
 # Add buffer to ensure late packets are counted
 if [ "$machine_name" == "king" ]; then
-    timeout_duration=$((challenge_duration + 2))
+    timeout_duration=$((challenge_duration + 1))
 else
     timeout_duration=$challenge_duration
 fi
 
 # Traffic generation for tgen machines
 if [[ "$machine_name" == tgen* ]]; then
-    # Dump playlist into temporary json file
-    echo "$playlist_json" > /tmp/playlist.json
-
-    # Start traffic generator with the playlist
-    nohup python3 $traffic_gen_path --playlist /tmp/playlist.json --receiver-ips $king_ip --interface ipip-$machine_name > /tmp/traffic_generator.log 2>&1 &
-
-    # Start continuous ping in background
-    nohup ping -I "$INTERFACE_IP" -c "$challenge_duration" "$king_ip" > /tmp/rtt.txt 2>&1 &
+    # Start traffic generator with playlist via stdin 
+    nohup bash -c "echo '$playlist_json' | python3 $traffic_gen_path --playlist /dev/stdin --receiver-ips $king_ip --interface ipip-$machine_name" > /tmp/traffic_generator.log 2>&1 &
 fi
 
-# Use fast tcpdump with custom gawk processing to handle uniqueness for benign only
-sudo timeout "$timeout_duration" tcpdump -A -l -i "gre-moat" "$filter_traffic" 2>/dev/null | \
+# Use fast tcpdump with custom gawk processing and capture output directly
+counts=$(sudo timeout "$timeout_duration" tcpdump -A -l -i "gre-moat" "$filter_traffic" 2>/dev/null | \
 gawk -v benign_pat="$benign_pattern" -v udp_pat="$udp_flood_pattern" -v tcp_pat="$tcp_syn_flood_pattern" '
 BEGIN {
     udp_flood = 0;
@@ -74,17 +68,16 @@ END {
     }
     
     printf "BENIGN:%d, UDP_FLOOD:%d, TCP_SYN_FLOOD:%d", benign, udp_flood, tcp_syn_flood;
-}' > /tmp/counts.txt &
-
-wait  # Ensure tcpdump finishes before reading counts
-
-# Read counts from /tmp/counts.txt
-counts=$(cat /tmp/counts.txt)
+}' 2>/dev/null)
 
 # Measure RTT if the machine is tgen
 if [[ "$machine_name" == tgen* ]]; then
+
+    # Start ping in background and capture output using process substitution
+    ping_output=$(ping -I "$INTERFACE_IP" -c 10 "$king_ip" 2>/dev/null)
+
     # Extract average RTT from the ping output
-    extracted_rtt=$(grep -oP 'rtt min/avg/max/mdev = \d+\.\d+/(\d+\.\d+)' /tmp/rtt.txt | awk -F'/' '{print $5}')
+    extracted_rtt=$(echo "$ping_output" | grep -oP 'rtt min/avg/max/mdev = \d+\.\d+/(\d+\.\d+)' | awk -F'/' '{print $5}')
 
     # Update rtt_avg only if extracted_rtt is not empty
     if [[ ! -z "$extracted_rtt" ]]; then
@@ -97,10 +90,5 @@ else
     # Output just the counts if the machine is king
     echo "$counts"
 fi
-
-# Delete temporary files
-rm -f /tmp/playlist.json
-rm -f /tmp/rtt.txt
-rm -f /tmp/counts.txt
 
 exit 0
