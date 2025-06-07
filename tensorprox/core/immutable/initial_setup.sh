@@ -27,7 +27,7 @@ fi
 
 # Install missing packages
 echo "Checking and installing missing packages..."
-needed=("net-tools" "iptables-persistent" "psmisc" "python3" "python3-pip" "tcpdump" "jq" "ethtool")
+needed=("net-tools" "iptables-persistent" "psmisc" "python3" "python3-pip" "tcpdump" "jq" "ethtool" "docker.io" "gpg")
 
 # Update package list first
 DEBIAN_FRONTEND=noninteractive apt-get update -qq
@@ -43,6 +43,21 @@ done
 # Upgrade pip and install Python libraries quietly
 pip3 install --upgrade pip --quiet
 pip3 install faker scapy pycryptodome --quiet
+
+
+# Docker setup for the SSH user (if Docker was installed)
+if command -v docker >/dev/null 2>&1; then
+    # Add user to docker group
+    if ! groups $ssh_user | grep -q docker; then
+        usermod -aG docker $ssh_user
+    fi
+    # Start Docker service
+    systemctl start docker 2>/dev/null || true
+    # Create container directory
+    mkdir -p /home/$ssh_user/tensorprox/containers
+    chown -R $ssh_user:$ssh_user /home/$ssh_user/tensorprox/containers
+fi
+
 
 # Disable TTY requirement for sudo for the SSH user
 echo "Disabling TTY requirement for $ssh_user..."

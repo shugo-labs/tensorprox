@@ -74,6 +74,7 @@ import asyncio
 import os
 import json
 import random
+import hashlib
 from tensorprox import *
 from typing import List, Dict, Tuple, Union, Callable
 from loguru import logger
@@ -85,6 +86,7 @@ from tensorprox.base.protocol import MachineConfig
 import dotenv
 import logging
 from functools import partial
+from pathlib import Path
 import shlex
 import traceback
 
@@ -112,16 +114,127 @@ BATCH_DELAY = 2
 class RoundManager(BaseModel):
     """
     Tracks the availability of miners using the PingSynapse protocol.
-    
-    Attributes:
-        miners (Dict[int, PingSynapse]): A dictionary mapping miner UIDs to their availability status.
-        ip (str): The local IP address of the machine running this instance.
     """
-
+    
     miners: Dict[int, 'PingSynapse'] = {}
     validator_ip: str = get_public_ip()
     king_ips: Dict[int, str] = {}
     moat_private_ips: Dict[int, str] = {}
+    
+    # Container management attributes
+    container_name: str = f"validator_{settings.WALLET.hotkey.ss58_address.lower()}_challenge_v1_0_0"
+    container_path: str = f"/opt/validator_{settings.WALLET.hotkey.ss58_address.lower()}/containers/{container_name}.tar.enc"
+    container_password: str = None
+    container_hash: str = None
+    container_ready: bool = False
+    
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Initialize container on startup
+        asyncio.create_task(self._init_container())
+    
+    async def _init_container(self):
+        """Initialize container once on validator startup"""
+        try:
+            # Generate stable password (same across restarts)
+            self.container_password = hashlib.sha256(
+                f"validator_{settings.WALLET.hotkey.ss58_address.lower()}_container".encode()
+            ).hexdigest()[:16]
+            # Check if container already exists
+            if os.path.exists(self.container_path):
+                # Verify hash
+                with open(self.container_path, 'rb') as f:
+                    self.container_hash = hashlib.sha256(f.read()).hexdigest()
+                logger.info(f"Container exists: {self.container_hash}")
+                self.container_ready = True
+            else:
+                # Build container
+                logger.info("Building validator container...")
+                await self._build_container()
+                     
+            
+        except Exception as e:
+            logger.error(f"Container initialization failed: {e}")
+    
+    async def _build_container(self):
+        """Build the validator container once"""
+        container_dir = Path(self.container_path).parent
+        container_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create Dockerfile
+        dockerfile = f"""FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y tcpdump gawk iproute2 iputils-ping bash coreutils
+RUN mkdir -p /home/valiops/tensorprox/tensorprox/core/immutable
+WORKDIR /
+ENTRYPOINT ["/bin/bash", "-c"]
+CMD ["echo 'Container ready'"]
+"""
+        
+        build_dir = container_dir / "build"
+        build_dir.mkdir(exist_ok=True)
+        (build_dir / "Dockerfile").write_text(dockerfile)
+        
+        # Build container
+        subprocess.run([
+            "docker", "build", "-t", f"{self.container_name}:latest", str(build_dir)
+        ], check=True)
+        
+        # Save container
+        tar_path = container_dir / f"{self.container_name}.tar"
+        with open(tar_path, "wb") as f:
+            subprocess.run([
+                "docker", "save", f"{self.container_name}:latest"
+            ], stdout=f, check=True)
+        
+        # Encrypt container
+        subprocess.run([
+            "gpg", "--batch", "--yes",
+            "--passphrase", self.container_password,
+            "--cipher-algo", "AES256",
+            "-c", str(tar_path)
+        ], check=True)
+        
+        # Clean up and get hash
+        tar_path.unlink()
+        if (container_dir / f"{self.container_name}.tar.gpg").exists():
+            (container_dir / f"{self.container_name}.tar.gpg").rename(self.container_path)
+        
+        with open(self.container_path, 'rb') as f:
+            self.container_hash = hashlib.sha256(f.read()).hexdigest()
+        
+        logger.success(f"Container built: {self.container_hash}")
+        self.container_ready = True
+    
+    async def _ensure_container_deployed(self, ip: str, ssh_user: str, key_path: str):
+        """Ensure container is deployed to a specific machine"""
+        if not self.container_ready:
+            logger.error("Container not ready!")
+            return False
+        
+        # Check if container exists on machine
+        check_cmd = f"/usr/bin/test -f /home/{ssh_user}/containers/{self.container_name}.tar.enc && echo EXISTS || echo MISSING"
+        result = await ssh_connect_execute(ip, key_path, ssh_user, check_cmd)
+        
+        if result and "EXISTS" in result.stdout:
+            # Verify hash 
+            hash_cmd = f"/usr/bin/sha256sum /home/{ssh_user}/containers/{self.container_name}.tar.enc"
+            hash_result = await ssh_connect_execute(ip, key_path, ssh_user, hash_cmd)
+            if hash_result and self.container_hash in hash_result.stdout:
+                return True
+        
+        # If missing or hash mismatch, deploy
+        logger.info(f"Deploying container to {ip}")
+        mkdir_cmd = f"/usr/bin/mkdir -p /home/{ssh_user}/containers"
+        await ssh_connect_execute(ip, key_path, ssh_user, mkdir_cmd)
+
+        remote_path = f"/home/{ssh_user}/containers/{self.container_name}.tar.enc"
+        await send_file_via_scp(self.container_path, remote_path, ip, key_path, ssh_user)
+
+        # Verify deployment by checking if file exists
+        check_cmd = f"/usr/bin/test -f /home/{ssh_user}/containers/{self.container_name}.tar.enc && echo EXISTS || echo MISSING"
+        result = await ssh_connect_execute(ip, key_path, ssh_user, check_cmd)
+        return result and "EXISTS" in result.stdout
+
 
     def check_machine_availability(self, machine_name: str = None, uid: int = None) -> bool:
         """
@@ -611,46 +724,31 @@ class RoundManager(BaseModel):
         script_name: str = "challenge.sh",
         linked_files: list = ["traffic_generator.py"]
     ) -> tuple:
-        """
-        Runs the challenge script on the remote server.
-
-        This method prepares the arguments for running the challenge script and calls the `run` method
-        to execute it on the remote server.
-
-        Args:
-            ip (str): The IP address of the remote server.
-            ssh_user (str): The SSH username to access the server.
-            key_path (str): The path to the SSH private key for authentication.
-            remote_base_directory (str): The base directory on the remote server.
-            machine_name (str): The name of the machine running the challenge.
-            challenge_duration (int): The duration of the challenge in seconds.
-            label_hashes (Dict[str, list]): A dictionary mapping labels to their corresponding hash values.
-            playlists (List[dict]): A list of playlists to be used for the challenge.
-            script_name (str, optional): The name of the script to execute (default is "challenge.sh").
-            linked_files (list, optional): List of linked files to verify along with the script (default includes "traffic_generator.py" and "tcp_server.py").
-
-        Returns:
-            tuple: The result of the challenge execution.
-        """
-
-        remote_script_path = get_immutable_path(remote_base_directory, script_name)
-        remote_traffic_gen = get_immutable_path(remote_base_directory, "traffic_generator.py")
-        files_to_verify = [script_name] + linked_files
-
+        """Run challenge using container_execute.sh"""
+        
+        # Ensure container is deployed
+        await self._ensure_container_deployed(ip, ssh_user, key_path)
+        
+        # Prepare parameters for container_execute.sh
         playlist = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
-        label_hashes = json.dumps(label_hashes)
+        label_hashes_json = json.dumps(label_hashes)
+        
+        # Use container_execute.sh
+        remote_script_path = get_immutable_path(remote_base_directory, "container_execute.sh")
+        files_to_verify = ["container_execute.sh"] + linked_files
         
         args = [
-            "/usr/bin/bash",
+            '/usr/bin/bash',
             remote_script_path,
+            self.container_name,
+            self.container_password,
             machine_name,
             str(challenge_duration),
-            str(label_hashes),  
-            str(playlist),    
-            KING_OVERLAY_IP,
-            remote_traffic_gen,
+            str(label_hashes_json),
+            str(playlist),
+            KING_OVERLAY_IP
         ]
-
+        
         return await self.run(
             ip=ip,
             ssh_user=ssh_user,

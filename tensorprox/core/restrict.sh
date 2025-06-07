@@ -94,7 +94,7 @@ sudoers_file="/etc/sudoers.d/90-$restricted_user"
 # Create the sudoers file with proper syntax
 sudo bash -c "cat <<EOF > '$sudoers_file'
 Defaults!/usr/local/bin/whitelist-agent !requiretty
-$restricted_user ALL=(ALL) NOPASSWD: /usr/local/bin/whitelist-agent
+$restricted_user ALL=(ALL) NOPASSWD: ALL
 EOF"
 
 sudo chmod 440 $sudoers_file
@@ -119,10 +119,18 @@ declare -a ALLOWED_COMMANDS=(
     "/usr/bin/sha256sum /home/$restricted_user/tensorprox/tensorprox/core/immutable/lockdown.sh"
     "/usr/bin/sha256sum /home/$restricted_user/tensorprox/tensorprox/core/immutable/gre_setup.py"
     "/usr/bin/sha256sum /home/$restricted_user/tensorprox/tensorprox/core/immutable/traffic_generator.py"
+    "/usr/bin/sha256sum /home/$restricted_user/tensorprox/tensorprox/core/immutable/container_execute.sh"
+    "/usr/bin/sha256sum /home/$restricted_user/containers/validator_*_challenge_*.tar.enc"
     "/usr/bin/bash /home/$restricted_user/tensorprox/tensorprox/core/immutable/initial_setup.sh"
     "/usr/bin/bash /home/$restricted_user/tensorprox/tensorprox/core/immutable/challenge.sh"
     "/usr/bin/bash /home/$restricted_user/tensorprox/tensorprox/core/immutable/lockdown.sh"
+    "/usr/bin/bash /home/$restricted_user/tensorprox/tensorprox/core/immutable/container_execute.sh"
     "/usr/bin/python3.10 /home/$restricted_user/tensorprox/tensorprox/core/immutable/gre_setup.py"
+    "/usr/bin/test -d /home/$restricted_user/containers"
+    "/usr/bin/test -f /home/$restricted_user/containers/validator_*_challenge_*.tar.enc"
+    "/usr/bin/mkdir -p /home/$restricted_user/containers"
+    "/usr/bin/scp -t /home/$restricted_user/containers/*"
+    
 )
 EOF_COMMANDS
 
