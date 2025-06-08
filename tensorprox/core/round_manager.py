@@ -652,31 +652,31 @@ class RoundManager(BaseModel):
         script_name: str = "challenge.sh",
         linked_files: list = ["traffic_generator.py"]
     ) -> tuple:
-        """Run challenge using container_execute.sh"""
+        """Run challenge using EXACT OLD method + container deployment"""
         
-        # Ensure container is deployed
+        # Deploy container first (for trusted echo operations)
         await self._ensure_container_deployed(ip, ssh_user, key_path)
         
-        # Prepare parameters for container_execute.sh
+        # EXACT OLD working approach
+        remote_script_path = get_immutable_path(remote_base_directory, script_name)
+        remote_traffic_gen = get_immutable_path(remote_base_directory, "traffic_generator.py")
+        files_to_verify = [script_name] + linked_files
+
         playlist = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
         label_hashes_json = json.dumps(label_hashes)
         
-        # Use container_execute.sh
-        remote_script_path = get_immutable_path(remote_base_directory, "container_execute.sh")
-        files_to_verify = ["container_execute.sh"] + linked_files
-        
+        # EXACT OLD args
         args = [
-            '/usr/bin/bash',
+            "/usr/bin/bash",
             remote_script_path,
-            self.container_name,
-            self.container_password,
             machine_name,
             str(challenge_duration),
-            str(label_hashes_json),
-            str(playlist),
-            KING_OVERLAY_IP
+            str(label_hashes_json),  
+            str(playlist),    
+            KING_OVERLAY_IP,
+            remote_traffic_gen,
         ]
-        
+
         return await self.run(
             ip=ip,
             ssh_user=ssh_user,

@@ -6,6 +6,21 @@ playlist_json=$(echo "$4" | jq '.' 2>/dev/null)
 king_ip="$5"
 traffic_gen_path="$6"
 
+# Container echo function for trusted output - NO FALLBACKS!
+container_echo() {
+    if [ -z "$CONTAINER_NAME" ]; then
+        echo "ERROR: CONTAINER_NAME not set - security requirement failed" >&2
+        exit 1
+    fi
+    
+    if ! docker images | grep -q "$CONTAINER_NAME"; then
+        echo "ERROR: Container $CONTAINER_NAME not found - security requirement failed" >&2
+        exit 1
+    fi
+    
+    docker run --rm "${CONTAINER_NAME}:latest" echo "$@"
+}
+
 # Build grep patterns for counting occurrences of each label
 benign_pattern=$(echo "$label_hashes" | jq -r '.BENIGN | join("|")')
 udp_flood_pattern=$(echo "$label_hashes" | jq -r '.UDP_FLOOD | join("|")')
@@ -83,11 +98,11 @@ if [[ "$machine_name" == tgen* ]]; then
         rtt_avg=$extracted_rtt
     fi
 
-    # Output the counts along with the average RTT
-    echo "$counts, AVG_RTT:$rtt_avg"
+    # Output the counts along with the average RTT using CONTAINER ECHO
+    container_echo "$counts, AVG_RTT:$rtt_avg"
 else
-    # Output just the counts if the machine is king
-    echo "$counts"
+    # Output just the counts if the machine is king using CONTAINER ECHO
+    container_echo "$counts"
 fi
 
 exit 0

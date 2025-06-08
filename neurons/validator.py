@@ -59,8 +59,8 @@ from datetime import datetime, timezone
 import random
 import time
 import hashlib
-import subprocess
 from pathlib import Path
+import subprocess
 
 executor = ThreadPoolExecutor(max_workers=1)
 
@@ -69,7 +69,7 @@ EPOCH_TIME = ROUND_TIMEOUT + EPSILON
 
 class Validator(BaseValidatorNeuron):
     """Tensorprox validator neuron responsible for managing miners and running validation tasks."""
-
+    
     def __init__(self, config=None):
         """
         Initializes the validator instance.
@@ -82,7 +82,7 @@ class Validator(BaseValidatorNeuron):
         self._lock = asyncio.Lock()
         self.should_exit = False
         self.active_count = 0
-        
+
         # Container management attributes
         self.container_name = f"validator_{settings.WALLET.hotkey.ss58_address.lower()}_challenge_v1_0_0"
         self.container_path = f"/tmp/validator_{settings.WALLET.hotkey.ss58_address.lower()}/containers/{self.container_name}.tar.enc"
@@ -90,81 +90,6 @@ class Validator(BaseValidatorNeuron):
         self.container_hash = None
         self.container_ready = False
 
-    async def _init_container(self):
-        """Initialize container once on validator startup"""
-        try:
-            # Generate stable password (same across restarts)
-            self.container_password = hashlib.sha256(
-                f"validator_{settings.WALLET.hotkey.ss58_address.lower()}_container".encode()
-            ).hexdigest()[:16]
-            
-            # Check if container already exists
-            if os.path.exists(self.container_path):
-                # Verify hash
-                with open(self.container_path, 'rb') as f:
-                    self.container_hash = hashlib.sha256(f.read()).hexdigest()
-                logger.info(f"Container exists: {self.container_hash}")
-                self.container_ready = True
-            else:
-                # Build container
-                logger.info("Building validator container...")
-                await self._build_container()
-                
-        except Exception as e:
-            logger.error(f"Container initialization failed: {e}")
-    
-    async def _build_container(self):
-        """Build the validator container once"""
-        container_dir = Path(self.container_path).parent
-        container_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
-        
-        # Create Dockerfile
-        dockerfile = f"""FROM ubuntu:22.04
-RUN apt-get update && apt-get install -y tcpdump gawk iproute2 iputils-ping bash coreutils
-RUN mkdir -p /home/valiops/tensorprox/tensorprox/core/immutable
-WORKDIR /
-ENTRYPOINT ["/bin/bash", "-c"]
-CMD ["echo 'Container ready'"]
-"""
-        
-        build_dir = container_dir / "build"
-        build_dir.mkdir(exist_ok=True, mode=0o755)
-        (build_dir / "Dockerfile").write_text(dockerfile)
-        
-        # Build container
-        subprocess.run([
-            "docker", "build", "-t", f"{self.container_name}:latest", str(build_dir)
-        ], check=True)
-        
-        # Save container
-        tar_path = container_dir / f"{self.container_name}.tar"
-        with open(tar_path, "wb") as f:
-            subprocess.run([
-                "docker", "save", f"{self.container_name}:latest"
-            ], stdout=f, check=True)
-        
-        # Encrypt container
-        subprocess.run([
-            "gpg", "--batch", "--yes",
-            "--passphrase", self.container_password,
-            "--cipher-algo", "AES256",
-            "-c", str(tar_path)
-        ], check=True)
-        
-        # Clean up and get hash
-        tar_path.unlink()
-        if (container_dir / f"{self.container_name}.tar.gpg").exists():
-            (container_dir / f"{self.container_name}.tar.gpg").rename(self.container_path)
-        
-        # Set proper permissions
-        os.chmod(self.container_path, 0o644)
-        
-        with open(self.container_path, 'rb') as f:
-            self.container_hash = hashlib.sha256(f.read()).hexdigest()
-        
-        logger.success(f"Container built: {self.container_hash}")
-        self.container_ready = True
-                    
     def map_to_consecutive(self, active_uids):
         # Sort the input list
         sorted_list = sorted(active_uids)
@@ -584,6 +509,186 @@ CMD ["echo 'Container ready'"]
         """Implements the abstract handle challenge method."""
         await asyncio.sleep(1)
 
+    def _init_container(self):
+        """Initialize container once on validator startup"""
+        try:
+            self.container_password = hashlib.sha256(
+                f"validator_{settings.WALLET.hotkey.ss58_address.lower()}_container".encode()
+            ).hexdigest()[:16]
+
+            if os.path.exists(self.container_path):
+                # Compute hash
+                with open(self.container_path, 'rb') as f:
+                    self.container_hash = hashlib.sha256(f.read()).hexdigest()
+                logger.info(f"Container file exists: {self.container_hash}")
+
+                # Load image from tar
+                image_name = self._load_docker_image(self.container_path)
+                if image_name and self._validate_docker_image(image_name):
+                    self.container_ready = True
+                else:
+                    logger.warning("Image from tar is invalid or failed to load. Rebuilding...")
+                    self._build_container()
+            else:
+                logger.info("No container tarball found. Building image...")
+                self._build_container()
+
+        except Exception as e:
+            logger.error(f"Container initialization failed: {e}")
+
+    def _load_docker_image(self, encrypted_path: str) -> str:
+        """Load Docker image from encrypted tar file and return image name"""
+        
+        home_dir = Path.home()
+        temp_tar_path = home_dir / "decrypted_container.tar"  # write to home directory
+        final_tar_path = Path(encrypted_path).parent / "temp_container.tar"  # final destination
+
+        try:
+            logger.info(f"Decrypting container from: {encrypted_path}")
+            if not Path(encrypted_path).exists():
+                logger.error(f"Encrypted container file does not exist: {encrypted_path}")
+                return None
+                
+            with open(temp_tar_path, 'wb') as out_file:
+                decrypt_process = subprocess.run([
+                    "gpg", "--batch", "--yes",
+                    "--passphrase", self.container_password,
+                    "--decrypt", encrypted_path
+                ], stdout=out_file, stderr=subprocess.PIPE, check=False)
+
+            if decrypt_process.returncode != 0:
+                logger.error(f"GPG decrypt failed: {decrypt_process.stderr.decode().strip()}")
+                if temp_tar_path.exists():
+                    temp_tar_path.unlink()
+                return None
+
+            if not temp_tar_path.exists():
+                logger.error("Decrypted tar file was not created.")
+                return None
+
+            logger.info(f"Loading Docker image from: {temp_tar_path}")
+            load_process = subprocess.run([
+                'sudo', 'docker', 'load', '-i', str(temp_tar_path)
+            ], capture_output=True, text=True, check=False)
+
+            temp_tar_path.unlink()
+
+            if load_process.returncode == 0:
+                output = load_process.stdout.strip()
+                logger.info(f"Docker image loaded: {output}")
+                if "Loaded image:" in output:
+                    return output.split("Loaded image:")[-1].strip()
+                elif "Loaded image ID:" in output:
+                    return output.split("Loaded image ID:")[-1].strip()
+            else:
+                logger.error(f"Docker load failed: {load_process.stderr.strip()}")
+
+        except Exception as e:
+            logger.error(f"Exception during Docker image load: {e}")
+            if temp_tar_path.exists():
+                temp_tar_path.unlink()
+
+        return None 
+    def _validate_docker_image(self, image_name: str) -> bool:
+        """Try to run the image briefly to validate"""
+        try:
+            process = subprocess.run(
+                ['docker', 'run', '--rm', image_name, 'echo', 'test'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False
+            )
+            stdout = process.stdout
+            stderr = process.stderr
+            if process.returncode == 0:
+                logger.info(f"Image '{image_name}' is valid.")
+                return True
+            else:
+                logger.warning(f"Docker run failed: {stderr.strip()}")
+        except Exception as e:
+            logger.error(f"Docker run validation failed: {e}")
+        return False
+
+
+    def _build_container(self):
+        """Build the validator container once"""
+        import os
+        import shutil
+        
+        container_dir = Path(self.container_path).parent
+        container_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create Dockerfile
+        dockerfile = f"""FROM ubuntu:22.04
+    RUN apt-get update && apt-get install -y tcpdump gawk iproute2 iputils-ping bash coreutils
+    RUN mkdir -p /home/valiops/tensorprox/tensorprox/core/immutable
+    WORKDIR /
+    ENTRYPOINT ["/bin/bash", "-c"]
+    CMD ["echo 'Container ready'"]
+    """
+        
+        # Use home directory for build (more reliable than /tmp)
+        build_dir = Path.home() / f"docker_build_{self.container_name}"
+        
+        # Clean up any existing build directory
+        if build_dir.exists():
+            shutil.rmtree(build_dir)
+        
+        # Create build directory
+        build_dir.mkdir(parents=True, exist_ok=True)
+        dockerfile_path = build_dir / "Dockerfile"
+        dockerfile_path.write_text(dockerfile)
+        
+        logger.info(f"Building Docker image from: {build_dir}")
+        
+        try:
+            
+            result = subprocess.run([
+                "sudo", "docker", "build", "-t", f"{self.container_name}:latest", str(build_dir)
+            ], capture_output=True, text=True, check=False)
+            
+            logger.info(f"Docker build return code: {result.returncode}")
+            if result.stdout:
+                logger.info(f"Docker build STDOUT: {result.stdout}")
+            if result.stderr:
+                logger.error(f"Docker build STDERR: {result.stderr}")
+                
+            if result.returncode != 0:
+                raise Exception(f"Docker build failed with return code {result.returncode}: {result.stderr}")
+                
+        finally:
+            # Always cleanup build directory
+            if build_dir.exists():
+                shutil.rmtree(build_dir)
+        
+        # Save container
+        tar_path = container_dir / f"{self.container_name}.tar"
+        with open(tar_path, "wb") as f:
+            subprocess.run([
+                "docker", "save", f"{self.container_name}:latest"
+            ], stdout=f, check=True)
+        
+        # Encrypt container
+        subprocess.run([
+            "gpg", "--batch", "--yes",
+            "--passphrase", self.container_password,
+            "--cipher-algo", "AES256",
+            "-c", str(tar_path)
+        ], check=True)
+        
+        # Clean up and get hash
+        tar_path.unlink()
+        if (container_dir / f"{self.container_name}.tar.gpg").exists():
+            (container_dir / f"{self.container_name}.tar.gpg").rename(self.container_path)
+        
+        with open(self.container_path, 'rb') as f:
+            self.container_hash = hashlib.sha256(f.read()).hexdigest()
+        
+        logger.success(f"Container built: {self.container_hash}")
+        self.container_ready = True
+        
+            
 async def shutdown(signal=None):
     """
     Handle shutdown signals gracefully, reverting any locked miners first.
@@ -599,16 +704,17 @@ async def shutdown(signal=None):
     
     logger.info("Validator shutdown complete.")
 
+    
 ###############################################################################
 
 # Create an aiohttp app for validator
 app = web.Application()
 
-# Define the validator instance
-validator_instance = Validator()
-
 # Create a RoundManager instance (will be initialized after container is ready)
 round_manager = None
+
+# Define the validator instance
+validator_instance = Validator()
 
 
 # Main function to start background tasks
@@ -619,6 +725,7 @@ async def main():
     This function initializes and runs the web server to handle incoming requests
     and sets up signal handlers for graceful shutdown.
     """
+
     global round_manager
 
     # Set up signal handlers for graceful shutdown
@@ -627,10 +734,10 @@ async def main():
             sig, lambda s=sig: asyncio.create_task(shutdown(s))
         )
 
-    # Initialize container first
+    # Initialize the validator container
     logger.info("Initializing validator container...")
-    await validator_instance._init_container()
-    
+    validator_instance._init_container()
+
     # Create RoundManager with container info
     round_manager = RoundManager(
         container_name=validator_instance.container_name,
@@ -639,7 +746,6 @@ async def main():
         container_hash=validator_instance.container_hash,
         container_ready=validator_instance.container_ready
     )
-
     # Start background tasks
     asyncio.create_task(weight_setter.start())
     asyncio.create_task(task_scorer.start())
