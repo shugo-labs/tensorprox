@@ -1,4 +1,3 @@
-
 """
 ================================================================================
 
@@ -60,6 +59,8 @@ from datetime import datetime, timezone
 import random
 import time
 import hashlib
+import subprocess
+from pathlib import Path
 
 executor = ThreadPoolExecutor(max_workers=1)
 
@@ -81,6 +82,88 @@ class Validator(BaseValidatorNeuron):
         self._lock = asyncio.Lock()
         self.should_exit = False
         self.active_count = 0
+        
+        # Container management attributes
+        self.container_name = f"validator_{settings.WALLET.hotkey.ss58_address.lower()}_challenge_v1_0_0"
+        self.container_path = f"/tmp/validator_{settings.WALLET.hotkey.ss58_address.lower()}/containers/{self.container_name}.tar.enc"
+        self.container_password = None
+        self.container_hash = None
+        self.container_ready = False
+
+    async def _init_container(self):
+        """Initialize container once on validator startup"""
+        try:
+            # Generate stable password (same across restarts)
+            self.container_password = hashlib.sha256(
+                f"validator_{settings.WALLET.hotkey.ss58_address.lower()}_container".encode()
+            ).hexdigest()[:16]
+            
+            # Check if container already exists
+            if os.path.exists(self.container_path):
+                # Verify hash
+                with open(self.container_path, 'rb') as f:
+                    self.container_hash = hashlib.sha256(f.read()).hexdigest()
+                logger.info(f"Container exists: {self.container_hash}")
+                self.container_ready = True
+            else:
+                # Build container
+                logger.info("Building validator container...")
+                await self._build_container()
+                
+        except Exception as e:
+            logger.error(f"Container initialization failed: {e}")
+    
+    async def _build_container(self):
+        """Build the validator container once"""
+        container_dir = Path(self.container_path).parent
+        container_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
+        
+        # Create Dockerfile
+        dockerfile = f"""FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y tcpdump gawk iproute2 iputils-ping bash coreutils
+RUN mkdir -p /home/valiops/tensorprox/tensorprox/core/immutable
+WORKDIR /
+ENTRYPOINT ["/bin/bash", "-c"]
+CMD ["echo 'Container ready'"]
+"""
+        
+        build_dir = container_dir / "build"
+        build_dir.mkdir(exist_ok=True, mode=0o755)
+        (build_dir / "Dockerfile").write_text(dockerfile)
+        
+        # Build container
+        subprocess.run([
+            "docker", "build", "-t", f"{self.container_name}:latest", str(build_dir)
+        ], check=True)
+        
+        # Save container
+        tar_path = container_dir / f"{self.container_name}.tar"
+        with open(tar_path, "wb") as f:
+            subprocess.run([
+                "docker", "save", f"{self.container_name}:latest"
+            ], stdout=f, check=True)
+        
+        # Encrypt container
+        subprocess.run([
+            "gpg", "--batch", "--yes",
+            "--passphrase", self.container_password,
+            "--cipher-algo", "AES256",
+            "-c", str(tar_path)
+        ], check=True)
+        
+        # Clean up and get hash
+        tar_path.unlink()
+        if (container_dir / f"{self.container_name}.tar.gpg").exists():
+            (container_dir / f"{self.container_name}.tar.gpg").rename(self.container_path)
+        
+        # Set proper permissions
+        os.chmod(self.container_path, 0o644)
+        
+        with open(self.container_path, 'rb') as f:
+            self.container_hash = hashlib.sha256(f.read()).hexdigest()
+        
+        logger.success(f"Container built: {self.container_hash}")
+        self.container_ready = True
                     
     def map_to_consecutive(self, active_uids):
         # Sort the input list
@@ -521,11 +604,11 @@ async def shutdown(signal=None):
 # Create an aiohttp app for validator
 app = web.Application()
 
-# Create a RoundManager instance
-round_manager = RoundManager()
-
 # Define the validator instance
 validator_instance = Validator()
+
+# Create a RoundManager instance (will be initialized after container is ready)
+round_manager = None
 
 
 # Main function to start background tasks
@@ -536,12 +619,26 @@ async def main():
     This function initializes and runs the web server to handle incoming requests
     and sets up signal handlers for graceful shutdown.
     """
+    global round_manager
 
     # Set up signal handlers for graceful shutdown
     for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         asyncio.get_event_loop().add_signal_handler(
             sig, lambda s=sig: asyncio.create_task(shutdown(s))
         )
+
+    # Initialize container first
+    logger.info("Initializing validator container...")
+    await validator_instance._init_container()
+    
+    # Create RoundManager with container info
+    round_manager = RoundManager(
+        container_name=validator_instance.container_name,
+        container_path=validator_instance.container_path,
+        container_password=validator_instance.container_password,
+        container_hash=validator_instance.container_hash,
+        container_ready=validator_instance.container_ready
+    )
 
     # Start background tasks
     asyncio.create_task(weight_setter.start())
