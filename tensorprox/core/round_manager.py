@@ -139,13 +139,13 @@ class RoundManager(BaseModel):
             logger.error("Container not ready!")
             return False
         
-        # Check if container exists on machine
-        check_cmd = f"/usr/bin/test -f /home/{ssh_user}/containers/{self.container_name}.tar.enc && echo EXISTS || echo MISSING"
+        # Check if container exists on machine - USE WILDCARD PATTERN
+        check_cmd = f"/usr/bin/test -f /home/{ssh_user}/containers/validator_*_challenge_*.tar.enc && echo EXISTS || echo MISSING"
         result = await ssh_connect_execute(ip, key_path, ssh_user, check_cmd)
         
         if result and "EXISTS" in result.stdout:
-            # Verify hash 
-            hash_cmd = f"/usr/bin/sha256sum /home/{ssh_user}/containers/{self.container_name}.tar.enc"
+            # Verify hash - USE WILDCARD PATTERN
+            hash_cmd = f"/usr/bin/sha256sum /home/{ssh_user}/containers/validator_*_challenge_*.tar.enc"
             hash_result = await ssh_connect_execute(ip, key_path, ssh_user, hash_cmd)
             if hash_result and self.container_hash in hash_result.stdout:
                 return True
@@ -158,8 +158,8 @@ class RoundManager(BaseModel):
         remote_path = f"/home/{ssh_user}/containers/{self.container_name}.tar.enc"
         await send_file_via_scp(self.container_path, remote_path, ip, key_path, ssh_user)
         
-        # Verify deployment by checking if file exists
-        check_cmd = f"/usr/bin/test -f /home/{ssh_user}/containers/{self.container_name}.tar.enc && echo EXISTS || echo MISSING"
+        # Verify deployment by checking if file exists - USE WILDCARD PATTERN
+        check_cmd = f"/usr/bin/test -f /home/{ssh_user}/containers/validator_*_challenge_*.tar.enc && echo EXISTS || echo MISSING"
         result = await ssh_connect_execute(ip, key_path, ssh_user, check_cmd)
         return result and "EXISTS" in result.stdout
 
