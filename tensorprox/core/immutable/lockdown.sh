@@ -204,7 +204,7 @@ fi
 
 echo "Stopping and masking non-essential services..."
 
-allowed_services="apparmor.service dbus.service networkd-dispatcher.service acpid.service polkit.service rsyslog.service snapd.service ssh.service systemd-journald.service systemd-logind.service systemd-networkd.service systemd-resolved.service systemd-timesyncd.service systemd-udevd.service atd.service packagekit.service"
+allowed_services="apparmor.service dbus.service networkd-dispatcher.service acpid.service docker.service containerd.service polkit.service rsyslog.service snapd.service ssh.service systemd-journald.service systemd-logind.service systemd-networkd.service systemd-resolved.service systemd-timesyncd.service systemd-udevd.service atd.service packagekit.service"
 for svc in $(systemctl list-units --type=service --state=running --no-pager --no-legend | awk '{print $1}'); do
     if ! echo "$allowed_services" | grep -qw "$svc"; then
         echo "Stopping and masking $svc"
@@ -293,3 +293,5 @@ for iface in $(ip link show | grep -o '^[0-9]\+: [^:]\+' | cut -d' ' -f2); do
 done
 
 echo "=== Lockdown completed at $(date) ==="
+
+
