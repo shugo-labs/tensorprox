@@ -86,9 +86,10 @@ class Validator(BaseValidatorNeuron):
         # Container management attributes
         self.container_name = f"validator_{settings.WALLET.hotkey.ss58_address.lower()}_challenge_v1_0_0"
         self.container_path = f"/tmp/validator_{settings.WALLET.hotkey.ss58_address.lower()}/containers/{self.container_name}.tar.enc"
-        self.container_password = None
-        self.container_hash = None
+        self.container_password = ""  # Initialize with empty string
+        self.container_hash = ""  # Initialize with empty string
         self.container_ready = False
+        self.round_nonce = ""  # Initialize with empty string
 
     def map_to_consecutive(self, active_uids):
         # Sort the input list
@@ -182,7 +183,7 @@ class Validator(BaseValidatorNeuron):
 
         try:
             async with self._lock:
-
+                
                 logger.info("Waiting 60s before fetching active count..")
 
                 await asyncio.sleep(60)
@@ -193,6 +194,10 @@ class Validator(BaseValidatorNeuron):
                 if self.uid not in active_validators_uids :
                     logger.debug(f"UID was not found in the list of active validators, ending round.")
                     return None
+                
+                # Initialize container for this round
+                self.round_nonce = hashlib.sha256(str(sync_time).encode()).hexdigest()
+                self._init_container(round_manager)
                 
                 self.active_count = len(active_validators_uids)     
 
@@ -250,6 +255,8 @@ class Validator(BaseValidatorNeuron):
                 if not condition:  
                     await self._wait_for_condition(start_time)
 
+                # Clean up container resources at the end of the round
+                self._cleanup_container()
 
                 logger.debug(f"🎉  End of round, waiting for the next one...")
 
@@ -509,29 +516,28 @@ class Validator(BaseValidatorNeuron):
         """Implements the abstract handle challenge method."""
         await asyncio.sleep(1)
 
-    def _init_container(self):
-        """Initialize container once on validator startup"""
+    def _init_container(self, round_manager):
+        """Initialize container for each round with a unique nonce"""
         try:
+            # Generate a unique password for this round using the nonce
             self.container_password = hashlib.sha256(
-                f"validator_{settings.WALLET.hotkey.ss58_address.lower()}_container".encode()
+                f"validator_{settings.WALLET.hotkey.ss58_address.lower()}_container_{self.round_nonce}".encode()
             ).hexdigest()[:16]
 
-            if os.path.exists(self.container_path):
-                # Compute hash
-                with open(self.container_path, 'rb') as f:
-                    self.container_hash = hashlib.sha256(f.read()).hexdigest()
-                logger.info(f"Container file exists: {self.container_hash}")
+            logger.info(f"Using container password: {self.container_password}")
 
-                # Load image from tar
-                image_name = self._load_docker_image(self.container_path)
-                if image_name and self._validate_docker_image(image_name):
-                    self.container_ready = True
-                else:
-                    logger.warning("Image from tar is invalid or failed to load. Rebuilding...")
-                    self._build_container()
-            else:
-                logger.info("No container tarball found. Building image...")
-                self._build_container()
+            # Always rebuild container for each round
+            logger.info("Building new container for this round...")
+            self._build_container()
+
+            # Update RoundManager with new container attributes
+
+            round_manager.container_name = self.container_name
+            round_manager.container_path = self.container_path
+            round_manager.container_password = self.container_password
+            round_manager.container_hash = self.container_hash
+            round_manager.container_ready = self.container_ready
+            round_manager.round_nonce = self.round_nonce
 
         except Exception as e:
             logger.error(f"Container initialization failed: {e}")
@@ -612,21 +618,47 @@ class Validator(BaseValidatorNeuron):
 
 
     def _build_container(self):
-        """Build the validator container once"""
+        """Build the validator container with a nonce"""
         import os
         import shutil
         
         container_dir = Path(self.container_path).parent
         container_dir.mkdir(parents=True, exist_ok=True)
         
-        # Create Dockerfile
+        # Create Dockerfile with nonce embedded and password protection
         dockerfile = f"""FROM ubuntu:22.04
-    RUN apt-get update && apt-get install -y tcpdump gawk iproute2 iputils-ping bash coreutils
-    RUN mkdir -p /home/valiops/tensorprox/tensorprox/core/immutable
-    WORKDIR /
-    ENTRYPOINT ["/bin/bash", "-c"]
-    CMD ["echo 'Container ready'"]
-    """
+RUN apt-get update && apt-get install -y tcpdump gawk iproute2 iputils-ping bash coreutils
+RUN mkdir -p /home/valiops/tensorprox/tensorprox/core/immutable
+WORKDIR /
+
+# Create secure password protection script
+RUN echo '#!/bin/bash' > /usr/local/bin/check_password && \\
+    echo 'if [ -z "$1" ]; then' >> /usr/local/bin/check_password && \\
+    echo '    echo "Access denied: Password required"' >> /usr/local/bin/check_password && \\
+    echo '    exit 1' >> /usr/local/bin/check_password && \\
+    echo 'fi' >> /usr/local/bin/check_password && \\
+    echo '' >> /usr/local/bin/check_password && \\
+    echo '# Hash the provided password' >> /usr/local/bin/check_password && \\
+    echo 'provided_hash=$(echo -n "$1" | sha256sum | cut -d" " -f1)' >> /usr/local/bin/check_password && \\
+    echo 'expected_hash="{hashlib.sha256(self.container_password.encode()).hexdigest()}"' >> /usr/local/bin/check_password && \\
+    echo '' >> /usr/local/bin/check_password && \\
+    echo 'if [ "$provided_hash" != "$expected_hash" ]; then' >> /usr/local/bin/check_password && \\
+    echo '    echo "Access denied: Invalid password"' >> /usr/local/bin/check_password && \\
+    echo '    exit 1' >> /usr/local/bin/check_password && \\
+    echo 'fi' >> /usr/local/bin/check_password && \\
+    echo '' >> /usr/local/bin/check_password && \\
+    echo 'shift' >> /usr/local/bin/check_password && \\
+    echo 'exec "$@"' >> /usr/local/bin/check_password && \\
+    chmod +x /usr/local/bin/check_password
+
+# Embed the nonce in a way that's accessible inside but not outside
+ENV ROUND_NONCE={self.round_nonce}
+RUN echo "{self.round_nonce}" > /etc/round_nonce && chmod 600 /etc/round_nonce
+
+# Set entrypoint to require password
+ENTRYPOINT ["/usr/local/bin/check_password"]
+CMD ["echo", "Container ready"]
+"""
         
         # Use home directory for build (more reliable than /tmp)
         build_dir = Path.home() / f"docker_build_{self.container_name}"
@@ -643,9 +675,11 @@ class Validator(BaseValidatorNeuron):
         logger.info(f"Building Docker image from: {build_dir}")
         
         try:
+            # Use latest tag since we're rebuilding every round anyway
+            image_tag = f"{self.container_name}:latest"
             
             result = subprocess.run([
-                "sudo", "docker", "build", "-t", f"{self.container_name}:latest", str(build_dir)
+                "sudo", "docker", "build", "-t", image_tag, str(build_dir)
             ], capture_output=True, text=True, check=False)
             
             logger.info(f"Docker build return code: {result.returncode}")
@@ -666,7 +700,7 @@ class Validator(BaseValidatorNeuron):
         tar_path = container_dir / f"{self.container_name}.tar"
         with open(tar_path, "wb") as f:
             subprocess.run([
-                "docker", "save", f"{self.container_name}:latest"
+                "docker", "save", image_tag
             ], stdout=f, check=True)
         
         # Encrypt container
@@ -679,16 +713,36 @@ class Validator(BaseValidatorNeuron):
         
         # Clean up and get hash
         tar_path.unlink()
-        if (container_dir / f"{self.container_name}.tar.gpg").exists():
-            (container_dir / f"{self.container_name}.tar.gpg").rename(self.container_path)
+        encrypted_path = container_dir / f"{self.container_name}.tar.gpg"
+        if encrypted_path.exists():
+            encrypted_path.rename(self.container_path)
         
         with open(self.container_path, 'rb') as f:
             self.container_hash = hashlib.sha256(f.read()).hexdigest()
         
-        logger.success(f"Container built: {self.container_hash}")
+        logger.success(f"Container built with nonce {self.round_nonce}: {self.container_hash}")
         self.container_ready = True
         
             
+    def _cleanup_container(self):
+        """Clean up container resources at the end of the round"""
+        try:
+            # Remove Docker image
+            image_tag = f"{self.container_name}:latest"
+            subprocess.run([
+                "sudo", "docker", "rmi", image_tag
+            ], capture_output=True, text=True, check=False)
+            
+            # Remove encrypted container file
+            if Path(self.container_path).exists():
+                Path(self.container_path).unlink()
+                
+            logger.info("Container resources cleaned up successfully")
+            
+        except Exception as e:
+            logger.error(f"Error during container cleanup: {e}")
+
+
 async def shutdown(signal=None):
     """
     Handle shutdown signals gracefully, reverting any locked miners first.
@@ -734,25 +788,15 @@ async def main():
             sig, lambda s=sig: asyncio.create_task(shutdown(s))
         )
 
-    # Initialize the validator container
-    logger.info("Initializing validator container...")
-    validator_instance._init_container()
+    # Create a RoundManager instance
+    round_manager = RoundManager()
 
-    # Create RoundManager with container info
-    round_manager = RoundManager(
-        container_name=validator_instance.container_name,
-        container_path=validator_instance.container_path,
-        container_password=validator_instance.container_password,
-        container_hash=validator_instance.container_hash,
-        container_ready=validator_instance.container_ready
-    )
     # Start background tasks
     asyncio.create_task(weight_setter.start())
     asyncio.create_task(task_scorer.start())
     asyncio.create_task(validator_instance.periodic_epoch_check())  # Start the periodic epoch check
     
     try:
-
         logger.info(f"Validator is up and running, next round starting in {get_remaining_time(EPOCH_TIME)}...")
         
         while not validator_instance.should_exit:

@@ -127,6 +127,7 @@ class RoundManager(BaseModel):
     container_password: str = ""
     container_hash: str = ""
     container_ready: bool = False
+    round_nonce: str = ""
     
     def __init__(self, **data):
         super().__init__(**data)
