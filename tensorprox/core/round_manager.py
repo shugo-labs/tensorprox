@@ -650,42 +650,72 @@ class RoundManager(BaseModel):
         challenge_duration: int,
         label_hashes: Dict[str, list],
         playlists: List[dict],
-        script_name: str = "challenge.sh",
-        linked_files: list = ["traffic_generator.py"]
+        script_name: str = "traffic_generator.py",
+        linked_files: list = []
     ) -> tuple:
         """Run challenge using EXACT OLD method + container deployment"""
-        
-        # Deploy container first (for trusted echo operations)
-        await self._ensure_container_deployed(ip, ssh_user, key_path)
-        
-        # EXACT OLD working approach
-        remote_script_path = get_immutable_path(remote_base_directory, script_name)
-        remote_traffic_gen = get_immutable_path(remote_base_directory, "traffic_generator.py")
-        files_to_verify = [script_name] + linked_files
 
-        playlist = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
-        label_hashes_json = json.dumps(label_hashes)
+        # Run traffic generation for non-king machines
+        if machine_name != "king":
+
+            # First verify traffic_generator.py
+            remote_script_path = get_immutable_path(remote_base_directory, script_name)
+            files_to_verify = [script_name] + linked_files
+            paired_list = create_pairs_to_verify(files_to_verify, remote_base_directory)
+
+            playlist = json.dumps(playlists[machine_name])
+
+            # Create args list for traffic generator
+            args = [
+                "/usr/bin/python3",
+                remote_script_path,
+                "--playlist",
+                "/dev/stdin",
+                "--receiver-ips",
+                KING_OVERLAY_IP,
+                "--interface",
+                f"ipip-{machine_name}"
+            ]
+            
+            # Create the full command with nohup, input redirection and background execution
+            traffic_gen_cmd = f"nohup bash -c \"echo '{playlist}' | {' '.join(shlex.quote(arg) for arg in args)}\" > /tmp/traffic_generator.log 2>&1 &"
+            result = await check_files_and_execute(ip, key_path, ssh_user, paired_list, traffic_gen_cmd)
+            
+            if not result or result.returncode != 0:
+                logger.error(f"Failed to start traffic generation on {machine_name}")
+                return False
+
+        # Deploy and verify container
+        if not await self._ensure_container_deployed(ip, ssh_user, key_path):
+            logger.error(f"Failed to deploy container to {machine_name}")
+            return False
+
+        label_hashes = json.dumps(label_hashes)
         
-        # EXACT OLD args
+        # Create args list for container execution
         args = [
-            "/usr/bin/bash",
-            remote_script_path,
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "host",
+            f"{self.container_name}:latest",
+            self.container_password,
+            "run_challenge",
             machine_name,
             str(challenge_duration),
-            str(label_hashes_json),  
-            str(playlist),    
+            json.dumps(label_hashes),
             KING_OVERLAY_IP,
-            remote_traffic_gen,
         ]
 
-        return await self.run(
-            ip=ip,
-            ssh_user=ssh_user,
-            key_path=key_path,
-            args=args,
-            files_to_verify=files_to_verify,
-            remote_base_directory=remote_base_directory
-        )
+        cmd = ' '.join(shlex.quote(arg) for arg in args)
+        result = await check_files_and_execute(ip, key_path, ssh_user, paired_list, cmd)
+
+        if not result or result.returncode != 0:
+            logger.error(f"Failed to run container on {machine_name}")
+            return False
+            
+        return result
 
 
     async def check_machines_availability(self, uids: List[int], timeout: float = QUERY_AVAILABILITY_TIMEOUT) -> Tuple[List[PingSynapse], List[dict]]:
@@ -700,7 +730,7 @@ class RoundManager(BaseModel):
             Tuple[List[Synapse], List[dict]]: 
                 - A list of Synapse responses from each miner.
                 - A list of dictionaries containing availability status for each miner.
-        """
+        """       
 
         async def check_with_timeout(uid):
             try:

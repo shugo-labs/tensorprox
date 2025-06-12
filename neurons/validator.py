@@ -621,109 +621,64 @@ class Validator(BaseValidatorNeuron):
         
         container_dir = Path(self.container_path).parent
         container_dir.mkdir(parents=True, exist_ok=True)
-        
+
+        # Read the challenge script from immutable file
+        challenge_script_path = Path(__file__).parent.parent / "tensorprox" / "core" / "immutable" / "challenge.sh"
+        with open(challenge_script_path, 'r') as f:
+            challenge_script = f.read()
+
         # Create Dockerfile with nonce embedded and password protection
-        dockerfile = f"""FROM alpine:3.19
+        dockerfile_content = f"""
+FROM alpine:3.19
 
-# Install only the essential packages needed for the challenge script
+# Install required packages
 RUN apk add --no-cache \\
-        tcpdump \\
-        iproute2 \\
-        iputils \\
-        bash \\
-        gawk \\
-        jq && \\
-    mkdir -p /home/valiops/tensorprox/tensorprox/core/immutable
+    tcpdump \\
+    iputils \\
+    gawk \\
+    jq \\
+    bash \\
+    iproute2
 
-WORKDIR /
+# Install required packages
+RUN apk add --no-cache \\
+    tcpdump \\
+    iputils \\
+    gawk \\
+    jq \\
+    bash \\
+    iproute2
 
-# Create secure password protection script and set permissions in one layer
-RUN echo '#!/bin/bash' > /usr/local/bin/check_password && \\
-    echo 'if [ -z "$1" ]; then' >> /usr/local/bin/check_password && \\
-    echo '    echo "Access denied: Password required"' >> /usr/local/bin/check_password && \\
-    echo '    exit 1' >> /usr/local/bin/check_password && \\
-    echo 'fi' >> /usr/local/bin/check_password && \\
-    echo '' >> /usr/local/bin/check_password && \\
-    echo '# Hash the provided password' >> /usr/local/bin/check_password && \\
-    echo 'provided_hash=$(echo -n "$1" | sha256sum | cut -d" " -f1)' >> /usr/local/bin/check_password && \\
-    echo 'expected_hash="{hashlib.sha256(self.container_password.encode()).hexdigest()}"' >> /usr/local/bin/check_password && \\
-    echo '' >> /usr/local/bin/check_password && \\
-    echo 'if [ "$provided_hash" != "$expected_hash" ]; then' >> /usr/local/bin/check_password && \\
-    echo '    echo "Access denied: Invalid password"' >> /usr/local/bin/check_password && \\
-    echo '    exit 1' >> /usr/local/bin/check_password && \\
-    echo 'fi' >> /usr/local/bin/check_password && \\
-    echo '' >> /usr/local/bin/check_password && \\
-    echo 'shift' >> /usr/local/bin/check_password && \\
-    echo 'exec "$@"' >> /usr/local/bin/check_password && \\
-    chmod +x /usr/local/bin/check_password
+# Create a simple wrapper script that handles everything
+COPY <<'WRAPPER_EOF' /usr/local/bin/run_challenge.sh
+#!/bin/bash
+set -e
 
-# Create external challenge runner script
-RUN echo '#!/bin/bash' > /usr/local/bin/run_challenge && \\
-    echo 'set -e' >> /usr/local/bin/run_challenge && \\
-    echo 'machine_name="$1"' >> /usr/local/bin/run_challenge && \\
-    echo 'challenge_duration="$2"' >> /usr/local/bin/run_challenge && \\
-    echo 'label_hashes="$3"' >> /usr/local/bin/run_challenge && \\
-    echo 'playlist_json="$4"' >> /usr/local/bin/run_challenge && \\
-    echo 'king_ip="$5"' >> /usr/local/bin/run_challenge && \\
-    echo 'traffic_gen_path="$6"' >> /usr/local/bin/run_challenge && \\
-    echo '' >> /usr/local/bin/run_challenge && \\
-    echo '# Build grep patterns for counting occurrences of each label' >> /usr/local/bin/run_challenge && \\
-    echo 'benign_pattern=$(echo "$label_hashes" | jq -r ".BENIGN | join(\\"|\\")")' >> /usr/local/bin/run_challenge && \\
-    echo 'udp_flood_pattern=$(echo "$label_hashes" | jq -r ".UDP_FLOOD | join(\\"|\\")")' >> /usr/local/bin/run_challenge && \\
-    echo 'tcp_syn_flood_pattern=$(echo "$label_hashes" | jq -r ".TCP_SYN_FLOOD | join(\\"|\\")")' >> /usr/local/bin/run_challenge && \\
-    echo 'INTERFACE_IP=$(ip -4 addr show ipip-"$machine_name" | grep -oP "(?<=inet\s)\d+(\.\d+){3}")' >> /usr/local/bin/run_challenge && \\
-    echo '' >> /usr/local/bin/run_challenge && \\
-    echo '# Default RTT value' >> /usr/local/bin/run_challenge && \\
-    echo 'rtt_avg=1000000000' >> /usr/local/bin/run_challenge && \\
-    echo '' >> /usr/local/bin/run_challenge && \\
-    echo '# Define the traffic filtering' >> /usr/local/bin/run_challenge && \\
-    echo 'filter_traffic="(tcp or udp) and dst host $king_ip"' >> /usr/local/bin/run_challenge && \\
-    echo '' >> /usr/local/bin/run_challenge && \\
-    echo '# Add buffer to ensure late packets are counted' >> /usr/local/bin/run_challenge && \\
-    echo 'if [ "$machine_name" == "king" ]; then' >> /usr/local/bin/run_challenge && \\
-    echo '    timeout_duration=$((challenge_duration + 1))' >> /usr/local/bin/run_challenge && \\
-    echo 'else' >> /usr/local/bin/run_challenge && \\
-    echo '    timeout_duration=$challenge_duration' >> /usr/local/bin/run_challenge && \\
-    echo 'fi' >> /usr/local/bin/run_challenge && \\
-    echo '' >> /usr/local/bin/run_challenge && \\
-    echo '# Traffic generation for tgen machines' >> /usr/local/bin/run_challenge && \\
-    echo 'if [[ "$machine_name" == tgen* ]]; then' >> /usr/local/bin/run_challenge && \\
-    echo '    # Start traffic generator with playlist via stdin' >> /usr/local/bin/run_challenge && \\
-    echo '    nohup bash -c "echo $playlist_json | python3 $traffic_gen_path --playlist /dev/stdin --receiver-ips $king_ip --interface ipip-$machine_name" > /tmp/traffic_generator.log 2>&1 &' >> /usr/local/bin/run_challenge && \\
-    echo 'fi' >> /usr/local/bin/run_challenge && \\
-    echo '' >> /usr/local/bin/run_challenge && \\
-    echo '# Use fast tcpdump with custom gawk processing' >> /usr/local/bin/run_challenge && \\
-    echo 'counts=$(timeout "$timeout_duration" tcpdump -A -l -i "gre-moat" "$filter_traffic" 2>/dev/null | \\' >> /usr/local/bin/run_challenge && \\
-    echo 'gawk -v benign_pat="$benign_pattern" -v udp_pat="$udp_flood_pattern" -v tcp_pat="$tcp_syn_flood_pattern" \\' >> /usr/local/bin/run_challenge && \\
-    echo '"BEGIN {{ udp_flood = 0; tcp_syn_flood = 0; }}' >> /usr/local/bin/run_challenge && \\
-    echo '{{' >> /usr/local/bin/run_challenge && \\
-    echo '    if ($0 ~ benign_pat) {{' >> /usr/local/bin/run_challenge && \\
-    echo '        payload = $0;' >> /usr/local/bin/run_challenge && \\
-    echo '        if (!(payload in benign_payloads)) {{' >> /usr/local/bin/run_challenge && \\
-    echo '            benign_payloads[payload] = 1;' >> /usr/local/bin/run_challenge && \\
-    echo '        }}' >> /usr/local/bin/run_challenge && \\
-    echo '    }}' >> /usr/local/bin/run_challenge && \\
-    echo '    if ($0 ~ udp_pat) {{ udp_flood++; }}' >> /usr/local/bin/run_challenge && \\
-    echo '    if ($0 ~ tcp_pat) {{ tcp_syn_flood++; }}' >> /usr/local/bin/run_challenge && \\
-    echo '}}' >> /usr/local/bin/run_challenge && \\
-    echo 'END {{' >> /usr/local/bin/run_challenge && \\
-    echo '    benign = 0;' >> /usr/local/bin/run_challenge && \\
-    echo '    for (payload in benign_payloads) {{ benign++; }}' >> /usr/local/bin/run_challenge && \\
-    echo '    printf \\"BENIGN:%d, UDP_FLOOD:%d, TCP_SYN_FLOOD:%d\\", benign, udp_flood, tcp_syn_flood;' >> /usr/local/bin/run_challenge && \\
-    echo '}}")' >> /usr/local/bin/run_challenge && \\
-    echo '' >> /usr/local/bin/run_challenge && \\
-    echo '# Measure RTT if the machine is tgen' >> /usr/local/bin/run_challenge && \\
-    echo 'if [[ "$machine_name" == tgen* ]]; then' >> /usr/local/bin/run_challenge && \\
-    echo '    ping_output=$(ping -I "$INTERFACE_IP" -c 10 "$king_ip" 2>/dev/null)' >> /usr/local/bin/run_challenge && \\
-    echo '    extracted_rtt=$(echo "$ping_output" | grep -oP "rtt min/avg/max/mdev = \d+\.\d+/(\d+\.\d+)" | awk -F"/" "{{print $5}}")' >> /usr/local/bin/run_challenge && \\
-    echo '    if [[ ! -z "$extracted_rtt" ]]; then' >> /usr/local/bin/run_challenge && \\
-    echo '        rtt_avg=$extracted_rtt' >> /usr/local/bin/run_challenge && \\
-    echo '    fi' >> /usr/local/bin/run_challenge && \\
-    echo '    echo "$counts, AVG_RTT:$rtt_avg"' >> /usr/local/bin/run_challenge && \\
-    echo 'else' >> /usr/local/bin/run_challenge && \\
-    echo '    echo "$counts"' >> /usr/local/bin/run_challenge && \\
-    echo 'fi' >> /usr/local/bin/run_challenge && \\
-    chmod +x /usr/local/bin/run_challenge
+# Expected usage: run_challenge.sh password arg1 arg2 arg3 arg4
+if [ $# -lt 5 ]; then
+    echo "Usage: run_challenge.sh <password> <arg1> <arg2> <arg3> <arg4>"
+    echo "Received $# arguments: $*"
+    exit 1
+fi
+
+# Extract and validate password
+PASSWORD="$1"
+if [ "$PASSWORD" != "{self.container_password}" ]; then
+    echo "Invalid password"
+    exit 1
+fi
+
+# Get the remaining arguments
+ARG1="$2"
+ARG2="$3" 
+ARG3="$4"
+ARG4="$5"
+
+# Execute challenge script with the arguments
+exec /usr/local/bin/challenge.sh "$ARG1" "$ARG2" "$ARG3" "$ARG4"
+WRAPPER_EOF
+
+RUN chmod +x /usr/local/bin/run_challenge.sh
 
 # Embed the nonce in a way that's accessible inside but not outside
 COPY <<EOF /etc/round_nonce
@@ -731,9 +686,13 @@ COPY <<EOF /etc/round_nonce
 EOF
 RUN chmod 600 /etc/round_nonce
 
-# Set entrypoint to require password
-ENTRYPOINT ["/usr/local/bin/check_password"]
-CMD ["/usr/local/bin/run_challenge"]
+# Create challenge script
+COPY <<'CHALLENGE_EOF' /usr/local/bin/challenge.sh
+{challenge_script}
+CHALLENGE_EOF
+RUN chmod +x /usr/local/bin/challenge.sh
+
+ENTRYPOINT ["/usr/local/bin/run_challenge.sh"]
 """
         
         # Use home directory for build (more reliable than /tmp)
@@ -746,7 +705,7 @@ CMD ["/usr/local/bin/run_challenge"]
         # Create build directory
         build_dir.mkdir(parents=True, exist_ok=True)
         dockerfile_path = build_dir / "Dockerfile"
-        dockerfile_path.write_text(dockerfile)
+        dockerfile_path.write_text(dockerfile_content)
         
         logger.info(f"Building Docker image from: {build_dir}")
         
