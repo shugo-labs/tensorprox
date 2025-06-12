@@ -644,6 +644,7 @@ RUN apk add --no-cache \\
 RUN apk add --no-cache \\
     tcpdump \\
     iputils \\
+    coreutils \\
     gawk \\
     jq \\
     bash \\

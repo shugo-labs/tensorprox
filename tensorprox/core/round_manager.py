@@ -696,12 +696,14 @@ class RoundManager(BaseModel):
         args = [
             "docker",
             "run",
-            "--rm",
             "--network",
             "host",
+            "--cap-add",
+            "NET_ADMIN",
+            "--cap-add",
+            "NET_RAW",
             f"{self.container_name}:latest",
             self.container_password,
-            "run_challenge",
             machine_name,
             str(challenge_duration),
             json.dumps(label_hashes),
@@ -730,7 +732,10 @@ class RoundManager(BaseModel):
             Tuple[List[Synapse], List[dict]]: 
                 - A list of Synapse responses from each miner.
                 - A list of dictionaries containing availability status for each miner.
-        """       
+        """
+        
+        logger.info(f"COntainer_password : {self.container_password}")
+        logger.info(f"ROund_nonce : {self.round_nonce}")
 
         async def check_with_timeout(uid):
             try:

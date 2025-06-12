@@ -1,37 +1,18 @@
 #!/bin/bash
+
 machine_name="$1"
 challenge_duration="$2"
 label_hashes="$3"
-playlist_json=$(echo "$4" | jq '.' 2>/dev/null)
-king_ip="$5"
-traffic_gen_path="$6"
-
-# Container echo function for trusted output - NO FALLBACKS!
-container_echo() {
-    if [ -z "$CONTAINER_NAME" ]; then
-        echo "ERROR: CONTAINER_NAME not set - security requirement failed" >&2
-        exit 1
-    fi
-    
-    if ! docker images | grep -q "$CONTAINER_NAME"; then
-        echo "ERROR: Container $CONTAINER_NAME not found - security requirement failed" >&2
-        exit 1
-    fi
-    
-    docker run --rm "${CONTAINER_NAME}:latest" echo "$@"
-}
+king_ip="$4"
 
 # Build grep patterns for counting occurrences of each label
 benign_pattern=$(echo "$label_hashes" | jq -r '.BENIGN | join("|")')
 udp_flood_pattern=$(echo "$label_hashes" | jq -r '.UDP_FLOOD | join("|")')
 tcp_syn_flood_pattern=$(echo "$label_hashes" | jq -r '.TCP_SYN_FLOOD | join("|")')
-INTERFACE_IP=$(ip -4 addr show ipip-"$machine_name" | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+INTERFACE_IP=$(ip -4 addr show ipip-"$machine_name" | awk '/inet / {print $2}' | cut -d/ -f1)
 
 # Default RTT value
 rtt_avg=1000000000
-
-# Define the traffic filtering
-filter_traffic="(tcp or udp) and dst host $king_ip"
 
 # Add buffer to ensure late packets are counted
 if [ "$machine_name" == "king" ]; then
@@ -42,12 +23,12 @@ fi
 
 # Traffic generation for tgen machines
 if [[ "$machine_name" == tgen* ]]; then
-    # Start traffic generator with playlist via stdin 
-    nohup bash -c "echo '$playlist_json' | python3 $traffic_gen_path --playlist /dev/stdin --receiver-ips $king_ip --interface ipip-$machine_name" > /tmp/traffic_generator.log 2>&1 &
+    # Start continuous ping in background
+    nohup ping -I "$INTERFACE_IP" -c "$challenge_duration" "$king_ip" > /tmp/rtt.txt 2>&1 &
 fi
 
-# Use fast tcpdump with custom gawk processing and capture output directly
-counts=$(sudo timeout "$timeout_duration" tcpdump -A -l -i "gre-moat" "$filter_traffic" 2>/dev/null | \
+# Use fast tcpdump with custom gawk processing to handle uniqueness for benign only
+timeout "$timeout_duration" tcpdump -A -i "gre-moat" "dst host 192.168.110.2" 2>/dev/null | \
 gawk -v benign_pat="$benign_pattern" -v udp_pat="$udp_flood_pattern" -v tcp_pat="$tcp_syn_flood_pattern" '
 BEGIN {
     udp_flood = 0;
@@ -82,27 +63,35 @@ END {
     }
     
     printf "BENIGN:%d, UDP_FLOOD:%d, TCP_SYN_FLOOD:%d", benign, udp_flood, tcp_syn_flood;
-}' 2>/dev/null)
+}' > /tmp/counts.txt &
+
+wait  # Ensure tcpdump finishes before reading counts
+
+# Read counts from /tmp/counts.txt
+counts=$(cat /tmp/counts.txt)
+
+# Read nonce from /etc/round_nonce
+nonce=$(cat /etc/round_nonce)
 
 # Measure RTT if the machine is tgen
 if [[ "$machine_name" == tgen* ]]; then
-
-    # Start ping in background and capture output using process substitution
-    ping_output=$(ping -I "$INTERFACE_IP" -c 10 "$king_ip" 2>/dev/null)
-
     # Extract average RTT from the ping output
-    extracted_rtt=$(echo "$ping_output" | grep -oP 'rtt min/avg/max/mdev = \d+\.\d+/(\d+\.\d+)' | awk -F'/' '{print $5}')
+    extracted_rtt=$(awk '/rtt min\/avg\/max\/mdev = [0-9]+\.[0-9]+\/([0-9]+\.[0-9]+)/ {split($4, a, "/"); print a[2]}' /tmp/rtt.txt)
 
     # Update rtt_avg only if extracted_rtt is not empty
     if [[ ! -z "$extracted_rtt" ]]; then
         rtt_avg=$extracted_rtt
     fi
 
-    # Output the counts along with the average RTT using CONTAINER ECHO
-    container_echo "$counts, AVG_RTT:$rtt_avg"
+    # Output the counts along with the average RTT
+    echo "$counts, AVG_RTT:$rtt_avg, NONCE:$nonce"
 else
-    # Output just the counts if the machine is king using CONTAINER ECHO
-    container_echo "$counts"
+    # Output just the counts if the machine is king
+    echo "$counts, NONCE: $nonce"
 fi
+
+# Delete temporary files
+rm -f /tmp/rtt.txt
+rm -f /tmp/counts.txt
 
 exit 0
