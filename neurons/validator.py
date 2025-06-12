@@ -196,6 +196,7 @@ class Validator(BaseValidatorNeuron):
                     return None
                 
                 # Initialize container for this round
+                logger.info(f"Initializing container..")
                 self.round_nonce = hashlib.sha256(str(sync_time).encode()).hexdigest()
                 self._init_container(round_manager)
                 
@@ -524,8 +525,6 @@ class Validator(BaseValidatorNeuron):
                 f"validator_{settings.WALLET.hotkey.ss58_address.lower()}_container_{self.round_nonce}".encode()
             ).hexdigest()[:16]
 
-            logger.info(f"Using container password: {self.container_password}")
-
             # Always rebuild container for each round
             logger.info("Building new container for this round...")
             self._build_container()
@@ -652,8 +651,10 @@ RUN echo '#!/bin/bash' > /usr/local/bin/check_password && \\
     chmod +x /usr/local/bin/check_password
 
 # Embed the nonce in a way that's accessible inside but not outside
-ENV ROUND_NONCE={self.round_nonce}
-RUN echo "{self.round_nonce}" > /etc/round_nonce && chmod 600 /etc/round_nonce
+COPY <<EOF /etc/round_nonce
+{self.round_nonce}
+EOF
+RUN chmod 600 /etc/round_nonce
 
 # Set entrypoint to require password
 ENTRYPOINT ["/usr/local/bin/check_password"]
@@ -720,7 +721,7 @@ CMD ["echo", "Container ready"]
         with open(self.container_path, 'rb') as f:
             self.container_hash = hashlib.sha256(f.read()).hexdigest()
         
-        logger.success(f"Container built with nonce {self.round_nonce}: {self.container_hash}")
+        logger.success(f"Container built successfully!")
         self.container_ready = True
         
             

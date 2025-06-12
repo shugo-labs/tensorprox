@@ -701,7 +701,7 @@ class RoundManager(BaseModel):
                 - A list of Synapse responses from each miner.
                 - A list of dictionaries containing availability status for each miner.
         """
-        
+
         async def check_with_timeout(uid):
             try:
                 return await asyncio.wait_for(self.check_miner(uid), timeout=timeout)
