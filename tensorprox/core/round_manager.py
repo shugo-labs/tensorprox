@@ -733,9 +733,6 @@ class RoundManager(BaseModel):
                 - A list of Synapse responses from each miner.
                 - A list of dictionaries containing availability status for each miner.
         """
-        
-        logger.info(f"COntainer_password : {self.container_password}")
-        logger.info(f"ROund_nonce : {self.round_nonce}")
 
         async def check_with_timeout(uid):
             try:
