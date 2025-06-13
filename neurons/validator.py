@@ -636,20 +636,35 @@ class Validator(BaseValidatorNeuron):
 
         # Create Dockerfile with nonce embedded
         dockerfile_content = f"""
-FROM python:3.10-alpine
+FROM python:3.10-slim AS builder
 
-# Install required packages
-RUN apk add --no-cache \\
-    tcpdump \\
-    iputils \\
-    gawk \\
-    jq \\
-    bash \\
-    iproute2 \\
-    coreutils
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    gcc \\
+    python3-dev \\
+    && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-RUN pip install --no-cache-dir faker scapy pycryptodome
+RUN pip install --no-cache-dir --user faker scapy pycryptodome
+
+FROM python:3.10-slim
+
+# Copy Python packages from builder
+COPY --from=builder /root/.local /root/.local
+
+# Install only runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    tcpdump \\
+    iputils-ping \\
+    gawk \\
+    jq \\
+    iproute2 \\
+    && rm -rf /var/lib/apt/lists/* \\
+    && apt-get clean \\
+    && rm -rf /tmp/* /var/tmp/* /usr/share/doc/* /usr/share/man/*
+
+# Make sure scripts in .local are usable
+ENV PATH=/root/.local/bin:$PATH
 
 # Copy round nonce securely
 COPY round_nonce /etc/round_nonce
@@ -660,8 +675,6 @@ COPY challenge.sh /usr/local/bin/challenge.sh
 COPY traffic_generator.py /usr/local/bin/traffic_generator.py
 
 RUN chmod +x /usr/local/bin/challenge.sh /usr/local/bin/traffic_generator.py
-
-RUN rm -rf /root/.cache /var/cache/apk/* /usr/share/man /usr/share/doc
 
 ENTRYPOINT ["/usr/local/bin/challenge.sh"]
 """
@@ -717,7 +730,6 @@ ENTRYPOINT ["/usr/local/bin/challenge.sh"]
             
             if inspect_result.returncode == 0:
                 self.image_hash = inspect_result.stdout.strip()
-                logger.info(f"Docker image hash: {self.image_hash}")
             else:
                 logger.error(f"Failed to get Docker image hash: {inspect_result.stderr}")
                 self.image_hash = ""
@@ -753,8 +765,6 @@ ENTRYPOINT ["/usr/local/bin/challenge.sh"]
             self.container_hash = hashlib.sha256(f.read()).hexdigest()
         
         logger.success(f"Container built successfully!")
-        logger.info(f"Image hash: {self.image_hash}")
-        logger.info(f"Container file hash: {self.container_hash}")
         self.container_ready = True
             
     def _cleanup_container(self):
