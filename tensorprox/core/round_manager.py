@@ -150,7 +150,7 @@ class RoundManager(BaseModel):
         await send_file_via_scp(self.container_path, remote_path, ip, key_path, ssh_user)
         
         # Verify deployment by checking if file exists - USE WILDCARD PATTERN
-        check_cmd = f"/usr/bin/test -f /home/{ssh_user}/containers/validator_*_challenge_*.tar.enc && echo EXISTS || echo MISSING"
+        check_cmd = f"/usr/bin/test -f /home/{ssh_user}/containers/{self.container_name}.tar.enc && echo EXISTS || echo MISSING"
         result = await ssh_connect_execute(ip, key_path, ssh_user, check_cmd)
         return result and "EXISTS" in result.stdout
 
@@ -676,7 +676,8 @@ class RoundManager(BaseModel):
         remote_script_path = get_immutable_path(remote_base_directory, script_name)
         remote_traffic_gen = get_immutable_path(remote_base_directory, "traffic_generator.py")
         files_to_verify = [script_name] + linked_files
-
+        paired_list = create_pairs_to_verify(files_to_verify, remote_base_directory)
+        
         playlist = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
         label_hashes = json.dumps(label_hashes)
 
@@ -686,9 +687,9 @@ class RoundManager(BaseModel):
             return False
         
         # Create individual commands with proper quoting
-        gpg_cmd = f'gpg --batch --yes --passphrase {shlex.quote(self.container_password)} -o image.tar -d {shlex.quote(f"/home/{ssh_user}/containers/{self.container_name}.tar.enc")}'
+        gpg_cmd = f'gpg --batch --yes --passphrase {shlex.quote(self.container_password)} -d {shlex.quote(f"/home/{ssh_user}/containers/{self.container_name}.tar.enc")}'
 
-        docker_load_cmd = "docker load -i image.tar"
+        docker_load_cmd = "docker load"
 
         # Create docker run args with proper quoting
         docker_run_args = [

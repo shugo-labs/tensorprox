@@ -129,9 +129,8 @@ declare -a ALLOWED_COMMANDS=(
     "/usr/bin/mkdir -p /home/$restricted_user/containers"
     "/usr/bin/scp -t /home/$restricted_user/containers/*"
     "/usr/bin/gpg --batch --yes --passphrase"
-    "/usr/bin/docker load -i image.tar"
-    "/usr/bin/docker run --network host --cap-add=NET_ADMIN --cap-add=NET_RAW"
-    
+    "/usr/bin/docker load"
+    "/usr/bin/docker run --network host --cap-add=NET_ADMIN --cap-add=NET_RAW"   
 )
 EOF_COMMANDS
 
