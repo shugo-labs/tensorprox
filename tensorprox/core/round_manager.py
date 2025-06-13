@@ -126,6 +126,7 @@ class RoundManager(BaseModel):
     container_path: str = ""
     container_password: str = ""
     container_hash: str = ""
+    image_hash: str = ""
     container_ready: bool = False
     round_nonce: str = ""
     
@@ -143,14 +144,11 @@ class RoundManager(BaseModel):
         
         # If missing or hash mismatch, deploy
         logger.info(f"Deploying container to {ip}")
-        mkdir_cmd = f"/usr/bin/mkdir -p /home/{ssh_user}/containers"
-        await ssh_connect_execute(ip, key_path, ssh_user, mkdir_cmd)
-        
-        remote_path = f"/home/{ssh_user}/containers/{self.container_name}.tar.enc"
+        remote_path = f"/home/{ssh_user}/tensorprox/tensorprox/core/immutable/{self.container_name}.tar.enc"
         await send_file_via_scp(self.container_path, remote_path, ip, key_path, ssh_user)
         
         # Verify deployment by checking if file exists - USE WILDCARD PATTERN
-        check_cmd = f"/usr/bin/test -f /home/{ssh_user}/containers/{self.container_name}.tar.enc && echo EXISTS || echo MISSING"
+        check_cmd = f"/usr/bin/test -f /home/{ssh_user}/tensorprox/tensorprox/core/immutable/{self.container_name}.tar.enc && echo EXISTS || echo MISSING"
         result = await ssh_connect_execute(ip, key_path, ssh_user, check_cmd)
         return result and "EXISTS" in result.stdout
 
@@ -674,43 +672,48 @@ class RoundManager(BaseModel):
         """
 
         remote_script_path = get_immutable_path(remote_base_directory, script_name)
-        remote_traffic_gen = get_immutable_path(remote_base_directory, "traffic_generator.py")
         files_to_verify = [script_name] + linked_files
         paired_list = create_pairs_to_verify(files_to_verify, remote_base_directory)
         
-        playlist = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
-        label_hashes = json.dumps(label_hashes)
+        playlist_json = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
+        label_hashes_json = json.dumps(label_hashes)
 
         # Deploy and verify container
         if not await self._deploy_container(ip, ssh_user, key_path):
             logger.error(f"Failed to deploy container to {machine_name}")
             return False
-        
-        # Create individual commands with proper quoting
-        gpg_cmd = f'/usr/bin/gpg --batch --yes --passphrase {shlex.quote(self.container_password)} -d {shlex.quote(f"/home/{ssh_user}/containers/{self.container_name}.tar.enc")}'
 
-        docker_load_cmd = "/usr/bin/docker load"
+        # Remove all Docker images before loading the new one
+        remove_images_cmd = "/usr/bin/docker rmi -f $(docker images -aq) || true"
+        await ssh_connect_execute(ip, key_path, ssh_user, remove_images_cmd)
 
-        # Create docker run args with proper quoting
-        docker_run_args = [
+        # GPG decrypt and docker load
+        decrypt_and_load_cmd = (
+            f"/usr/bin/gpg --batch --yes --passphrase {self.container_password} "
+            f"-d /home/{ssh_user}/tensorprox/tensorprox/core/immutable/{self.container_name}.tar.enc "
+            f"| /usr/bin/docker load"
+        )
+
+        # Execute the decryption and docker load command
+        await check_files_and_execute(ip, key_path, ssh_user, paired_list, decrypt_and_load_cmd)
+
+        # Create docker run args
+        args = [
             "/usr/bin/docker", "run",
             "--network", "host",
             "--cap-add", "NET_ADMIN", 
             "--cap-add", "NET_RAW",
-            f"{self.container_name}:latest",
+            self.image_hash,  # Use the image hash to run the container
             machine_name,
             str(challenge_duration),
-            json.dumps(label_hashes),  # This will be quoted by shlex.quote below
+            label_hashes_json,
+            playlist_json,
             KING_OVERLAY_IP
         ]
 
-        docker_run_cmd = ' '.join(shlex.quote(arg) for arg in docker_run_args)
+        cmd = ' '.join(shlex.quote(arg) for arg in args)
 
-        # Chain all commands
-        cmd = f"{gpg_cmd} && {docker_load_cmd} && {docker_run_cmd}"
-
-        return await check_files_and_execute(ip, key_path, ssh_user, paired_list, cmd)
-
+        return await ssh_connect_execute(ip, key_path, ssh_user, cmd)
 
     async def check_machines_availability(self, uids: List[int], timeout: float = QUERY_AVAILABILITY_TIMEOUT) -> Tuple[List[PingSynapse], List[dict]]:
         """
@@ -725,9 +728,6 @@ class RoundManager(BaseModel):
                 - A list of Synapse responses from each miner.
                 - A list of dictionaries containing availability status for each miner.
         """
-        
-        logger.info(f"COntainer_password : {self.container_password}")
-        logger.info(f"ROund_nonce : {self.round_nonce}")
 
         async def check_with_timeout(uid):
             try:

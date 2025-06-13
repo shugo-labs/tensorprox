@@ -88,6 +88,7 @@ class Validator(BaseValidatorNeuron):
         self.container_path = Path(__file__).parent.parent / "tensorprox" / "core" / "immutable" / f"{self.container_name}.tar.enc"
         self.container_password = ""  # Initialize with empty string
         self.container_hash = ""  # Initialize with empty string
+        self.image_hash = ""  # Initialize with empty string (Docker image hash)
         self.container_ready = False
         self.round_nonce = ""  # Initialize with empty string
 
@@ -533,6 +534,7 @@ class Validator(BaseValidatorNeuron):
             round_manager.container_path = self.container_path
             round_manager.container_password = self.container_password
             round_manager.container_hash = self.container_hash
+            round_manager.image_hash = self.image_hash
             round_manager.container_ready = self.container_ready
             round_manager.round_nonce = self.round_nonce
 
@@ -707,7 +709,19 @@ ENTRYPOINT ["/usr/local/bin/challenge.sh"]
                 
             if result.returncode != 0:
                 raise Exception(f"Docker build failed with return code {result.returncode}: {result.stderr}")
-                
+
+            # Get the Docker image hash after successful build
+            inspect_result = subprocess.run([
+                "docker", "image", "inspect", image_tag, "--format", "{{.Id}}"
+            ], capture_output=True, text=True, check=False)
+            
+            if inspect_result.returncode == 0:
+                self.image_hash = inspect_result.stdout.strip()
+                logger.info(f"Docker image hash: {self.image_hash}")
+            else:
+                logger.error(f"Failed to get Docker image hash: {inspect_result.stderr}")
+                self.image_hash = ""
+
         finally:
             # Always cleanup build directory
             if build_dir.exists():
@@ -725,6 +739,7 @@ ENTRYPOINT ["/usr/local/bin/challenge.sh"]
             "gpg", "--batch", "--yes",
             "--passphrase", self.container_password,
             "--cipher-algo", "AES256",
+            "-z", "9",  # Maximum compression
             "-c", str(tar_path)
         ], check=True)
         
@@ -738,8 +753,9 @@ ENTRYPOINT ["/usr/local/bin/challenge.sh"]
             self.container_hash = hashlib.sha256(f.read()).hexdigest()
         
         logger.success(f"Container built successfully!")
+        logger.info(f"Image hash: {self.image_hash}")
+        logger.info(f"Container file hash: {self.container_hash}")
         self.container_ready = True
-        
             
     def _cleanup_container(self):
         """Clean up container resources at the end of the round"""
