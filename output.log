@@ -1,0 +1,57 @@
+nohup: ignoring input
+/home/ubuntu/tensorprox/tensorprox/validator/hash_server.py:219: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+INFO:     Started server process [4082698]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+2025-06-10 17:42:09,427 - __main__ - INFO - Generated token for UID 1: 1:1749580929:6ca93f0619bfda586837352bd6fb224228703c69dbdd1b4badc2077ef4bba441
+INFO:     57.129.82.116:19063 - "GET /token/1 HTTP/1.1" 200 OK
+2025-06-10 17:42:09,429 - __main__ - INFO - Generated token for UID 2: 2:1749580929:e36f5c0843dd3a4cfc604630c3c9f0e89fb9b594c2aacc7ae8da4f7b5bfe4ba4
+INFO:     57.129.82.116:19063 - "GET /token/2 HTTP/1.1" 200 OK
+2025-06-10 17:42:09,430 - __main__ - INFO - Generated token for UID 3: 3:1749580929:2a66fafd70a064fab39deba4b31b530f927106c69d8c82a95c5504f114123f63
+INFO:     57.129.82.116:19063 - "GET /token/3 HTTP/1.1" 200 OK
+2025-06-10 17:42:09,432 - __main__ - INFO - Generated token for UID 4: 4:1749580929:2ec4edad0809db422784583f6eec8b878f5d4119d982ead5948de473d4ea5a20
+INFO:     57.129.82.116:19063 - "GET /token/4 HTTP/1.1" 200 OK
+2025-06-10 17:42:09,433 - __main__ - INFO - Generated token for UID 5: 5:1749580929:18108e010736c2ed4ea3286283a3928fa7d20205546c81d5bdb1fb634e2022ba
+INFO:     57.129.82.116:19063 - "GET /token/5 HTTP/1.1" 200 OK
+2025-06-10 17:42:09,436 - __main__ - INFO - Received hash store request for UID 1, machine tgen-0
+2025-06-10 17:42:09,436 - __main__ - INFO - Hash: test_hash_1_tgen-0_1749577329
+2025-06-10 17:42:09,436 - __main__ - INFO - Successfully stored hash for UID 1, machine tgen-0
+INFO:     57.129.82.116:19063 - "POST /hashes/1/tgen-0 HTTP/1.1" 200 OK
+2025-06-10 17:42:10,439 - __main__ - INFO - Received hash store request for UID 1, machine tgen-1
+2025-06-10 17:42:10,440 - __main__ - INFO - Hash: test_hash_1_tgen-1_1749577330
+2025-06-10 17:42:10,440 - __main__ - INFO - Successfully stored hash for UID 1, machine tgen-1
+INFO:     57.129.82.116:19063 - "POST /hashes/1/tgen-1 HTTP/1.1" 200 OK
+2025-06-10 17:47:25,134 - __main__ - INFO - Generated token for UID 14: 14:1749581245:8d18aea1feeb134202e69afaecadf2e60fb4a42f7bcec2ece7621a5a465f89d0
+INFO:     57.129.82.116:47536 - "GET /token/14 HTTP/1.1" 200 OK
+INFO:     57.129.82.116:1594 - "GET /hashes/14/king HTTP/1.1" 404 Not Found
+INFO:     57.129.82.116:58605 - "GET /hashes/14/tgen-1 HTTP/1.1" 404 Not Found
+INFO:     57.129.82.116:3334 - "GET /hashes/14/tgen-0 HTTP/1.1" 404 Not Found
+2025-06-10 18:02:26,625 - __main__ - INFO - Generated token for UID 14: 14:1749582146:0ae4eabfffa18546cc0451cfabd2927ed125055849427051f5cba6fd511f467f
+INFO:     57.129.82.116:11608 - "GET /token/14 HTTP/1.1" 200 OK
+INFO:     57.129.82.116:1711 - "GET /hashes/14/king HTTP/1.1" 404 Not Found
+INFO:     57.129.82.116:16230 - "GET /hashes/14/tgen-0 HTTP/1.1" 404 Not Found
+INFO:     57.129.82.116:54411 - "GET /hashes/14/tgen-1 HTTP/1.1" 404 Not Found
+INFO:     57.129.82.116:5683 - "POST /hashes// HTTP/1.1" 404 Not Found
+2025-06-10 18:07:17,919 - __main__ - INFO - Received hash store request for UID 14, machine king
+2025-06-10 18:07:17,919 - __main__ - INFO - Hash: 8c49e2e8634ba0780f08819fdd00dd907b5e77ce42aa2d1e01ee777174e10381
+2025-06-10 18:07:17,919 - __main__ - INFO - Successfully stored hash for UID 14, machine king
+INFO:     57.129.82.116:36295 - "POST /hashes/14/king HTTP/1.1" 200 OK
+INFO:     57.129.82.116:36066 - "GET /hashes/14/king HTTP/1.1" 200 OK
+INFO:     57.129.82.116:5239 - "GET /hashes/14/king HTTP/1.1" 200 OK
+INFO:     57.129.82.116:6609 - "GET /hashes/14/king HTTP/1.1" 200 OK
+INFO:     57.129.82.116:1699 - "GET /hashes/14/king HTTP/1.1" 200 OK
+INFO:     57.129.82.116:16260 - "GET /hashes/14/king HTTP/1.1" 200 OK
+2025-06-10 18:08:31,172 - __main__ - ERROR - Invalid token for UID 14
+2025-06-10 18:08:31,173 - __main__ - ERROR - HTTP error storing hash: Invalid token for UID 14
+INFO:     57.129.82.116:22790 - "POST /hashes/14/king HTTP/1.1" 403 Forbidden
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [4082698]

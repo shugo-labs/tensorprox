@@ -1,0 +1,173 @@
+2025-06-10 16:28:52,912 - __main__ - INFO - Generated token for UID 1: 1:1749576532:0388486b662200de13a3c8969b2bd72086002f01cf4ae37d953159224b819657
+2025-06-10 16:28:52,914 - __main__ - INFO - Generated token for UID 2: 2:1749576532:c2f1526f062e32600ed90f80c1550a17cb75c57f406647ec36a4be854cffc8e4
+2025-06-10 16:28:52,915 - __main__ - INFO - Generated token for UID 3: 3:1749576532:72144d12fba5270c87095e2df9388d85ffed1860e91c5240d522558715227269
+2025-06-10 16:28:52,916 - __main__ - INFO - Generated token for UID 4: 4:1749576532:1cf27652b5c9339257f23ff72a48f7ce822c5272a94bd1464aefba5565711a26
+2025-06-10 16:28:52,917 - __main__ - INFO - Generated token for UID 5: 5:1749576532:45b148579169ca3caaa487daea4b1f31217723e7db2940918139234bfa904794
+2025-06-10 16:30:59,207 - __main__ - INFO - Generated token for UID 1: 1:1749576659:c0627c63d29b718c132d78e0b1ca19e315e33fdf5003108f8e40ef6c5322185d
+2025-06-10 16:30:59,208 - __main__ - INFO - Generated token for UID 2: 2:1749576659:41d0bd40dc0b6a2ac841ec6664014adb955e6de0b511fcc0adfead1a35a4f30e
+2025-06-10 16:30:59,209 - __main__ - INFO - Generated token for UID 3: 3:1749576659:d1d9d49fd5d60672e55997924c9d4b89cc77df587f789ca6f437ac318d2d2a4c
+2025-06-10 16:30:59,210 - __main__ - INFO - Generated token for UID 4: 4:1749576659:79fbfb15e5239acd26a50063adf6c9b63c886bc358f127d5f9879f91330bb46c
+2025-06-10 16:30:59,211 - __main__ - INFO - Generated token for UID 5: 5:1749576659:568c0c03bcf080dba804067348d113a590ba3b300acb39f1560f7b65c47c8f69
+2025-06-10 16:31:07,836 - __main__ - INFO - Generated token for UID 1: 1:1749576667:8030d6521db75c3cf03d1f206bde2ecbfb95bd1a554a2f21fd043a91ef452271
+2025-06-10 16:31:07,837 - __main__ - INFO - Generated token for UID 2: 2:1749576667:4d12bad1b2e62ab31911e5f345e05dd138d6194acb664ee68de89bc988c0e9ab
+2025-06-10 16:31:07,839 - __main__ - INFO - Generated token for UID 3: 3:1749576667:d97975a2886a010fbc85a22c791049f4bccaeeb5d44862b2e75f86205534cc66
+2025-06-10 16:31:07,840 - __main__ - INFO - Generated token for UID 4: 4:1749576667:35326a9ad9da4d44e5b2f00c3cbca2ab6798febf7865ccf2b7dfd64b2e081249
+2025-06-10 16:31:07,842 - __main__ - INFO - Generated token for UID 5: 5:1749576667:99bc482eab3290a8c28559281bec0435d21da47364d05ce785b27eeecee33649
+2025-06-10 16:35:25,665 - __main__ - INFO - Generated token for UID 1: 1:1749576925:b7f7d4ca088bc84cc3ba85db7078f366c8f3f8b552ed2db832ea93688af7b2ab
+2025-06-10 16:35:25,666 - __main__ - INFO - Generated token for UID 2: 2:1749576925:bf2470cbe22aee1ed750d20dfe465d378d7e2691b0d62f2e087344815b556e73
+2025-06-10 16:35:25,667 - __main__ - INFO - Generated token for UID 3: 3:1749576925:dd7e7fa69a567386a681683bdb65acdd34c4ac6daa666fb5ddafb10720cab96a
+2025-06-10 16:35:25,668 - __main__ - INFO - Generated token for UID 4: 4:1749576925:60e8b49dfd691b869b142f57db7adc62d2c65aaabfb1b0391be700fac613ea43
+2025-06-10 16:35:25,670 - __main__ - INFO - Generated token for UID 5: 5:1749576925:b5d1131f0949435775e2941afb9ea6c5f24476fa5d3429187ca68d7372424fc6
+2025-06-10 16:36:48,069 - __main__ - INFO - Generated token for UID 1: 1:1749577008:a53595e582fdcb785013e9f9c452c41c62c13165a6e031f11e66417ceac171de
+2025-06-10 16:36:48,071 - __main__ - INFO - Generated token for UID 2: 2:1749577008:00b7a726f3cf2a71c5174d8e6e05cccbf011d1fcc50a4c0cdcfb7074ba307cfa
+2025-06-10 16:36:48,073 - __main__ - INFO - Generated token for UID 3: 3:1749577008:12755cba21098955f09b8e552575964ae0b8a201ce4e162ab29cc2b21298d61d
+2025-06-10 16:36:48,074 - __main__ - INFO - Generated token for UID 4: 4:1749577008:4a1d632ccce61e6271d0e7e48d70680237f3a684e5a2a02cc1ce404ee044b12c
+2025-06-10 16:36:48,075 - __main__ - INFO - Generated token for UID 5: 5:1749577008:c31804e81863dd6e439c589b75c1022669999a1579cd4f10de16b4e1f26e1f82
+2025-06-10 16:36:48,078 - __main__ - ERROR - Unhandled error: name 'request' is not defined
+2025-06-10 16:36:48,081 - __main__ - ERROR - Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/base.py", line 159, in call_next
+    message = await recv_stream.receive()
+  File "/usr/local/lib/python3.10/dist-packages/anyio/streams/memory.py", line 126, in receive
+    raise EndOfStream from None
+anyio.EndOfStream
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/ubuntu/tensorprox/tensorprox/validator/hash_server.py", line 52, in catch_exceptions_middleware
+    return await call_next(request)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/base.py", line 165, in call_next
+    raise app_exc
+  File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/base.py", line 151, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/exceptions.py", line 65, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 64, in wrapped_app
+    raise exc
+  File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    await app(scope, receive, sender)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 756, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 776, in app
+    await route.handle(scope, receive, send)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 297, in handle
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 77, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 64, in wrapped_app
+    raise exc
+  File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    await app(scope, receive, sender)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 72, in app
+    response = await func(request)
+  File "/usr/local/lib/python3.10/dist-packages/fastapi/routing.py", line 269, in app
+    solved_result = await solve_dependencies(
+  File "/usr/local/lib/python3.10/dist-packages/fastapi/dependencies/utils.py", line 602, in solve_dependencies
+    solved = await run_in_threadpool(call, **sub_values)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/concurrency.py", line 42, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func, *args)
+  File "/usr/local/lib/python3.10/dist-packages/anyio/to_thread.py", line 56, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+  File "/usr/local/lib/python3.10/dist-packages/anyio/_backends/_asyncio.py", line 2470, in run_sync_in_worker_thread
+    return await future
+  File "/usr/local/lib/python3.10/dist-packages/anyio/_backends/_asyncio.py", line 967, in run
+    result = context.run(func, *args)
+  File "/home/ubuntu/tensorprox/tensorprox/validator/hash_server.py", line 149, in <lambda>
+    _: bool = Depends(lambda: verify_token(request, uid))
+NameError: name 'request' is not defined. Did you mean: 'Request'?
+
+2025-06-10 16:36:49,084 - __main__ - ERROR - Unhandled error: name 'request' is not defined
+2025-06-10 16:36:49,085 - __main__ - ERROR - Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/base.py", line 159, in call_next
+    message = await recv_stream.receive()
+  File "/usr/local/lib/python3.10/dist-packages/anyio/streams/memory.py", line 126, in receive
+    raise EndOfStream from None
+anyio.EndOfStream
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/ubuntu/tensorprox/tensorprox/validator/hash_server.py", line 52, in catch_exceptions_middleware
+    return await call_next(request)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/base.py", line 165, in call_next
+    raise app_exc
+  File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/base.py", line 151, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/exceptions.py", line 65, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 64, in wrapped_app
+    raise exc
+  File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    await app(scope, receive, sender)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 756, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 776, in app
+    await route.handle(scope, receive, send)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 297, in handle
+    await self.app(scope, receive, send)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 77, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 64, in wrapped_app
+    raise exc
+  File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    await app(scope, receive, sender)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 72, in app
+    response = await func(request)
+  File "/usr/local/lib/python3.10/dist-packages/fastapi/routing.py", line 269, in app
+    solved_result = await solve_dependencies(
+  File "/usr/local/lib/python3.10/dist-packages/fastapi/dependencies/utils.py", line 602, in solve_dependencies
+    solved = await run_in_threadpool(call, **sub_values)
+  File "/usr/local/lib/python3.10/dist-packages/starlette/concurrency.py", line 42, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func, *args)
+  File "/usr/local/lib/python3.10/dist-packages/anyio/to_thread.py", line 56, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+  File "/usr/local/lib/python3.10/dist-packages/anyio/_backends/_asyncio.py", line 2470, in run_sync_in_worker_thread
+    return await future
+  File "/usr/local/lib/python3.10/dist-packages/anyio/_backends/_asyncio.py", line 967, in run
+    result = context.run(func, *args)
+  File "/home/ubuntu/tensorprox/tensorprox/validator/hash_server.py", line 149, in <lambda>
+    _: bool = Depends(lambda: verify_token(request, uid))
+NameError: name 'request' is not defined. Did you mean: 'Request'?
+
+2025-06-10 16:39:57,063 - __main__ - INFO - Generated token for UID 1: 1:1749577197:69a29d2ee1b999b1d47e34ee1e833d121dabd8524d6ffcd056d3c1dca0fd5eb0
+2025-06-10 16:39:57,066 - __main__ - INFO - Generated token for UID 2: 2:1749577197:f80cd20f0d673f1d76488b3601ce7b90ccf84cedb61ed4e4fc624e1039955421
+2025-06-10 16:39:57,067 - __main__ - INFO - Generated token for UID 3: 3:1749577197:0793880598ab7e87992fc64c8651bf4ef576dce9db4ab84a5ad41826dcee5738
+2025-06-10 16:39:57,069 - __main__ - INFO - Generated token for UID 4: 4:1749577197:c063b5f9bef6f6f6972b76785fd43fcefbbc08a8b6bb2921eb02cd27973d8afe
+2025-06-10 16:39:57,070 - __main__ - INFO - Generated token for UID 5: 5:1749577197:3de8f71982d7848b55948ae5d3fa2e581ca7418ccbff578a3d946a2477b72a95
+2025-06-10 16:39:57,073 - __main__ - INFO - Received hash store request for UID 1, machine tgen-0
+2025-06-10 16:39:57,073 - __main__ - INFO - Entry data: {'uid': '1', 'machine': 'tgen-0', 'timestamp': 1749573597, 'hash': 'test_hash_1_tgen-0_1749573597', 'result': 'BENIGN:10, UDP_FLOOD:5, TCP_SYN_FLOOD:3, AVG_RTT:50'}
+2025-06-10 16:39:57,073 - __main__ - INFO - Successfully stored hash for UID 1, machine tgen-0
+2025-06-10 16:39:58,077 - __main__ - INFO - Received hash store request for UID 1, machine tgen-1
+2025-06-10 16:39:58,077 - __main__ - INFO - Entry data: {'uid': '1', 'machine': 'tgen-1', 'timestamp': 1749573598, 'hash': 'test_hash_1_tgen-1_1749573598', 'result': 'BENIGN:10, UDP_FLOOD:5, TCP_SYN_FLOOD:3, AVG_RTT:50'}
+2025-06-10 16:39:58,077 - __main__ - INFO - Successfully stored hash for UID 1, machine tgen-1
+2025-06-10 16:39:59,082 - __main__ - INFO - Received hash store request for UID 1, machine king
+2025-06-10 16:39:59,082 - __main__ - INFO - Entry data: {'uid': '1', 'machine': 'king', 'timestamp': 1749573599, 'hash': 'test_hash_1_king_1749573599', 'result': 'BENIGN:10, UDP_FLOOD:5, TCP_SYN_FLOOD:3, AVG_RTT:50'}
+2025-06-10 16:39:59,082 - __main__ - INFO - Successfully stored hash for UID 1, machine king
+2025-06-10 16:40:00,087 - __main__ - INFO - Received hash store request for UID 2, machine tgen-0
+2025-06-10 16:40:00,087 - __main__ - INFO - Entry data: {'uid': '2', 'machine': 'tgen-0', 'timestamp': 1749573600, 'hash': 'test_hash_2_tgen-0_1749573600', 'result': 'BENIGN:10, UDP_FLOOD:5, TCP_SYN_FLOOD:3, AVG_RTT:50'}
+2025-06-10 16:40:00,087 - __main__ - INFO - Successfully stored hash for UID 2, machine tgen-0
+2025-06-10 16:40:01,091 - __main__ - INFO - Received hash store request for UID 2, machine tgen-1
+2025-06-10 16:40:01,092 - __main__ - INFO - Entry data: {'uid': '2', 'machine': 'tgen-1', 'timestamp': 1749573601, 'hash': 'test_hash_2_tgen-1_1749573601', 'result': 'BENIGN:10, UDP_FLOOD:5, TCP_SYN_FLOOD:3, AVG_RTT:50'}
+2025-06-10 16:40:01,092 - __main__ - INFO - Successfully stored hash for UID 2, machine tgen-1
+2025-06-10 17:42:09,427 - __main__ - INFO - Generated token for UID 1: 1:1749580929:6ca93f0619bfda586837352bd6fb224228703c69dbdd1b4badc2077ef4bba441
+2025-06-10 17:42:09,429 - __main__ - INFO - Generated token for UID 2: 2:1749580929:e36f5c0843dd3a4cfc604630c3c9f0e89fb9b594c2aacc7ae8da4f7b5bfe4ba4
+2025-06-10 17:42:09,430 - __main__ - INFO - Generated token for UID 3: 3:1749580929:2a66fafd70a064fab39deba4b31b530f927106c69d8c82a95c5504f114123f63
+2025-06-10 17:42:09,432 - __main__ - INFO - Generated token for UID 4: 4:1749580929:2ec4edad0809db422784583f6eec8b878f5d4119d982ead5948de473d4ea5a20
+2025-06-10 17:42:09,433 - __main__ - INFO - Generated token for UID 5: 5:1749580929:18108e010736c2ed4ea3286283a3928fa7d20205546c81d5bdb1fb634e2022ba
+2025-06-10 17:42:09,436 - __main__ - INFO - Received hash store request for UID 1, machine tgen-0
+2025-06-10 17:42:09,436 - __main__ - INFO - Hash: test_hash_1_tgen-0_1749577329
+2025-06-10 17:42:09,436 - __main__ - INFO - Successfully stored hash for UID 1, machine tgen-0
+2025-06-10 17:42:10,439 - __main__ - INFO - Received hash store request for UID 1, machine tgen-1
+2025-06-10 17:42:10,440 - __main__ - INFO - Hash: test_hash_1_tgen-1_1749577330
+2025-06-10 17:42:10,440 - __main__ - INFO - Successfully stored hash for UID 1, machine tgen-1
+2025-06-10 17:47:25,134 - __main__ - INFO - Generated token for UID 14: 14:1749581245:8d18aea1feeb134202e69afaecadf2e60fb4a42f7bcec2ece7621a5a465f89d0
+2025-06-10 18:02:26,625 - __main__ - INFO - Generated token for UID 14: 14:1749582146:0ae4eabfffa18546cc0451cfabd2927ed125055849427051f5cba6fd511f467f
+2025-06-10 18:07:17,919 - __main__ - INFO - Received hash store request for UID 14, machine king
+2025-06-10 18:07:17,919 - __main__ - INFO - Hash: 8c49e2e8634ba0780f08819fdd00dd907b5e77ce42aa2d1e01ee777174e10381
+2025-06-10 18:07:17,919 - __main__ - INFO - Successfully stored hash for UID 14, machine king
+2025-06-10 18:08:31,172 - __main__ - ERROR - Invalid token for UID 14
+2025-06-10 18:08:31,173 - __main__ - ERROR - HTTP error storing hash: Invalid token for UID 14

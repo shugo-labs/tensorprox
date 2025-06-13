@@ -134,22 +134,12 @@ class RoundManager(BaseModel):
         if self.container_ready:
             logger.info(f"RoundManager initialized with container: {self.container_name}")
     
-    async def _ensure_container_deployed(self, ip: str, ssh_user: str, key_path: str):
+    async def _deploy_container(self, ip: str, ssh_user: str, key_path: str):
         """Ensure container is deployed to a specific machine"""
+
         if not self.container_ready:
             logger.error("Container not ready!")
             return False
-        
-        # Check if container exists on machine - USE WILDCARD PATTERN
-        check_cmd = f"/usr/bin/test -f /home/{ssh_user}/containers/validator_*_challenge_*.tar.enc && echo EXISTS || echo MISSING"
-        result = await ssh_connect_execute(ip, key_path, ssh_user, check_cmd)
-        
-        if result and "EXISTS" in result.stdout:
-            # Verify hash - USE WILDCARD PATTERN
-            hash_cmd = f"/usr/bin/sha256sum /home/{ssh_user}/containers/validator_*_challenge_*.tar.enc"
-            hash_result = await ssh_connect_execute(ip, key_path, ssh_user, hash_cmd)
-            if hash_result and self.container_hash in hash_result.stdout:
-                return True
         
         # If missing or hash mismatch, deploy
         logger.info(f"Deploying container to {ip}")
@@ -163,7 +153,6 @@ class RoundManager(BaseModel):
         check_cmd = f"/usr/bin/test -f /home/{ssh_user}/containers/validator_*_challenge_*.tar.enc && echo EXISTS || echo MISSING"
         result = await ssh_connect_execute(ip, key_path, ssh_user, check_cmd)
         return result and "EXISTS" in result.stdout
-
 
     def check_machine_availability(self, machine_name: str = None, uid: int = None) -> bool:
         """
@@ -650,74 +639,67 @@ class RoundManager(BaseModel):
         challenge_duration: int,
         label_hashes: Dict[str, list],
         playlists: List[dict],
-        script_name: str = "traffic_generator.py",
+        script_name: str = "challenge_v1_0_0.tar.enc",
         linked_files: list = []
     ) -> tuple:
-        """Run challenge using EXACT OLD method + container deployment"""
+        """
+        Runs the challenge script on the remote server.
 
-        # Run traffic generation for non-king machines
-        if machine_name != "king":
+        This method prepares the arguments for running the challenge script and calls the `run` method
+        to execute it on the remote server.
 
-            # First verify traffic_generator.py
-            remote_script_path = get_immutable_path(remote_base_directory, script_name)
-            files_to_verify = [script_name] + linked_files
-            paired_list = create_pairs_to_verify(files_to_verify, remote_base_directory)
+        Args:
+            ip (str): The IP address of the remote server.
+            ssh_user (str): The SSH username to access the server.
+            key_path (str): The path to the SSH private key for authentication.
+            remote_base_directory (str): The base directory on the remote server.
+            machine_name (str): The name of the machine running the challenge.
+            challenge_duration (int): The duration of the challenge in seconds.
+            label_hashes (Dict[str, list]): A dictionary mapping labels to their corresponding hash values.
+            playlists (List[dict]): A list of playlists to be used for the challenge.
+            script_name (str, optional): The name of the script to execute (default is "challenge.sh").
+            linked_files (list, optional): List of linked files to verify along with the script (default includes "traffic_generator.py" and "tcp_server.py").
 
-            playlist = json.dumps(playlists[machine_name])
+        Returns:
+            tuple: The result of the challenge execution.
+        """
 
-            # Create args list for traffic generator
-            args = [
-                "/usr/bin/python3",
-                remote_script_path,
-                "--playlist",
-                "/dev/stdin",
-                "--receiver-ips",
-                KING_OVERLAY_IP,
-                "--interface",
-                f"ipip-{machine_name}"
-            ]
-            
-            # Create the full command with nohup, input redirection and background execution
-            traffic_gen_cmd = f"nohup bash -c \"echo '{playlist}' | {' '.join(shlex.quote(arg) for arg in args)}\" > /tmp/traffic_generator.log 2>&1 &"
-            result = await check_files_and_execute(ip, key_path, ssh_user, paired_list, traffic_gen_cmd)
-            
-            if not result or result.returncode != 0:
-                logger.error(f"Failed to start traffic generation on {machine_name}")
-                return False
+        remote_script_path = get_immutable_path(remote_base_directory, script_name)
+        remote_traffic_gen = get_immutable_path(remote_base_directory, "traffic_generator.py")
+        files_to_verify = [script_name] + linked_files
+
+        playlist = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
+        label_hashes = json.dumps(label_hashes)
 
         # Deploy and verify container
         if not await self._ensure_container_deployed(ip, ssh_user, key_path):
             logger.error(f"Failed to deploy container to {machine_name}")
             return False
-
-        label_hashes = json.dumps(label_hashes)
         
-        # Create args list for container execution
-        args = [
-            "docker",
-            "run",
-            "--network",
-            "host",
-            "--cap-add",
-            "NET_ADMIN",
-            "--cap-add",
-            "NET_RAW",
+        # Create individual commands with proper quoting
+        gpg_cmd = f'gpg --batch --yes --passphrase {shlex.quote(self.container_password)} -o image.tar -d {shlex.quote(f"/home/{ssh_user}/containers/{self.container_name}.tar.enc")}'
+
+        docker_load_cmd = "docker load -i image.tar"
+
+        # Create docker run args with proper quoting
+        docker_run_args = [
+            "docker", "run",
+            "--network", "host",
+            "--cap-add", "NET_ADMIN", 
+            "--cap-add", "NET_RAW",
             f"{self.container_name}:latest",
-            self.container_password,
             machine_name,
             str(challenge_duration),
-            json.dumps(label_hashes),
-            KING_OVERLAY_IP,
+            json.dumps(label_hashes),  # This will be quoted by shlex.quote below
+            KING_OVERLAY_IP
         ]
 
-        cmd = ' '.join(shlex.quote(arg) for arg in args)
-        result = await check_files_and_execute(ip, key_path, ssh_user, paired_list, cmd)
+        docker_run_cmd = ' '.join(shlex.quote(arg) for arg in docker_run_args)
 
-        if not result or result.returncode != 0:
-            logger.error(f"Failed to run container on {machine_name}")
-            return False
-            
-        return result
+        # Chain all commands
+        cmd = f"{gpg_cmd} && {docker_load_cmd} && {docker_run_cmd}"
+
+        return await check_files_and_execute(ip, key_path, ssh_user, paired_list, cmd)
 
 
     async def check_machines_availability(self, uids: List[int], timeout: float = QUERY_AVAILABILITY_TIMEOUT) -> Tuple[List[PingSynapse], List[dict]]:
@@ -733,6 +715,9 @@ class RoundManager(BaseModel):
                 - A list of Synapse responses from each miner.
                 - A list of dictionaries containing availability status for each miner.
         """
+        
+        logger.info(f"COntainer_password : {self.container_password}")
+        logger.info(f"ROund_nonce : {self.round_nonce}")
 
         async def check_with_timeout(uid):
             try:

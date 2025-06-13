@@ -12,18 +12,18 @@ __version__ = "0.1.2"
 __spec_version__ = _version_to_int(__version__)
 
 # Inner parameters
-EPSILON: int = 10   # 1 minute
-DELTA: int = 90     # 1.5 minutes
+EPSILON: int = 0   # 1 minute
+DELTA: int = 30     # 1.5 minutes
 CHALLENGE_DURATION: int = 120  # 1 minute
 MIN_TGENS = 2
 MAX_TGENS = 8
 
 # Timeouts
-ROUND_TIMEOUT: int = 500  # 8 minutes
-QUERY_AVAILABILITY_TIMEOUT: int = 10  # 1 minute
+ROUND_TIMEOUT: int = 180  # 8 minutes
+QUERY_AVAILABILITY_TIMEOUT: int = 30  # 1 minute
 INITIAL_SETUP_TIMEOUT: int = 240  # 4 minutes (unchanged)
-LOCKDOWN_TIMEOUT: int = 120  # 2 minutes (unchanged)
-GRE_SETUP_TIMEOUT: int = 60   # 1 minute
+LOCKDOWN_TIMEOUT: int = 60  # 2 minutes (unchanged)
+GRE_SETUP_TIMEOUT: int = 180   # 1 minute
 CHALLENGE_TIMEOUT: int = CHALLENGE_DURATION + DELTA  # 150 seconds = 2.5 minutes
 EPOCH_TIME: int = ROUND_TIMEOUT + EPSILON  # 540 seconds = 9 minutes
 

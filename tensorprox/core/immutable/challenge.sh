@@ -3,7 +3,8 @@
 machine_name="$1"
 challenge_duration="$2"
 label_hashes="$3"
-king_ip="$4"
+playlist_json=$(echo "$4" | jq '.' 2>/dev/null)
+king_ip="$5"
 
 # Build grep patterns for counting occurrences of each label
 benign_pattern=$(echo "$label_hashes" | jq -r '.BENIGN | join("|")')
@@ -16,19 +17,25 @@ rtt_avg=1000000000
 
 # Add buffer to ensure late packets are counted
 if [ "$machine_name" == "king" ]; then
+    filter_traffic="inbound"
     timeout_duration=$((challenge_duration + 1))
 else
+    filter_traffic="outbound"
     timeout_duration=$challenge_duration
 fi
 
 # Traffic generation for tgen machines
 if [[ "$machine_name" == tgen* ]]; then
+
+    # Start traffic generator with playlist
+    nohup bash -c "python3 /usr/local/bin/traffic_generator.py --playlist /dev/stdin --receiver-ips $king_ip --interface ipip-$machine_name" > /tmp/traffic_generator.log 2>&1 <<< "$playlist_json" &
+    
     # Start continuous ping in background
     nohup ping -I "$INTERFACE_IP" -c "$challenge_duration" "$king_ip" > /tmp/rtt.txt 2>&1 &
 fi
 
 # Use fast tcpdump with custom gawk processing to handle uniqueness for benign only
-timeout "$timeout_duration" tcpdump -A -i "gre-moat" "dst host 192.168.110.2" 2>/dev/null | \
+timeout "$timeout_duration" tcpdump -A -i "gre-moat" "$filter_traffic" 2>/dev/null | \
 gawk -v benign_pat="$benign_pattern" -v udp_pat="$udp_flood_pattern" -v tcp_pat="$tcp_syn_flood_pattern" '
 BEGIN {
     udp_flood = 0;

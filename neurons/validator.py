@@ -84,8 +84,8 @@ class Validator(BaseValidatorNeuron):
         self.active_count = 0
 
         # Container management attributes
-        self.container_name = f"validator_{settings.WALLET.hotkey.ss58_address.lower()}_challenge_v1_0_0"
-        self.container_path = f"/tmp/validator_{settings.WALLET.hotkey.ss58_address.lower()}/containers/{self.container_name}.tar.enc"
+        self.container_name = "challenge_v1_0_0"
+        self.container_path = Path(__file__).parent.parent / "tensorprox" / "core" / "immutable" / f"{self.container_name}.tar.enc"
         self.container_password = ""  # Initialize with empty string
         self.container_hash = ""  # Initialize with empty string
         self.container_ready = False
@@ -627,9 +627,14 @@ class Validator(BaseValidatorNeuron):
         with open(challenge_script_path, 'r') as f:
             challenge_script = f.read()
 
-        # Create Dockerfile with nonce embedded and password protection
+        # Read the traffic generator script from immutable file
+        traffic_gen_script_path = Path(__file__).parent.parent / "tensorprox" / "core" / "immutable" / "traffic_generator.py"
+        with open(traffic_gen_script_path, 'r') as f:
+            traffic_gen_script = f.read()
+
+        # Create Dockerfile with nonce embedded
         dockerfile_content = f"""
-FROM alpine:3.19
+FROM python:3.10-alpine
 
 # Install required packages
 RUN apk add --no-cache \\
@@ -638,62 +643,25 @@ RUN apk add --no-cache \\
     gawk \\
     jq \\
     bash \\
-    iproute2
+    iproute2 \\
+    coreutils
 
-# Install required packages
-RUN apk add --no-cache \\
-    tcpdump \\
-    iputils \\
-    coreutils \\
-    gawk \\
-    jq \\
-    bash \\
-    iproute2
+# Install Python dependencies
+RUN pip install --no-cache-dir faker scapy pycryptodome
 
-# Create a simple wrapper script that handles everything
-COPY <<'WRAPPER_EOF' /usr/local/bin/run_challenge.sh
-#!/bin/bash
-set -e
-
-# Expected usage: run_challenge.sh password arg1 arg2 arg3 arg4
-if [ $# -lt 5 ]; then
-    echo "Usage: run_challenge.sh <password> <arg1> <arg2> <arg3> <arg4>"
-    echo "Received $# arguments: $*"
-    exit 1
-fi
-
-# Extract and validate password
-PASSWORD="$1"
-if [ "$PASSWORD" != "{self.container_password}" ]; then
-    echo "Invalid password"
-    exit 1
-fi
-
-# Get the remaining arguments
-ARG1="$2"
-ARG2="$3" 
-ARG3="$4"
-ARG4="$5"
-
-# Execute challenge script with the arguments
-exec /usr/local/bin/challenge.sh "$ARG1" "$ARG2" "$ARG3" "$ARG4"
-WRAPPER_EOF
-
-RUN chmod +x /usr/local/bin/run_challenge.sh
-
-# Embed the nonce in a way that's accessible inside but not outside
-COPY <<EOF /etc/round_nonce
-{self.round_nonce}
-EOF
+# Copy round nonce securely
+COPY round_nonce /etc/round_nonce
 RUN chmod 600 /etc/round_nonce
 
-# Create challenge script
-COPY <<'CHALLENGE_EOF' /usr/local/bin/challenge.sh
-{challenge_script}
-CHALLENGE_EOF
-RUN chmod +x /usr/local/bin/challenge.sh
+# Copy scripts
+COPY challenge.sh /usr/local/bin/challenge.sh
+COPY traffic_generator.py /usr/local/bin/traffic_generator.py
 
-ENTRYPOINT ["/usr/local/bin/run_challenge.sh"]
+RUN chmod +x /usr/local/bin/challenge.sh /usr/local/bin/traffic_generator.py
+
+RUN rm -rf /root/.cache /var/cache/apk/* /usr/share/man /usr/share/doc
+
+ENTRYPOINT ["/usr/local/bin/challenge.sh"]
 """
         
         # Use home directory for build (more reliable than /tmp)
@@ -702,9 +670,22 @@ ENTRYPOINT ["/usr/local/bin/run_challenge.sh"]
         # Clean up any existing build directory
         if build_dir.exists():
             shutil.rmtree(build_dir)
-        
+    
         # Create build directory
         build_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write challenge.sh
+        challenge_path = build_dir / "challenge.sh"
+        challenge_path.write_text(challenge_script)
+
+        # Write traffic_generator.py
+        traffic_gen_path = build_dir / "traffic_generator.py"
+        traffic_gen_path.write_text(traffic_gen_script)
+
+        # Write round_nonce file
+        nonce_path = build_dir / "round_nonce"
+        nonce_path.write_text(self.round_nonce)
+
         dockerfile_path = build_dir / "Dockerfile"
         dockerfile_path.write_text(dockerfile_content)
         
