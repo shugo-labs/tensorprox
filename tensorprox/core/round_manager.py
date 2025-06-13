@@ -687,13 +687,13 @@ class RoundManager(BaseModel):
             return False
         
         # Create individual commands with proper quoting
-        gpg_cmd = f'gpg --batch --yes --passphrase {shlex.quote(self.container_password)} -d {shlex.quote(f"/home/{ssh_user}/containers/{self.container_name}.tar.enc")}'
+        gpg_cmd = f'/usr/bin/gpg --batch --yes --passphrase {shlex.quote(self.container_password)} -d {shlex.quote(f"/home/{ssh_user}/containers/{self.container_name}.tar.enc")}'
 
-        docker_load_cmd = "docker load"
+        docker_load_cmd = "/usr/bin/docker load"
 
         # Create docker run args with proper quoting
         docker_run_args = [
-            "docker", "run",
+            "/usr/bin/docker", "run",
             "--network", "host",
             "--cap-add", "NET_ADMIN", 
             "--cap-add", "NET_RAW",
