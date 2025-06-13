@@ -672,7 +672,7 @@ class RoundManager(BaseModel):
         label_hashes = json.dumps(label_hashes)
 
         # Deploy and verify container
-        if not await self._ensure_container_deployed(ip, ssh_user, key_path):
+        if not await self._deploy_container(ip, ssh_user, key_path):
             logger.error(f"Failed to deploy container to {machine_name}")
             return False
         
