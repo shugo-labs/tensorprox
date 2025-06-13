@@ -125,9 +125,12 @@ declare -a ALLOWED_COMMANDS=(
     "/usr/bin/bash /home/$restricted_user/tensorprox/tensorprox/core/immutable/lockdown.sh"
     "/usr/bin/python3.10 /home/$restricted_user/tensorprox/tensorprox/core/immutable/gre_setup.py"
     "/usr/bin/test -d /home/$restricted_user/containers"
-    "/usr/bin/test -f /home/$restricted_user/containers/validator_*_challenge_*.tar.enc"
+    "/usr/bin/test -f /home/$restricted_user/containers/challenge_v1_0_0.tar.enc"
     "/usr/bin/mkdir -p /home/$restricted_user/containers"
     "/usr/bin/scp -t /home/$restricted_user/containers/*"
+    "/usr/bin/gpg --batch --yes --passphrase"
+    "/usr/bin/docker load -i image.tar"
+    "/usr/bin/docker run --network host --cap-add=NET_ADMIN --cap-add=NET_RAW"
     
 )
 EOF_COMMANDS

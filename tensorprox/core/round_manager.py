@@ -253,13 +253,22 @@ class RoundManager(BaseModel):
             # Parse the result to get the counts from stdout
             counts_and_rtt = result.stdout.strip().split(", ")
 
+            # First check for nonce verification - NONCE is the last element
+            nonce_item = counts_and_rtt[-1]
+            nonce_value = nonce_item.split(":", maxsplit=1)[1].strip()
+
+            # Verify nonce matches self.round_nonce
+            if nonce_value != self.round_nonce:
+                logger.warning(f"Nonce verification failed. Expected: {self.round_nonce}, Got: {nonce_value}")
+                return None
+
             # Initialize a dictionary to store counts using a for loop
             label_counts = {label: 0 for label in label_hashes.keys()}
 
             rtt_avg = None
 
             # Parse each label count from the result string
-            for count in counts_and_rtt:
+            for count in counts_and_rtt[:-1]:
                 
                 if "AVG_RTT" in count:
                     extracted_rtt = count.split(":", maxsplit=1)[1].strip()
