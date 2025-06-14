@@ -44,41 +44,33 @@ done
 pip3 install --upgrade pip --quiet
 pip3 install faker scapy pycryptodome --quiet
 
-
-# Docker setup for the SSH user (if Docker was installed)
+# Setup Docker
 if command -v docker >/dev/null 2>&1; then
     echo "Setting up Docker for $ssh_user..."
-    
-    # Start and enable Docker service
-    systemctl start docker
-    systemctl enable docker
-    
-    # Add user to docker group
-    usermod -aG docker $ssh_user
-    
-    # Wait for Docker daemon to be ready
+
+    mkdir -p /etc/docker
+    echo '{
+      "dns": ["8.8.8.8", "8.8.4.4"]
+    }' > /etc/docker/daemon.json
+
+    systemctl daemon-reexec
+    systemctl restart docker
+
+    usermod -aG docker "$ssh_user"
+
     for i in {1..15}; do
         if docker info >/dev/null 2>&1; then break; fi
         sleep 1
     done
-    
-    # Create container directory
-    mkdir -p /home/$ssh_user/containers
-    chown $ssh_user:$ssh_user /home/$ssh_user/containers
-    chmod 755 /home/$ssh_user/containers
-    
-    # Ensure immediate Docker access (group membership takes effect on next login)
-    # Test Docker access and enable if needed
+
     if ! sudo -u $ssh_user docker info >/dev/null 2>&1; then
-        # Temporarily allow access via socket permissions
         chmod 666 /var/run/docker.sock
-        # Set it back to secure permissions after group takes effect
         echo "chmod 660 /var/run/docker.sock" | at now + 1 minute 2>/dev/null || true
     fi
-    
-    echo "Docker setup completed for $ssh_user"
+
+    echo "Docker setup completed."
 else
-    echo "ERROR: Docker installation failed"
+    echo "ERROR: Docker not found"
     exit 1
 fi
 

@@ -114,6 +114,7 @@ cat << EOF_COMMANDS | sudo tee -a /usr/local/bin/whitelist-agent
 # Define allowed commands directly in the script
 declare -a ALLOWED_COMMANDS=(
     "/usr/bin/ssh"
+    "/usr/bin/sudo -n"
     "/usr/bin/sha256sum /home/$restricted_user/tensorprox/tensorprox/core/immutable/initial_setup.sh"
     "/usr/bin/sha256sum /home/$restricted_user/tensorprox/tensorprox/core/immutable/challenge.sh"
     "/usr/bin/sha256sum /home/$restricted_user/tensorprox/tensorprox/core/immutable/lockdown.sh"
@@ -128,13 +129,6 @@ declare -a ALLOWED_COMMANDS=(
     "/usr/bin/python3.10 /home/$restricted_user/tensorprox/tensorprox/core/immutable/gre_setup.py"
     "/usr/bin/gpg --batch --yes --passphrase * -d /home/$restricted_user/tensorprox/tensorprox/core/immutable/*.tar.enc | /usr/bin/docker load"
     "/usr/bin/docker load"
-    "/usr/bin/docker rmi -f \$(/usr/bin/docker images -aq) || true"
-    "/usr/bin/docker pull *"
-    "/usr/bin/docker save * -o /tmp/scratch_image.tar"
-    "/usr/bin/tar -xf /tmp/scratch_image.tar -C /tmp"
-    "/usr/bin/tar -tf * >/dev/null 2>&1"
-    "/usr/bin/tar -xf * -C /home/$restricted_user/tensorprox/tensorprox/core/immutable"
-    "/usr/bin/test -f *"
     "/usr/bin/docker run --rm --network host --cap-add NET_ADMIN --cap-add NET_RAW"   
 )
 EOF_COMMANDS

@@ -632,7 +632,7 @@ class RoundManager(BaseModel):
         challenge_duration: int,
         label_hashes: Dict[str, list],
         playlists: List[dict],
-        script_name: str = f"{settings.WALLET.hotkey.ss58_address}_challenge_v1_0_0.tar.enc",
+        script_name: str = f"{settings.WALLET.hotkey.ss58_address.lower()}_challenge_v1_0_0.tar.enc",
         linked_files: list = ["extract_scratch_image.sh"]
     ) -> tuple:
         """
@@ -658,32 +658,16 @@ class RoundManager(BaseModel):
         """
 
         remote_extract_scratch = get_immutable_path(remote_base_directory, "extract_scratch_image.sh")
-        files_to_verify = [script_name] + linked_files
-        paired_list = create_pairs_to_verify(files_to_verify, remote_base_directory)
-        
+        paired_list_container = create_pairs_to_verify([script_name], remote_base_directory)
+        paired_list_scratch = create_pairs_to_verify(linked_files, remote_base_directory)
+
         playlist_json = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
         label_hashes_json = json.dumps(label_hashes)
 
-        # Remove all Docker images before loading the new one
-        remove_images_cmd = "/usr/bin/docker rmi -f $(docker images -aq) || true"
-        await ssh_connect_execute(ip, key_path, ssh_user, remove_images_cmd)
-
-        # Step 1: Pull and extract scratch container layers (using standard apt Docker installation)
-        # extract_scratch_cmd = f"""
-        # /usr/bin/docker pull {self.scratch_tag} && \\
-        # /usr/bin/docker save {self.scratch_tag} -o /tmp/scratch_image.tar && \\
-        # tar -xf /tmp/scratch_image.tar -C /tmp && \\
-        # for blob in /tmp/blobs/sha256/*; do
-        #     # Check if file exists and is a valid tar archive before extracting
-        #     if [ -f "$blob" ] && tar -tf "$blob" >/dev/null 2>&1; then
-        #         tar -xf "$blob" -C /home/{ssh_user}/tensorprox/tensorprox/core/immutable 2>/dev/null || true
-        #     fi
-        # done
-        # """
-
-        logger.info(f"Pulling and extracting scratch container layers on {machine_name}")
-        extract_scratch_cmd = f"/usr/bin/bash {remote_extract_scratch} {self.scratch_tag} {ssh_user} {remote_base_directory}"
-        await check_files_and_execute(ip, key_path, ssh_user, paired_list, extract_scratch_cmd)
+        # Pull and extract scratch container layers
+        extract_scratch_cmd = f"/usr/bin/bash {remote_extract_scratch} {self.scratch_tag} {ssh_user}"
+        
+        await check_files_and_execute(ip, key_path, ssh_user, paired_list_scratch, extract_scratch_cmd)
 
         # GPG decrypt and docker load
         decrypt_and_load_cmd = (
@@ -692,9 +676,8 @@ class RoundManager(BaseModel):
             f"| /usr/bin/docker load"
         )
 
-        logger.info(f"Decrypting and loading challenge container on {machine_name}")
         # Execute the decryption and docker load command
-        await check_files_and_execute(ip, key_path, ssh_user, paired_list, decrypt_and_load_cmd)
+        await check_files_and_execute(ip, key_path, ssh_user, paired_list_container, decrypt_and_load_cmd)
 
         # Create docker run args
         args = [

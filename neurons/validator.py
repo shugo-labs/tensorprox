@@ -634,9 +634,7 @@ COPY {self.container_name}.tar.enc /{self.container_name}.tar.enc
             self.container_password = hashlib.sha256(
                 f"validator_{settings.WALLET.hotkey.ss58_address.lower()}_container_{self.round_nonce}".encode()
             ).hexdigest()[:16]
-            
-            logger.info(f"Generated container password for this round: {self.container_password}")
-            
+                        
             # Always rebuild container for each round
             logger.info("Building new container for this round...")
             self._build_container()

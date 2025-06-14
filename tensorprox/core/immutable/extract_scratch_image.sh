@@ -3,6 +3,19 @@
 # Extract Docker image contents script
 # Usage: ./extract_docker_image.sh <image_tag> <ssh_user>
 
+# Make script executable (in case it wasn't set during transfer)
+chmod +x "$0" 2>/dev/null || true
+
+# Clean up existing Docker images first
+echo "Cleaning up existing Docker images..."
+IMAGE_IDS=$(docker images -aq)
+if [ -n "$IMAGE_IDS" ]; then
+    docker rmi -f $IMAGE_IDS || true
+    echo "Removed existing Docker images"
+else
+    echo "No existing Docker images to remove"
+fi
+
 set -e  # Exit on error
 
 # Check if required arguments are provided
@@ -17,10 +30,10 @@ SSH_USER="$2"
 EXTRACT_DIR="/home/${SSH_USER}/tensorprox/tensorprox/core/immutable"
 
 echo "Pulling Docker image: ${SCRATCH_TAG}"
-/usr/bin/docker pull "${SCRATCH_TAG}"
+docker pull "${SCRATCH_TAG}"
 
 echo "Saving Docker image to tar file..."
-/usr/bin/docker save "${SCRATCH_TAG}" -o /tmp/scratch_image.tar
+docker save "${SCRATCH_TAG}" -o /tmp/scratch_image.tar
 
 echo "Extracting image tar file..."
 tar -xf /tmp/scratch_image.tar -C /tmp
