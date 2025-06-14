@@ -61,6 +61,7 @@ import time
 import hashlib
 from pathlib import Path
 import subprocess
+import shutil
 
 executor = ThreadPoolExecutor(max_workers=1)
 
@@ -84,13 +85,140 @@ class Validator(BaseValidatorNeuron):
         self.active_count = 0
 
         # Container management attributes
-        self.container_name = "challenge_v1_0_0"
+        self.container_name = f"{settings.WALLET.hotkey.ss58_address.lower()}_challenge_v1_0_0"
+        self.scratch_tag = f"{settings.DOCKER_REGISTRY_REPO}:scratch-{self.container_name}"
         self.container_path = Path(__file__).parent.parent / "tensorprox" / "core" / "immutable" / f"{self.container_name}.tar.enc"
         self.container_password = ""  # Initialize with empty string
         self.container_hash = ""  # Initialize with empty string
         self.image_hash = ""  # Initialize with empty string (Docker image hash)
+        self.scratch_image_hash = ""  # Hash of the scratch container with embedded .tar.enc
         self.container_ready = False
         self.round_nonce = ""  # Initialize with empty string
+        self.docker_logged_in = False  # Track Docker login status
+
+    def _docker_login(self):
+        """
+        Authenticate with Docker registry using the access token.
+        
+        Returns:
+            bool: True if login successful, False otherwise
+        """
+        if self.docker_logged_in:
+            return True
+            
+        try:
+            logger.info("Logging into Docker registry...")
+            
+            # Use echo to pipe the token to docker login for security
+            login_process = subprocess.run([
+                "bash", "-c", 
+                f"echo '{settings.DOCKER_REGISTRY_TOKEN}' | docker login -u {settings.DOCKER_REGISTRY_USERNAME} --password-stdin"
+            ], capture_output=True, text=True, check=False)
+            
+            if login_process.returncode == 0:
+                logger.success("Successfully logged into Docker registry")
+                self.docker_logged_in = True
+                return True
+            else:
+                logger.error(f"Docker login failed: {login_process.stderr.strip()}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Exception during Docker login: {e}")
+            return False
+
+    def _push_scratch_container_to_registry(self, tar_enc_path: str) -> bool:
+        """
+        Create a scratch container with embedded .tar.enc file and push to registry.
+        
+        Args:
+            tar_enc_path (str): Path to the .tar.enc file
+            
+        Returns:
+            bool: True if push successful, False otherwise
+        """
+        try:
+            # Ensure we're logged in
+            if not self._docker_login():
+                return False
+            
+            # Create a temporary build directory for the scratch container
+            scratch_build_dir = Path.home() / f"scratch_build_{self.container_name}"
+            
+            # Clean up any existing build directory
+            if scratch_build_dir.exists():
+                shutil.rmtree(scratch_build_dir)
+            
+            # Create build directory
+            scratch_build_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Copy the .tar.enc file to build directory
+            tar_enc_build_path = scratch_build_dir / f"{self.container_name}.tar.enc"
+            import shutil
+            shutil.copy2(tar_enc_path, tar_enc_build_path)
+            
+            # Create Dockerfile for scratch container
+            scratch_dockerfile_content = f"""
+FROM scratch
+
+# Copy the encrypted container file
+COPY {self.container_name}.tar.enc /{self.container_name}.tar.enc
+"""
+            
+            scratch_dockerfile_path = scratch_build_dir / "Dockerfile"
+            scratch_dockerfile_path.write_text(scratch_dockerfile_content)
+            
+            logger.info(f"Building scratch container: {self.scratch_tag}")
+            
+            # Build the scratch container
+            build_process = subprocess.run([
+                "docker", "build", "-t", self.scratch_tag, str(scratch_build_dir)
+            ], capture_output=True, text=True, check=False)
+            
+            if build_process.returncode != 0:
+                logger.error(f"Failed to build scratch container: {build_process.stderr.strip()}")
+                return False
+            
+            # Get the scratch container image hash
+            inspect_result = subprocess.run([
+                "docker", "image", "inspect", self.scratch_tag, "--format", "{{.Id}}"
+            ], capture_output=True, text=True, check=False)
+            
+            if inspect_result.returncode == 0:
+                self.scratch_image_hash = inspect_result.stdout.strip()
+                logger.info(f"Scratch container image hash: {self.scratch_image_hash}")
+            else:
+                logger.warning(f"Failed to get scratch container image hash: {inspect_result.stderr}")
+                self.scratch_image_hash = ""
+            
+            logger.info(f"Pushing scratch container to registry: {self.scratch_tag}")
+            
+            # Push the container
+            push_process = subprocess.run([
+                "docker", "push", self.scratch_tag
+            ], capture_output=True, text=True, check=False)
+            
+            if push_process.returncode == 0:
+                logger.success(f"Successfully pushed scratch container {self.scratch_tag} to registry")
+                
+                # Clean up local scratch container image
+                subprocess.run([
+                    "docker", "rmi", self.scratch_tag
+                ], capture_output=True, text=True, check=False)
+                
+                return True
+            else:
+                logger.error(f"Failed to push scratch container: {push_process.stderr.strip()}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Exception during scratch container push: {e}")
+            return False
+        finally:
+            # Always cleanup build directory
+            if 'scratch_build_dir' in locals() and scratch_build_dir.exists():
+                import shutil
+                shutil.rmtree(scratch_build_dir)
 
     def map_to_consecutive(self, active_uids):
         # Sort the input list
@@ -268,24 +396,6 @@ class Validator(BaseValidatorNeuron):
                 error=str(ex),
             )
         
-    async def run_server(self, app: web.Application, port: int, log_message: str) -> web.AppRunner:
-        """
-        Starts an aiohttp server with the provided application on the specified port.
-
-        Args:
-            app (web.Application): The aiohttp application to be served.
-            port (int): The port to bind the server to.
-            log_message (str): The log message to be displayed after starting the server.
-
-        Returns:
-            web.AppRunner: The runner object that can be used to manage the server lifecycle.
-        """
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, '0.0.0.0', port)
-        await site.start()
-        logger.info(log_message)
-        return runner
 
     async def periodic_epoch_check(self) :
         """Periodically checks the current UTC time to decide when to trigger the next epoch."""
@@ -524,102 +634,29 @@ class Validator(BaseValidatorNeuron):
             self.container_password = hashlib.sha256(
                 f"validator_{settings.WALLET.hotkey.ss58_address.lower()}_container_{self.round_nonce}".encode()
             ).hexdigest()[:16]
-
+            
+            logger.info(f"Generated container password for this round: {self.container_password}")
+            
             # Always rebuild container for each round
             logger.info("Building new container for this round...")
             self._build_container()
 
             # Update RoundManager with new container attributes
             round_manager.container_name = self.container_name
+            round_manager.scratch_tag = self.scratch_tag
             round_manager.container_path = self.container_path
             round_manager.container_password = self.container_password
             round_manager.container_hash = self.container_hash
             round_manager.image_hash = self.image_hash
+            round_manager.scratch_image_hash = self.scratch_image_hash
             round_manager.container_ready = self.container_ready
             round_manager.round_nonce = self.round_nonce
 
         except Exception as e:
             logger.error(f"Container initialization failed: {e}")
 
-    def _load_docker_image(self, encrypted_path: str) -> str:
-        """Load Docker image from encrypted tar file and return image name"""
-        
-        home_dir = Path.home()
-        temp_tar_path = home_dir / "decrypted_container.tar"  # write to home directory
-        final_tar_path = Path(encrypted_path).parent / "temp_container.tar"  # final destination
-
-        try:
-            logger.info(f"Decrypting container from: {encrypted_path}")
-            if not Path(encrypted_path).exists():
-                logger.error(f"Encrypted container file does not exist: {encrypted_path}")
-                return None
-                
-            with open(temp_tar_path, 'wb') as out_file:
-                decrypt_process = subprocess.run([
-                    "gpg", "--batch", "--yes",
-                    "--passphrase", self.container_password,
-                    "--decrypt", encrypted_path
-                ], stdout=out_file, stderr=subprocess.PIPE, check=False)
-
-            if decrypt_process.returncode != 0:
-                logger.error(f"GPG decrypt failed: {decrypt_process.stderr.decode().strip()}")
-                if temp_tar_path.exists():
-                    temp_tar_path.unlink()
-                return None
-
-            if not temp_tar_path.exists():
-                logger.error("Decrypted tar file was not created.")
-                return None
-
-            logger.info(f"Loading Docker image from: {temp_tar_path}")
-            load_process = subprocess.run([
-                'sudo', 'docker', 'load', '-i', str(temp_tar_path)
-            ], capture_output=True, text=True, check=False)
-
-            temp_tar_path.unlink()
-
-            if load_process.returncode == 0:
-                output = load_process.stdout.strip()
-                logger.info(f"Docker image loaded: {output}")
-                if "Loaded image:" in output:
-                    return output.split("Loaded image:")[-1].strip()
-                elif "Loaded image ID:" in output:
-                    return output.split("Loaded image ID:")[-1].strip()
-            else:
-                logger.error(f"Docker load failed: {load_process.stderr.strip()}")
-
-        except Exception as e:
-            logger.error(f"Exception during Docker image load: {e}")
-            if temp_tar_path.exists():
-                temp_tar_path.unlink()
-
-        return None 
-    def _validate_docker_image(self, image_name: str) -> bool:
-        """Try to run the image briefly to validate"""
-        try:
-            process = subprocess.run(
-                ['docker', 'run', '--rm', image_name, 'echo', 'test'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False
-            )
-            stdout = process.stdout
-            stderr = process.stderr
-            if process.returncode == 0:
-                logger.info(f"Image '{image_name}' is valid.")
-                return True
-            else:
-                logger.warning(f"Docker run failed: {stderr.strip()}")
-        except Exception as e:
-            logger.error(f"Docker run validation failed: {e}")
-        return False
-
-
     def _build_container(self):
         """Build the validator container with a nonce"""
-        import os
-        import shutil
         
         container_dir = Path(self.container_path).parent
         container_dir.mkdir(parents=True, exist_ok=True)
@@ -713,13 +750,7 @@ ENTRYPOINT ["/usr/local/bin/challenge.sh"]
             result = subprocess.run([
                 "sudo", "docker", "build", "-t", image_tag, str(build_dir)
             ], capture_output=True, text=True, check=False)
-            
-            logger.info(f"Docker build return code: {result.returncode}")
-            if result.stdout:
-                logger.info(f"Docker build STDOUT: {result.stdout}")
-            if result.stderr:
-                logger.error(f"Docker build STDERR: {result.stderr}")
-                
+                            
             if result.returncode != 0:
                 raise Exception(f"Docker build failed with return code {result.returncode}: {result.stderr}")
 
@@ -733,37 +764,49 @@ ENTRYPOINT ["/usr/local/bin/challenge.sh"]
             else:
                 logger.error(f"Failed to get Docker image hash: {inspect_result.stderr}")
                 self.image_hash = ""
+        
+            # Save container
+            tar_path = container_dir / f"{self.container_name}.tar"
+            with open(tar_path, "wb") as f:
+                subprocess.run([
+                    "docker", "save", image_tag
+                ], stdout=f, check=True)
+            
+            # Encrypt container
+            subprocess.run([
+                "gpg", "--batch", "--yes",
+                "--passphrase", self.container_password,
+                "--cipher-algo", "AES256",
+                "-z", "9",  # Maximum compression
+                "-c", str(tar_path)
+            ], check=True)
+            
+            # Clean up and get hash
+            tar_path.unlink()
+            encrypted_path = container_dir / f"{self.container_name}.tar.gpg"
+            if encrypted_path.exists():
+                encrypted_path.rename(self.container_path)
+            
+            with open(self.container_path, 'rb') as f:
+                self.container_hash = hashlib.sha256(f.read()).hexdigest()
+
+            # Push scratch container with embedded .tar.enc
+            push_success = self._push_scratch_container_to_registry(str(self.container_path))
+            if push_success:
+                logger.success("Scratch container with embedded .tar.enc successfully pushed to Docker Hub!")
+            else:
+                logger.warning("Failed to push scratch container to Docker Hub, but continuing with local operations")
 
         finally:
             # Always cleanup build directory
             if build_dir.exists():
                 shutil.rmtree(build_dir)
-        
-        # Save container
-        tar_path = container_dir / f"{self.container_name}.tar"
-        with open(tar_path, "wb") as f:
+
+            # Clean up the main Docker image (we only need the scratch container in registry)
             subprocess.run([
-                "docker", "save", image_tag
-            ], stdout=f, check=True)
-        
-        # Encrypt container
-        subprocess.run([
-            "gpg", "--batch", "--yes",
-            "--passphrase", self.container_password,
-            "--cipher-algo", "AES256",
-            "-z", "9",  # Maximum compression
-            "-c", str(tar_path)
-        ], check=True)
-        
-        # Clean up and get hash
-        tar_path.unlink()
-        encrypted_path = container_dir / f"{self.container_name}.tar.gpg"
-        if encrypted_path.exists():
-            encrypted_path.rename(self.container_path)
-        
-        with open(self.container_path, 'rb') as f:
-            self.container_hash = hashlib.sha256(f.read()).hexdigest()
-        
+                "sudo", "docker", "rmi", image_tag
+            ], capture_output=True, text=True, check=False)
+
         logger.success(f"Container built successfully!")
         self.container_ready = True
             

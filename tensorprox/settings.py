@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     WANDB_NOTES: str = Field("", env="WANDB_NOTES")
     MAX_WANDB_DURATION: int = 24
 
+    # Docker registry configuration
+    DOCKER_REGISTRY_USERNAME: str = Field("shugoio", env="DOCKER_REGISTRY_USERNAME")
+    DOCKER_REGISTRY_REPO: str = Field("shugoio/tensorprox", env="DOCKER_REGISTRY_REPO")
+    DOCKER_REGISTRY_TOKEN: str = Field(None, env="DOCKER_REGISTRY_TOKEN")
+
     # Neuron.
     NEURON_EPOCH_LENGTH: int = Field(100, env="NEURON_EPOCH_LENGTH")
 
