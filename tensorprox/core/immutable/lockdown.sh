@@ -254,11 +254,6 @@ iptables -A OUTPUT -p tcp -d 10.0.0.0/8 -j ACCEPT
 iptables -A INPUT -p udp -s 10.0.0.0/8 -j ACCEPT
 iptables -A OUTPUT -p udp -d 10.0.0.0/8 -j ACCEPT
 
-iptables -A INPUT -p tcp ! -s 10.0.0.0/8 -j REJECT
-iptables -A OUTPUT -p tcp ! -d 10.0.0.0/8 -j REJECT
-iptables -A INPUT -p udp ! -s 10.0.0.0/8 -j REJECT
-iptables -A OUTPUT -p udp ! -d 10.0.0.0/8 -j REJECT
-
 echo "Locking root and non-$ssh_user accounts..."
 
 passwd -l root || echo "Failed to lock root"

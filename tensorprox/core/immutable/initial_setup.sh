@@ -44,36 +44,37 @@ done
 pip3 install --upgrade pip --quiet
 pip3 install faker scapy pycryptodome --quiet
 
-# Setup Docker
+# Docker setup for the SSH user (if Docker was installed)
 if command -v docker >/dev/null 2>&1; then
     echo "Setting up Docker for $ssh_user..."
-
-    mkdir -p /etc/docker
-    echo '{
-      "dns": ["8.8.8.8", "8.8.4.4"]
-    }' > /etc/docker/daemon.json
-
-    systemctl daemon-reexec
-    systemctl restart docker
-
-    usermod -aG docker "$ssh_user"
-
+    
+    # Start and enable Docker service
+    systemctl start docker
+    systemctl enable docker
+    
+    # Add user to docker group
+    usermod -aG docker $ssh_user
+    
+    # Wait for Docker daemon to be ready
     for i in {1..15}; do
         if docker info >/dev/null 2>&1; then break; fi
         sleep 1
     done
-
+    
+    # Ensure immediate Docker access (group membership takes effect on next login)
+    # Test Docker access and enable if needed
     if ! sudo -u $ssh_user docker info >/dev/null 2>&1; then
+        # Temporarily allow access via socket permissions
         chmod 666 /var/run/docker.sock
+        # Set it back to secure permissions after group takes effect
         echo "chmod 660 /var/run/docker.sock" | at now + 1 minute 2>/dev/null || true
     fi
-
-    echo "Docker setup completed."
+    
+    echo "Docker setup completed for $ssh_user"
 else
-    echo "ERROR: Docker not found"
+    echo "ERROR: Docker installation failed"
     exit 1
 fi
-
 
 # Disable TTY requirement for sudo for the SSH user
 echo "Disabling TTY requirement for $ssh_user..."
