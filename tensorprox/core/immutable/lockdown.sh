@@ -254,6 +254,35 @@ iptables -A OUTPUT -p tcp -d 10.0.0.0/8 -j ACCEPT
 iptables -A INPUT -p udp -s 10.0.0.0/8 -j ACCEPT
 iptables -A OUTPUT -p udp -d 10.0.0.0/8 -j ACCEPT
 
+# Allow localhost traffic (for systemd-resolved and local services)
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A OUTPUT -o lo -j ACCEPT
+
+# Allow DNS resolution (needed for Docker Hub)
+iptables -A OUTPUT -p udp --dport 53 -j ACCEPT
+iptables -A INPUT -p udp --sport 53 -j ACCEPT
+iptables -A OUTPUT -p tcp --dport 53 -j ACCEPT
+iptables -A INPUT -p tcp --sport 53 -j ACCEPT
+
+# Allow Docker Hub access (registry-1.docker.io)
+# Note: Docker Hub uses multiple IPs, so we allow HTTPS to any destination
+# but you could restrict this further if needed
+iptables -A OUTPUT -p tcp --dport 443 -j ACCEPT
+iptables -A INPUT -p tcp --sport 443 -j ACCEPT
+
+# Allow Docker daemon to communicate with Docker Hub
+# Docker typically uses ephemeral ports for outbound connections
+iptables -A OUTPUT -p tcp --dport 80 -j ACCEPT
+iptables -A INPUT -p tcp --sport 80 -j ACCEPT
+
+# Allow established and related connections
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# Block remaining unwanted traffic
+# Only block INPUT from non-private networks (OUTPUT is controlled by default DROP policy)
+iptables -A INPUT -j REJECT --reject-with icmp-host-prohibited
+
 echo "Locking root and non-$ssh_user accounts..."
 
 passwd -l root || echo "Failed to lock root"
