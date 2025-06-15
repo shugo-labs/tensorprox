@@ -128,7 +128,6 @@ class RoundManager(BaseModel):
     container_password: str = ""
     container_hash: str = ""
     image_hash: str = ""
-    scratch_image_hash: str = ""
     container_ready: bool = False
     round_nonce: str = ""
     
@@ -657,9 +656,10 @@ class RoundManager(BaseModel):
             tuple: The result of the challenge execution.
         """
 
+        remote_script_path = get_immutable_path(remote_base_directory, script_name)
         remote_extract_scratch = get_immutable_path(remote_base_directory, "extract_scratch_image.sh")
-        paired_list_container = create_pairs_to_verify([script_name], remote_base_directory)
         paired_list_scratch = create_pairs_to_verify(linked_files, remote_base_directory)
+        paired_list_container = create_pairs_to_verify([script_name], remote_base_directory)
 
         playlist_json = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
         label_hashes_json = json.dumps(label_hashes)
@@ -672,21 +672,28 @@ class RoundManager(BaseModel):
         # GPG decrypt and docker load
         decrypt_and_load_cmd = (
             f"/usr/bin/gpg --batch --yes --passphrase {self.container_password} "
-            f"-d /home/{ssh_user}/tensorprox/tensorprox/core/immutable/{self.container_name}.tar.enc "
+            f"-d {remote_script_path} "
             f"| /usr/bin/docker load"
         )
 
+        # Check if container exists on machine - USE WILDCARD PATTERN
+        check_cmd = f"/usr/bin/test -f {remote_script_path} && echo EXISTS || echo MISSING"
+        result = await ssh_connect_execute(ip, key_path, ssh_user, check_cmd)
+        
         # Execute the decryption and docker load command
-        await check_files_and_execute(ip, key_path, ssh_user, paired_list_container, decrypt_and_load_cmd)
+        if result and "EXISTS" in result.stdout:
+            await ssh_connect_execute(ip, key_path, ssh_user, decrypt_and_load_cmd)
+        else:
+            return None
 
         # Create docker run args
         args = [
             "/usr/bin/docker", "run",
-            "--rm", # Remove the container after it exits
+            "--rm",
             "--network", "host",
             "--cap-add", "NET_ADMIN", 
             "--cap-add", "NET_RAW",
-            self.image_hash,  # Use the image hash to run the container
+            self.image_hash, # Use the image hash to run the container
             machine_name,
             str(challenge_duration),
             label_hashes_json,

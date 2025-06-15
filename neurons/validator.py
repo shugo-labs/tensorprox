@@ -91,7 +91,6 @@ class Validator(BaseValidatorNeuron):
         self.container_password = ""  # Initialize with empty string
         self.container_hash = ""  # Initialize with empty string
         self.image_hash = ""  # Initialize with empty string (Docker image hash)
-        self.scratch_image_hash = ""  # Hash of the scratch container with embedded .tar.enc
         self.container_ready = False
         self.round_nonce = ""  # Initialize with empty string
         self.docker_logged_in = False  # Track Docker login status
@@ -163,6 +162,7 @@ FROM scratch
 
 # Copy the encrypted container file
 COPY {self.container_name}.tar.enc /{self.container_name}.tar.enc
+
 """
             
             scratch_dockerfile_path = scratch_build_dir / "Dockerfile"
@@ -183,13 +183,6 @@ COPY {self.container_name}.tar.enc /{self.container_name}.tar.enc
             inspect_result = subprocess.run([
                 "docker", "image", "inspect", self.scratch_tag, "--format", "{{.Id}}"
             ], capture_output=True, text=True, check=False)
-            
-            if inspect_result.returncode == 0:
-                self.scratch_image_hash = inspect_result.stdout.strip()
-                logger.info(f"Scratch container image hash: {self.scratch_image_hash}")
-            else:
-                logger.warning(f"Failed to get scratch container image hash: {inspect_result.stderr}")
-                self.scratch_image_hash = ""
             
             logger.info(f"Pushing scratch container to registry: {self.scratch_tag}")
             
@@ -646,7 +639,6 @@ COPY {self.container_name}.tar.enc /{self.container_name}.tar.enc
             round_manager.container_password = self.container_password
             round_manager.container_hash = self.container_hash
             round_manager.image_hash = self.image_hash
-            round_manager.scratch_image_hash = self.scratch_image_hash
             round_manager.container_ready = self.container_ready
             round_manager.round_nonce = self.round_nonce
 
@@ -806,6 +798,8 @@ ENTRYPOINT ["/usr/local/bin/challenge.sh"]
             ], capture_output=True, text=True, check=False)
 
         logger.success(f"Container built successfully!")
+        logger.info(f"Container hash: {self.container_hash}")
+        logger.info(f"Image hash: {self.image_hash}")
         self.container_ready = True
             
     def _cleanup_container(self):
