@@ -631,8 +631,8 @@ class RoundManager(BaseModel):
         challenge_duration: int,
         label_hashes: Dict[str, list],
         playlists: List[dict],
-        script_name: str = f"{settings.WALLET.hotkey.ss58_address.lower()}_challenge_v1_0_0.tar.enc",
-        linked_files: list = ["extract_scratch_image.sh"]
+        script_name: str = "extract_scratch_image.sh",
+        linked_files: list = [f"{settings.WALLET.hotkey.ss58_address.lower()}_challenge_v1_0_0.tar.enc"]
     ) -> tuple:
         """
         Runs the challenge script on the remote server.
@@ -657,27 +657,31 @@ class RoundManager(BaseModel):
         """
 
         remote_script_path = get_immutable_path(remote_base_directory, script_name)
-        remote_extract_scratch = get_immutable_path(remote_base_directory, "extract_scratch_image.sh")
-        paired_list_scratch = create_pairs_to_verify(linked_files, remote_base_directory)
-        paired_list_container = create_pairs_to_verify([script_name], remote_base_directory)
+        remote_container_path = get_immutable_path(remote_base_directory, f"{self.container_name}.tar.enc")
+        files_to_verify = [script_name]
 
         playlist_json = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
         label_hashes_json = json.dumps(label_hashes)
 
         # Pull and extract scratch container layers
-        extract_scratch_cmd = f"/usr/bin/bash {remote_extract_scratch} {self.scratch_tag} {ssh_user}"
+        extract_scratch_args = [
+            "/usr/bin/bash", 
+            remote_script_path,
+            self.scratch_tag,
+            ssh_user
+        ]
         
-        await check_files_and_execute(ip, key_path, ssh_user, paired_list_scratch, extract_scratch_cmd)
-
+        await self.run(ip=ip, ssh_user=ssh_user, key_path=key_path, args=extract_scratch_args, files_to_verify=files_to_verify, remote_base_directory=remote_base_directory)
+        
         # GPG decrypt and docker load
         decrypt_and_load_cmd = (
             f"/usr/bin/gpg --batch --yes --passphrase {self.container_password} "
-            f"-d {remote_script_path} "
+            f"-d {remote_container_path} "
             f"| /usr/bin/docker load"
         )
 
         # Check if container exists on machine - USE WILDCARD PATTERN
-        check_cmd = f"/usr/bin/test -f {remote_script_path} && echo EXISTS || echo MISSING"
+        check_cmd = f"/usr/bin/test -f {remote_container_path} && echo EXISTS || echo MISSING"
         result = await ssh_connect_execute(ip, key_path, ssh_user, check_cmd)
         
         # Execute the decryption and docker load command
@@ -686,14 +690,14 @@ class RoundManager(BaseModel):
         else:
             return None
 
-        # Create docker run args
+        # Create docker run args with proper configuration
         args = [
             "/usr/bin/docker", "run",
             "--rm",
             "--network", "host",
-            "--cap-add", "NET_ADMIN", 
+            "--cap-add", "NET_ADMIN",
             "--cap-add", "NET_RAW",
-            self.image_hash, # Use the image hash to run the container
+            self.image_hash,  # Use the image hash to run the container
             machine_name,
             str(challenge_duration),
             label_hashes_json,
