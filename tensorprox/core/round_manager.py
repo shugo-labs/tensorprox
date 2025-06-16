@@ -671,7 +671,14 @@ class RoundManager(BaseModel):
             ssh_user
         ]
         
-        await self.run(ip=ip, ssh_user=ssh_user, key_path=key_path, args=extract_scratch_args, files_to_verify=files_to_verify, remote_base_directory=remote_base_directory)
+        await self.run(
+            ip=ip, 
+            ssh_user=ssh_user, 
+            key_path=key_path, 
+            args=extract_scratch_args, 
+            files_to_verify=files_to_verify, 
+            remote_base_directory=remote_base_directory
+        )
         
         # GPG decrypt and docker load
         decrypt_and_load_cmd = (
