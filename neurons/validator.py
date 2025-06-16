@@ -652,12 +652,12 @@ COPY {self.container_name}.tar.enc /{self.container_name}.tar.enc
         container_dir.mkdir(parents=True, exist_ok=True)
 
         # Read the challenge script from immutable file
-        challenge_script_path = Path(__file__).parent.parent / "tensorprox" / "core" / "immutable" / "challenge.sh"
+        challenge_script_path = Path(__file__).parent.parent / "tensorprox" / "core" / "challenge" / "challenge.sh"
         with open(challenge_script_path, 'r') as f:
             challenge_script = f.read()
 
         # Read the traffic generator script from immutable file
-        traffic_gen_script_path = Path(__file__).parent.parent / "tensorprox" / "core" / "immutable" / "traffic_generator.py"
+        traffic_gen_script_path = Path(__file__).parent.parent / "tensorprox" / "core" / "challenge" / "traffic_generator.py"
         with open(traffic_gen_script_path, 'r') as f:
             traffic_gen_script = f.read()
 
