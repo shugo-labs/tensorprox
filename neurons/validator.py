@@ -62,6 +62,10 @@ import hashlib
 from pathlib import Path
 import subprocess
 import shutil
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
+from Crypto.Util.Padding import pad
+import base64
 
 executor = ThreadPoolExecutor(max_workers=1)
 
@@ -93,8 +97,33 @@ class Validator(BaseValidatorNeuron):
         self.image_hash = ""  # Initialize with empty string (Docker image hash)
         self.container_ready = False
         self.round_nonce = ""  # Initialize with empty string
+        self.nonce_key = ""  # Initialize with empty string
         self.docker_logged_in = False  # Track Docker login status
 
+    def _create_encrypted_round_nonce(self, round_nonce_value: str) -> tuple:
+        """
+        Create an encrypted round_nonce.enc file and return the decryption key.
+        
+        Args:
+            round_nonce_value (str): The round nonce value to encrypt
+            
+        Returns:
+            tuple: (encryption_key_base64, encrypted_data_base64)
+        """
+        try:
+            key = get_random_bytes(32)  # 256-bit key
+            cipher = AES.new(key, AES.MODE_ECB)
+            padded_nonce = pad(round_nonce_value.encode('utf-8'), AES.block_size)
+            encrypted_data = cipher.encrypt(padded_nonce)
+
+            key_base64 = base64.b64encode(key).decode()
+            encrypted_base64 = base64.b64encode(encrypted_data).decode()
+
+            return key_base64, encrypted_base64
+        except Exception as e:
+            logger.error(f"Encryption failed: {e}")
+            raise
+        
     def _docker_login(self):
         """
         Authenticate with Docker registry using the access token.
@@ -627,10 +656,13 @@ COPY {self.container_name}.tar.enc /{self.container_name}.tar.enc
             self.container_password = hashlib.sha256(
                 f"validator_{settings.WALLET.hotkey.ss58_address.lower()}_container_{self.round_nonce}".encode()
             ).hexdigest()[:16]
-                        
+
+            # Create encrypted round nonce and get the decryption key
+            self.nonce_key, encrypted_round_nonce = self._create_encrypted_round_nonce(self.round_nonce)
+            
             # Always rebuild container for each round
             logger.info("Building new container for this round...")
-            self._build_container()
+            self._build_container(encrypted_round_nonce)
 
             # Update RoundManager with new container attributes
             round_manager.container_name = self.container_name
@@ -641,22 +673,23 @@ COPY {self.container_name}.tar.enc /{self.container_name}.tar.enc
             round_manager.image_hash = self.image_hash
             round_manager.container_ready = self.container_ready
             round_manager.round_nonce = self.round_nonce
+            round_manager.nonce_key = self.nonce_key
 
         except Exception as e:
             logger.error(f"Container initialization failed: {e}")
 
-    def _build_container(self):
+    def _build_container(self, encrypted_round_nonce):
         """Build the validator container with a nonce"""
         
         container_dir = Path(self.container_path).parent
         container_dir.mkdir(parents=True, exist_ok=True)
-
-        # Read the challenge script from immutable file
+            
+        # Read the challenge script from challenge folder
         challenge_script_path = Path(__file__).parent.parent / "tensorprox" / "core" / "challenge" / "challenge.sh"
         with open(challenge_script_path, 'r') as f:
             challenge_script = f.read()
 
-        # Read the traffic generator script from immutable file
+        # Read the traffic generator script from challenge folder
         traffic_gen_script_path = Path(__file__).parent.parent / "tensorprox" / "core" / "challenge" / "traffic_generator.py"
         with open(traffic_gen_script_path, 'r') as f:
             traffic_gen_script = f.read()
@@ -694,8 +727,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \\
 ENV PATH=/root/.local/bin:$PATH
 
 # Copy round nonce securely
-COPY round_nonce /etc/round_nonce
-RUN chmod 600 /etc/round_nonce
+COPY round_nonce.enc /etc/round_nonce.enc
+RUN chmod 600 /etc/round_nonce.enc
 
 # Copy scripts
 COPY challenge.sh /usr/local/bin/challenge.sh
@@ -715,7 +748,7 @@ ENTRYPOINT ["/usr/local/bin/challenge.sh"]
     
         # Create build directory
         build_dir.mkdir(parents=True, exist_ok=True)
-
+        
         # Write challenge.sh
         challenge_path = build_dir / "challenge.sh"
         challenge_path.write_text(challenge_script)
@@ -724,9 +757,9 @@ ENTRYPOINT ["/usr/local/bin/challenge.sh"]
         traffic_gen_path = build_dir / "traffic_generator.py"
         traffic_gen_path.write_text(traffic_gen_script)
 
-        # Write round_nonce file
-        nonce_path = build_dir / "round_nonce"
-        nonce_path.write_text(self.round_nonce)
+        # Write encrypted round_nonce file
+        nonce_path = build_dir / "round_nonce.enc"
+        nonce_path.write_text(encrypted_round_nonce)
 
         dockerfile_path = build_dir / "Dockerfile"
         dockerfile_path.write_text(dockerfile_content)

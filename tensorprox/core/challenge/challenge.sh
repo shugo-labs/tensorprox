@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Decrypt the nonce key
+key_hex=$(echo "$NONCE_KEY" | base64 -d | od -An -tx1 | tr -d ' \n')
+nonce=$(openssl enc -aes-256-ecb -d -K "$key_hex" -in <(base64 -d /etc/round_nonce.enc) | sed 's/[[:space:]]*$//')
+
+# Cleanup
+unset NONCE_KEY
+rm -f /etc/round_nonce.enc
+
 machine_name="$1"
 challenge_duration="$2"
 label_hashes="$3"
@@ -26,7 +34,7 @@ if [[ "$machine_name" == tgen* ]]; then
 fi
 
 # Use fast tcpdump with custom gawk processing to handle uniqueness for benign only
-timeout "$challenge_duration" tcpdump -A -l -i "gre-moat" "dst host $king_ip" 2>/dev/null | \
+counts=$(timeout "$challenge_duration" tcpdump -q -t -A -l -i "gre-moat" "dst host $king_ip" 2>/dev/null | \
 gawk -v benign_pat="$benign_pattern" -v udp_pat="$udp_flood_pattern" -v tcp_pat="$tcp_syn_flood_pattern" '
 BEGIN {
     udp_flood = 0;
@@ -61,15 +69,9 @@ END {
     }
     
     printf "BENIGN:%d, UDP_FLOOD:%d, TCP_SYN_FLOOD:%d", benign, udp_flood, tcp_syn_flood;
-}' > /tmp/counts.txt &
+}' 2>/dev/null)
 
 wait  # Ensure tcpdump finishes before reading counts
-
-# Read counts from /tmp/counts.txt
-counts=$(cat /tmp/counts.txt)
-
-# Read nonce from /etc/round_nonce
-nonce=$(cat /etc/round_nonce)
 
 # Measure RTT if the machine is tgen
 if [[ "$machine_name" == tgen* ]]; then
@@ -85,11 +87,7 @@ if [[ "$machine_name" == tgen* ]]; then
     echo "$counts, AVG_RTT:$rtt_avg, NONCE:$nonce"
 else
     # Output just the counts if the machine is king
-    echo "$counts, NONCE: $nonce"
+    echo "$counts, NONCE:$nonce"
 fi
-
-# Delete temporary files
-rm -f /tmp/rtt.txt
-rm -f /tmp/counts.txt
 
 exit 0

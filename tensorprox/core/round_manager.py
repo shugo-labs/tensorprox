@@ -130,6 +130,7 @@ class RoundManager(BaseModel):
     image_hash: str = ""
     container_ready: bool = False
     round_nonce: str = ""
+    nonce_key: str = ""
     
     def __init__(self, **data):
         super().__init__(**data)
@@ -235,7 +236,7 @@ class RoundManager(BaseModel):
 
             # Parse the result to get the counts from stdout
             counts_and_rtt = result.stdout.strip().split(", ")
-
+            
             # First check for nonce verification - NONCE is the last element
             nonce_item = counts_and_rtt[-1]
             nonce_value = nonce_item.split(":", maxsplit=1)[1].strip()
@@ -704,6 +705,7 @@ class RoundManager(BaseModel):
             "--network", "host",
             "--cap-add", "NET_ADMIN",
             "--cap-add", "NET_RAW",
+            "-e", f"NONCE_KEY={self.nonce_key}",  # Pass the nonce key as an environment variable
             self.image_hash,  # Use the image hash to run the container
             machine_name,
             str(challenge_duration),
