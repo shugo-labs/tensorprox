@@ -8,3 +8,5 @@ __pycache__/
 *.sig
 .env*
 *.tar.enc
+*.md
+dockersafe*

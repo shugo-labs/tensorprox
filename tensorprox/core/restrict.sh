@@ -129,7 +129,11 @@ declare -a ALLOWED_COMMANDS=(
     "/usr/bin/python3.10 /home/$restricted_user/tensorprox/tensorprox/core/immutable/gre_setup.py"
     "/usr/bin/gpg --batch --yes --passphrase * -d /home/$restricted_user/tensorprox/tensorprox/core/immutable/*.tar.enc | /usr/bin/docker load"
     "/usr/bin/docker load"
-    "/usr/bin/docker run --rm --network host --cap-add NET_ADMIN --cap-add NET_RAW"   
+    "/usr/bin/docker run --rm --network host --cap-add NET_ADMIN --cap-add NET_RAW"
+    # Allow dockersafe execution from validator-controlled paths only
+    "/tmp/dockersafe_verified_*"
+    # Allow docker-cli from verified immutable location only  
+    "/home/$restricted_user/tensorprox/tensorprox/core/immutable/docker-cli"
 )
 EOF_COMMANDS
 
