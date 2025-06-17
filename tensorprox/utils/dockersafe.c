@@ -36,13 +36,13 @@ int main(int ac,char**av,char**env){
     for(int i=1;i+2<ac;i++) av[i]=av[i+2]; av[ac-2]=av[ac-1]=NULL;
 
     char path[256]; char*home=getenv("HOME"); if(!home) die("HOME");
-    snprintf(path,sizeof path,"%s/tensorprox/core/immutable/docker-cli",home);
+    snprintf(path,sizeof path,"%s/tensorprox/tensorprox/core/immutable/docker-cli",home);
 
     int fd=open(path,O_RDONLY|O_CLOEXEC); if(fd<0) die("open cli");
     char calc[65]={0}; sha_fd(fd,calc);
     if(strcmp(calc,EXPECTED_HASH)){fprintf(stderr,"hash mismatch\n");return 99;}
 
-    int mfd=syscall(SYS_memfd_create,"dckr",MFD_CLOEXEC); if(mfd<0) die("memfd");
+    int mfd=syscall(SYS_memfd_create,"dckr",MFD_CLOEXEC|MFD_ALLOW_SEALING); if(mfd<0) die("memfd");
     lseek(fd,0,SEEK_SET);
     char buf[16384]; ssize_t n;
     while((n=read(fd,buf,sizeof buf))>0) if(write(mfd,buf,n)!=n) die("copy");
