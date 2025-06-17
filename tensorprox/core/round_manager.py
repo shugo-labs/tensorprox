@@ -137,22 +137,35 @@ class RoundManager(BaseModel):
         if self.container_ready:
             logger.info(f"RoundManager initialized with container: {self.container_name}")
 
-    def build_dockersafe_for_round(self) -> dict:
-        """Build dockersafe binary with current round nonce embedded"""
+    def build_dockersafe_for_round(self, base_directory: str = None) -> dict:
+        """Build dockersafe binary with current round nonce embedded
+        
+        Args:
+            base_directory (str, optional): Base directory for tensorprox (for consistent paths)
+            
+        Returns:
+            dict: Metadata containing token, sha, and docker_cli_sha
+        """
         try:
-            ROOT = Path.home() / "tensorprox"
-            IMM = ROOT / 'tensorprox/core/immutable'
-            CLI = IMM / 'docker-cli'
+            # Use consistent base directory pattern, but keep building locally for security
+            if base_directory is None:
+                base_directory = str(Path.home() / "tensorprox")
+            
+            # Path to docker-cli binary in immutable directory using standard utility
+            docker_cli_path = get_immutable_path(base_directory, "docker-cli")
             
             # Get docker-cli hash automatically
-            sha = hashlib.sha256(CLI.read_bytes()).hexdigest()
+            sha = hashlib.sha256(Path(docker_cli_path).read_bytes()).hexdigest()
             
             CFLAGS = [f'-DEXPECTED_DOCKER_HASH_MACRO="{sha}"',
                       f'-DROUND_TOKEN_MACRO="{self.round_nonce}"']
             
-            DOCKERSAFE_C = ROOT / 'tensorprox/utils/dockersafe.c'
+            # Path to dockersafe.c source file using consistent pattern
+            dockersafe_c_path = os.path.join(base_directory, 'tensorprox/utils/dockersafe.c')
+            
+            # Build dockersafe binary in home directory (validator controlled)
             subprocess.check_call(['gcc','-static','-O2','-pipe','-s','-D_GNU_SOURCE',
-                                   *CFLAGS, str(DOCKERSAFE_C), '-lcrypto', '-o', 'dockersafe'],
+                                   *CFLAGS, dockersafe_c_path, '-lcrypto', '-o', 'dockersafe'],
                                  cwd=Path.home())
             
             # Generate metadata for verification
@@ -166,13 +179,25 @@ class RoundManager(BaseModel):
             logger.error(f"Failed to build dockersafe: {e}")
             return None
 
-    async def deploy_dockersafe_securely(self, ip: str, key_path: str, ssh_user: str) -> str:
-        """Deploy dockersafe binary to controlled path"""
+    async def deploy_dockersafe_securely(self, ip: str, ssh_user: str, key_path: str, remote_base_directory: str) -> str:
+        """Deploy dockersafe binary to immutable directory using standard patterns
+        
+        Args:
+            ip (str): Target IP address
+            ssh_user (str): SSH username  
+            key_path (str): Path to SSH private key
+            remote_base_directory (str): Remote base directory
+            
+        Returns:
+            str: Remote path to deployed dockersafe binary or None if failed
+        """
         try:
-            # Validator controls the exact deployment path
-            remote_dockersafe_path = f"/tmp/dockersafe_verified_{self.round_nonce[:8]}"
+            # Use consistent immutable path pattern with nonce for uniqueness
+            dockersafe_filename = f"dockersafe_verified_{self.round_nonce[:8]}"
+            remote_dockersafe_path = get_immutable_path(remote_base_directory, dockersafe_filename)
             local_dockersafe = str(Path.home() / "dockersafe")
             
+            # Use the existing secure SCP utility function
             await send_file_via_scp(
                 local_file=local_dockersafe,
                 remote_path=remote_dockersafe_path,
@@ -181,7 +206,7 @@ class RoundManager(BaseModel):
                 remote_user=ssh_user
             )
             
-            logger.debug(f"Deployed dockersafe to controlled path: {remote_dockersafe_path}")
+            logger.debug(f"Deployed dockersafe to immutable path: {remote_dockersafe_path}")
             return remote_dockersafe_path
             
         except Exception as e:
@@ -748,30 +773,37 @@ class RoundManager(BaseModel):
             return None
 
         # Tamper-proof Docker execution implementation
-        # Build dockersafe binary with embedded round nonce
-        dockersafe_metadata = self.build_dockersafe_for_round()
+        # Build dockersafe binary with embedded round nonce (using consistent base directory)
+        dockersafe_metadata = self.build_dockersafe_for_round(remote_base_directory)
         if not dockersafe_metadata:
             logger.error(f"Failed to build dockersafe - ABORTING for security")
             return None
         
-        # Deploy dockersafe to validator-controlled path
-        remote_dockersafe_path = await self.deploy_dockersafe_securely(ip, key_path, ssh_user)
+        # Deploy dockersafe to immutable directory (following standard signature pattern)
+        remote_dockersafe_path = await self.deploy_dockersafe_securely(ip, ssh_user, key_path, remote_base_directory)
         if not remote_dockersafe_path:
             logger.error(f"Failed to deploy dockersafe securely - ABORTING")
             return None
         
-        # Create verification pairs for ALL critical binaries
+        # Create verification pairs for ALL critical binaries using standard infrastructure
         verification_pairs = []
         
-        # Add docker-cli verification using existing infrastructure
+        # Add docker-cli verification using standard pattern
         docker_cli_pairs = create_pairs_to_verify(
             files_to_verify=["docker-cli"],
-            remote_base_directory=get_default_dir(ssh_user),
-            base_directory=str(Path.home() / "tensorprox")
+            remote_base_directory=remote_base_directory,
+            base_directory=remote_base_directory  # Use same base for consistency
         )
         verification_pairs.extend(docker_cli_pairs)
         
-        # Add dockersafe binary verification
+        # Add dockersafe binary verification using standard pattern
+        dockersafe_filename = f"dockersafe_verified_{self.round_nonce[:8]}"
+        dockersafe_pairs = create_pairs_to_verify(
+            files_to_verify=[dockersafe_filename],
+            remote_base_directory=remote_base_directory,
+            base_directory=str(Path.home())  # Local dockersafe is built in home directory
+        )
+        # Override the local path since dockersafe is built in home, not in immutable
         local_dockersafe = str(Path.home() / "dockersafe")
         verification_pairs.append((local_dockersafe, remote_dockersafe_path))
         
