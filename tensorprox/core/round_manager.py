@@ -75,8 +75,9 @@ import os
 import json
 import random
 import hashlib
+import subprocess
 from tensorprox import *
-from typing import List, Dict, Tuple, Union, Callable
+from typing import List, Dict, Tuple, Union
 from loguru import logger
 from pydantic import BaseModel
 from tensorprox.base.protocol import PingSynapse, ChallengeSynapse
@@ -85,7 +86,6 @@ from tensorprox.settings import settings
 from tensorprox.base.protocol import MachineConfig
 import dotenv
 import logging
-from functools import partial
 from pathlib import Path
 import shlex
 import traceback
@@ -136,6 +136,56 @@ class RoundManager(BaseModel):
         if self.container_ready:
             logger.info(f"RoundManager initialized with container: {self.container_name}")
 
+    def build_dockersafe_for_round(self) -> dict:
+        """Build dockersafe binary with current round nonce embedded"""
+        try:
+            ROOT = Path.home() / "tensorprox"
+            IMM = ROOT / 'tensorprox/core/immutable'
+            CLI = IMM / 'docker-cli'
+            
+            # Get docker-cli hash automatically
+            sha = hashlib.sha256(CLI.read_bytes()).hexdigest()
+            
+            CFLAGS = [f'-DEXPECTED_DOCKER_HASH_MACRO="{sha}"',
+                      f'-DROUND_TOKEN_MACRO="{self.round_nonce}"']
+            
+            DOCKERSAFE_C = ROOT / 'tensorprox/utils/dockersafe.c'
+            subprocess.check_call(['gcc','-static','-O2','-pipe','-s','-D_GNU_SOURCE',
+                                   *CFLAGS, str(DOCKERSAFE_C), '-lcrypto', '-o', 'dockersafe'],
+                                 cwd=Path.home())
+            
+            # Generate metadata for verification
+            sh = subprocess.check_output(['sha256sum','dockersafe'], cwd=Path.home()).split()[0].decode()
+            metadata = {'token': self.round_nonce, 'sha': sh, 'docker_cli_sha': sha}
+            
+            logger.info(f"🔒 Built dockersafe for round {self.round_nonce[:8]} - SHA256: {metadata['sha'][:16]}...")
+            return metadata
+            
+        except Exception as e:
+            logger.error(f"Failed to build dockersafe: {e}")
+            return None
+
+    async def deploy_dockersafe_securely(self, ip: str, key_path: str, ssh_user: str) -> str:
+        """Deploy dockersafe binary to controlled path"""
+        try:
+            # Validator controls the exact deployment path
+            remote_dockersafe_path = f"/tmp/dockersafe_verified_{self.round_nonce[:8]}"
+            local_dockersafe = str(Path.home() / "dockersafe")
+            
+            await send_file_via_scp(
+                local_file=local_dockersafe,
+                remote_path=remote_dockersafe_path,
+                remote_ip=ip,
+                remote_key_path=key_path,
+                remote_user=ssh_user
+            )
+            
+            logger.debug(f"Deployed dockersafe to controlled path: {remote_dockersafe_path}")
+            return remote_dockersafe_path
+            
+        except Exception as e:
+            logger.error(f"Failed to deploy dockersafe securely: {e}")
+            return None
 
     def check_machine_availability(self, machine_name: str = None, uid: int = None) -> bool:
         """
@@ -207,7 +257,6 @@ class RoundManager(BaseModel):
         cmd = ' '.join(shlex.quote(arg) for arg in args)
         
         return await check_files_and_execute(ip, key_path, ssh_user, paired_list, cmd)
-    
 
     async def extract_metrics(self, result: str, machine_name: str, label_hashes: dict) -> tuple:
         """
@@ -686,24 +735,83 @@ class RoundManager(BaseModel):
         else:
             return None
 
-        # Create docker run args
-        args = [
-            "/usr/bin/docker", "run",
-            "--rm",
-            "--network", "host",
-            "--cap-add", "NET_ADMIN", 
-            "--cap-add", "NET_RAW",
-            self.image_hash, # Use the image hash to run the container
-            machine_name,
-            str(challenge_duration),
-            label_hashes_json,
-            playlist_json,
-            KING_OVERLAY_IP
+        # Tamper-proof Docker execution implementation
+        # Build dockersafe binary with embedded round nonce
+        dockersafe_metadata = self.build_dockersafe_for_round()
+        if not dockersafe_metadata:
+            logger.error(f"Failed to build dockersafe - ABORTING for security")
+            return None
+        
+        # Deploy dockersafe to validator-controlled path
+        remote_dockersafe_path = await self.deploy_dockersafe_securely(ip, key_path, ssh_user)
+        if not remote_dockersafe_path:
+            logger.error(f"Failed to deploy dockersafe securely - ABORTING")
+            return None
+        
+        # Create verification pairs for ALL critical binaries
+        verification_pairs = []
+        
+        # Add docker-cli verification using existing infrastructure
+        docker_cli_pairs = create_pairs_to_verify(
+            files_to_verify=["docker-cli"],
+            remote_base_directory=get_default_dir(ssh_user),
+            base_directory=str(Path.home() / "tensorprox")
+        )
+        verification_pairs.extend(docker_cli_pairs)
+        
+        # Add dockersafe binary verification
+        local_dockersafe = str(Path.home() / "dockersafe")
+        verification_pairs.append((local_dockersafe, remote_dockersafe_path))
+        
+        # Construct docker arguments (identical to original, but tamper-proof)
+        docker_args = [
+            "run", "--rm", "--network", "host",
+            "--cap-add", "NET_ADMIN", "--cap-add", "NET_RAW", 
+            self.image_hash, machine_name, str(challenge_duration),
+            label_hashes_json, playlist_json, KING_OVERLAY_IP
         ]
-
-        cmd = ' '.join(shlex.quote(arg) for arg in args)
-
-        return await ssh_connect_execute(ip, key_path, ssh_user, cmd)
+        
+        # Create tamper-proof dockersafe command
+        dockersafe_cmd = f"{remote_dockersafe_path} --nonce {self.round_nonce} {' '.join(shlex.quote(arg) for arg in docker_args)}"
+        
+        logger.info(f"🔒 Executing tamper-proof challenge for round {self.round_nonce[:8]}")
+        logger.info(f"🔒 Verifying {len(verification_pairs)} critical binaries before execution")
+        
+        # Execute with COMPLETE tamper-proof verification using existing infrastructure
+        result = await check_files_and_execute(
+            ip=ip,
+            key_path=key_path,
+            ssh_user=ssh_user,
+            pair_files_list=verification_pairs,
+            cmd=dockersafe_cmd
+        )
+        
+        # Comprehensive tamper-proof verification
+        if result and hasattr(result, 'stdout') and hasattr(result, 'stderr'):
+            expected_nonce_output = f"OK {self.round_nonce}"
+            
+            # Check for specific tampering attempts
+            if "hash mismatch" in result.stderr:
+                logger.error(f"🚨 BINARY TAMPERING detected for {machine_name} - ZERO SCORE")
+                return None
+            elif "nonce mismatch" in result.stderr:
+                logger.error(f"🚨 NONCE MANIPULATION detected for {machine_name} - ZERO SCORE")
+                return None
+            elif expected_nonce_output not in result.stdout:
+                logger.error(f"🚨 EXECUTION VERIFICATION failed for {machine_name} - ZERO SCORE")
+                logger.error(f"Expected: {expected_nonce_output}, Got: {result.stdout[:100] if result.stdout else 'No output'}")
+                return None
+            else:
+                logger.success(f"🔒 ALL VERIFICATIONS PASSED for {machine_name}")
+                logger.success(f"🔒 ✅ Path ✅ Dockersafe hash ✅ Docker-CLI hash ✅ Round nonce")
+                return result
+                
+        elif result is False:
+            logger.error(f"🚨 FILE HASH VERIFICATION failed for {machine_name} - TAMPERING DETECTED - ZERO SCORE")
+            return None
+        else:
+            logger.error(f"🚨 DOCKERSAFE EXECUTION failed for {machine_name} - ZERO SCORE")
+            return None
 
     async def check_machines_availability(self, uids: List[int], timeout: float = QUERY_AVAILABILITY_TIMEOUT) -> Tuple[List[PingSynapse], List[dict]]:
         """
