@@ -71,6 +71,7 @@ executor = ThreadPoolExecutor(max_workers=1)
 
 # Global variables to store the runner references
 EPOCH_TIME = ROUND_TIMEOUT + EPSILON
+DOCKER_REGISTRY_TOKEN = os.environ.get("DOCKER_REGISTRY_TOKEN")
 
 class Validator(BaseValidatorNeuron):
     """Tensorprox validator neuron responsible for managing miners and running validation tasks."""
@@ -140,7 +141,7 @@ class Validator(BaseValidatorNeuron):
             # Use echo to pipe the token to docker login for security
             login_process = subprocess.run([
                 "bash", "-c", 
-                f"echo '{settings.DOCKER_REGISTRY_TOKEN}' | docker login -u {settings.DOCKER_REGISTRY_USERNAME} --password-stdin"
+                f"echo '{DOCKER_REGISTRY_TOKEN}' | docker login -u {settings.DOCKER_REGISTRY_USERNAME} --password-stdin"
             ], capture_output=True, text=True, check=False)
             
             if login_process.returncode == 0:

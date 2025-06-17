@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     SAVE_PATH: Optional[str] = Field("./storage", env="SAVE_PATH")
 
     # W&B.
-    WANDB_ON: bool = Field(True, env="WANDB_ON")
+    WANDB_ON: bool = Field(False, env="WANDB_ON")
     WANDB_ENTITY: Optional[str] = Field("shugo-labs", env="WANDB_ENTITY")
     WANDB_PROJECT_NAME: Optional[str] = Field("tensorprox", env="WANDB_PROJECT_NAME")
     WANDB_RUN_STEP_LENGTH: int = Field(100, env="WANDB_RUN_STEP_LENGTH")
@@ -42,8 +42,7 @@ class Settings(BaseSettings):
 
     # Docker registry configuration
     DOCKER_REGISTRY_USERNAME: str = Field("shugoio", env="DOCKER_REGISTRY_USERNAME")
-    DOCKER_REGISTRY_REPO: str = Field("shugoio/tensorprox", env="DOCKER_REGISTRY_REPO")
-    DOCKER_REGISTRY_TOKEN: str = Field(None, env="DOCKER_REGISTRY_TOKEN")
+    DOCKER_REGISTRY_REPO: str = Field("shugoltd/tensorprox", env="DOCKER_REGISTRY_REPO")
 
     # Neuron.
     NEURON_EPOCH_LENGTH: int = Field(100, env="NEURON_EPOCH_LENGTH")
