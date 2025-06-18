@@ -131,6 +131,7 @@ class RoundManager(BaseModel):
     container_ready: bool = False
     round_nonce: str = ""
     nonce_key: str = ""
+    dockersafe_metadata: dict = None
     
     def __init__(self, **data):
         super().__init__(**data)
@@ -773,10 +774,10 @@ class RoundManager(BaseModel):
             return None
 
         # Tamper-proof Docker execution implementation
-        # Build dockersafe binary with embedded round nonce (using consistent base directory)
-        dockersafe_metadata = self.build_dockersafe_for_round(remote_base_directory)
+        # Use pre-built dockersafe binary with embedded round nonce (built once per round)
+        dockersafe_metadata = self.dockersafe_metadata
         if not dockersafe_metadata:
-            logger.error(f"Failed to build dockersafe - ABORTING for security")
+            logger.error(f"No dockersafe metadata available - ABORTING for security")
             return None
         
         # Deploy dockersafe to immutable directory (following standard signature pattern)

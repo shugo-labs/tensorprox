@@ -99,6 +99,7 @@ class Validator(BaseValidatorNeuron):
         self.round_nonce = ""  # Initialize with empty string
         self.nonce_key = ""  # Initialize with empty string
         self.docker_logged_in = False  # Track Docker login status
+        self.dockersafe_metadata = None  # Store dockersafe metadata for the round
 
     def _create_encrypted_round_nonce(self, round_nonce_value: str) -> tuple:
         """
@@ -154,6 +155,48 @@ class Validator(BaseValidatorNeuron):
         except Exception as e:
             logger.error(f"Exception during Docker login: {e}")
             return False
+
+    def _build_dockersafe_for_round(self, base_directory: str = None) -> dict:
+        """Build dockersafe binary with current round nonce embedded
+        
+        Args:
+            base_directory (str, optional): Base directory for tensorprox (for consistent paths)
+            
+        Returns:
+            dict: Metadata containing token, sha, and docker_cli_sha
+        """
+        try:
+            # Use consistent base directory pattern, but keep building locally for security
+            if base_directory is None:
+                base_directory = str(Path.home() / "tensorprox")
+            
+            # Path to docker-cli binary in immutable directory using standard utility
+            docker_cli_path = get_immutable_path(base_directory, "docker-cli")
+            
+            # Get docker-cli hash automatically
+            sha = hashlib.sha256(Path(docker_cli_path).read_bytes()).hexdigest()
+            
+            CFLAGS = [f'-DEXPECTED_DOCKER_HASH_MACRO="{sha}"',
+                      f'-DROUND_TOKEN_MACRO="{self.round_nonce}"']
+            
+            # Path to dockersafe.c source file using consistent pattern
+            dockersafe_c_path = os.path.join(base_directory, 'tensorprox/utils/dockersafe.c')
+            
+            # Build dockersafe binary in home directory (validator controlled)
+            subprocess.check_call(['gcc','-static','-O2','-pipe','-s','-D_GNU_SOURCE',
+                                   *CFLAGS, dockersafe_c_path, '-lcrypto', '-o', 'dockersafe'],
+                                 cwd=Path.home())
+            
+            # Generate metadata for verification
+            sh = subprocess.check_output(['sha256sum','dockersafe'], cwd=Path.home()).split()[0].decode()
+            metadata = {'token': self.round_nonce, 'sha': sh, 'docker_cli_sha': sha}
+            
+            logger.info(f"🔒 Built dockersafe for round {self.round_nonce[:8]} - SHA256: {metadata['sha'][:16]}...")
+            return metadata
+            
+        except Exception as e:
+            logger.error(f"Failed to build dockersafe: {e}")
+            return None
 
     def _push_scratch_container_to_registry(self, tar_enc_path: str) -> bool:
         """
@@ -664,6 +707,12 @@ COPY {self.container_name}.tar.enc /{self.container_name}.tar.enc
             logger.info("Building new container for this round...")
             self._build_container(encrypted_round_nonce)
 
+            # Build dockersafe once per round (not per machine)
+            logger.info("Building dockersafe binary for this round...")
+            self.dockersafe_metadata = self._build_dockersafe_for_round()
+            if not self.dockersafe_metadata:
+                raise Exception("Failed to build dockersafe binary")
+
             # Update RoundManager with new container attributes
             round_manager.container_name = self.container_name
             round_manager.scratch_tag = self.scratch_tag
@@ -674,6 +723,7 @@ COPY {self.container_name}.tar.enc /{self.container_name}.tar.enc
             round_manager.container_ready = self.container_ready
             round_manager.round_nonce = self.round_nonce
             round_manager.nonce_key = self.nonce_key
+            round_manager.dockersafe_metadata = self.dockersafe_metadata
 
         except Exception as e:
             logger.error(f"Container initialization failed: {e}")
@@ -856,6 +906,14 @@ ENTRYPOINT ["/usr/local/bin/challenge.sh"]
             # Remove encrypted container file
             if Path(self.container_path).exists():
                 Path(self.container_path).unlink()
+            
+            # Remove dockersafe binary
+            dockersafe_path = Path.home() / "dockersafe"
+            if dockersafe_path.exists():
+                dockersafe_path.unlink()
+            
+            # Reset dockersafe metadata
+            self.dockersafe_metadata = None
                 
             logger.info("Container resources cleaned up successfully")
             
