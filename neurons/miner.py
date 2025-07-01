@@ -77,13 +77,9 @@ from pathlib import Path
 NEURON_STOP_ON_FORWARD_EXCEPTION: bool = False
 
 #Miner global vars
-KING_PUBLIC_IP: str = os.environ.get("KING_PUBLIC_IP")
-KING_USERNAME: str = os.environ.get("KING_USERNAME", "root")
-KING_PRIVATE_IP: str = os.environ.get("KING_PRIVATE_IP")
-KING_INTERFACE: str = os.environ.get("KING_INTERFACE")
-MOAT_PRIVATE_IP: str = os.environ.get("MOAT_PRIVATE_IP")
-MOAT_INTERFACE: str = os.environ.get("MOAT_INTERFACE")
-INITIAL_PK_PATH: str = os.environ.get("PRIVATE_KEY_PATH")
+KING_PRIVATE_IP: str = "10.0.0.5"
+MOAT_PRIVATE_IP: str = "10.0.0.4"
+MOAT_INTERFACE: str = "eth0"
 
 def load_azure_credentials(env_path=".env.miner") -> dict:
     """
@@ -118,6 +114,26 @@ def load_vm_config(csv_path="vm_config.csv") -> list:
         for row in reader:
             vms.append({k: v.strip() for k, v in row.items()})
     return vms
+
+def load_network_config(env_path=".env.miner") -> dict:
+    """
+    Loads VNet and subnet info from .env.miner.
+    Returns a dictionary with keys: VNET_NAME, VNET_ADDRESS_SPACE, SUBNET_NAME, SUBNET_ADDRESS_PREFIX
+    """
+    config = {}
+    env_file = Path(env_path)
+    if not env_file.exists():
+        raise FileNotFoundError(f"Config file not found: {env_path}")
+    with env_file.open("r") as f:
+        for line in f:
+            if line.strip() and not line.strip().startswith("#"):
+                key, value = line.strip().split("=", 1)
+                config[key.strip()] = value.strip()
+    required = ["VNET_NAME", "VNET_ADDRESS_SPACE", "SUBNET_NAME", "SUBNET_ADDRESS_PREFIX"]
+    for k in required:
+        if k not in config:
+            raise ValueError(f"Missing {k} in {env_path}")
+    return config
 
 class Miner(BaseMinerNeuron):
     """
@@ -171,12 +187,21 @@ class Miner(BaseMinerNeuron):
             # Load Azure credentials and VM config
             azure_creds = load_azure_credentials()
             vm_configs = load_vm_config()
+            network_config = load_network_config()  # <-- new
+
             # Build app_credentials dict (provider name as key)
             app_credentials = {"Azure": azure_creds}
             # Build machines_config as list of VMConfig
             machines_config = [VMConfig(**vm) for vm in vm_configs]
             # Create new MachineConfig
-            machine_config = MachineConfig(app_credentials=app_credentials, machines_config=machines_config)
+            machine_config = MachineConfig(app_credentials=app_credentials, 
+                machines_config=machines_config,
+                vnet_name=network_config["VNET_NAME"],
+                subnet_name=network_config["SUBNET_NAME"],
+                vnet_address_space=network_config["VNET_ADDRESS_SPACE"],
+                subnet_address_prefix=network_config["SUBNET_ADDRESS_PREFIX"]
+            )
+            
             # Respond with new PingSynapse 
             logger.debug(f"⏩ Forwarding Ping synapse with machine details to validator {synapse.dendrite.hotkey}.")
             return PingSynapse(machine_availabilities=machine_config)
@@ -754,20 +779,42 @@ def load_trafficgen_machine_tuples(file_path = os.path.join(BASE_DIR, "trafficge
     return machines
 
 if __name__ == "__main__":
-
     logger.info("Miner Instance started.")
 
-    # Load machine info
-    traffic_generators = load_trafficgen_machine_tuples()
-    machines = traffic_generators + [(KING_PUBLIC_IP, KING_USERNAME, KING_PRIVATE_IP, KING_INTERFACE)]
+    # Load Azure credentials, VM config, and network config
+    azure_creds = load_azure_credentials()
+    vm_configs = load_vm_config()
+    network_config = load_network_config()
 
-    run_gre_setup(traffic_generators)
-    
+    # Build machines_config as list of VMConfig
+    machines_config = [VMConfig(**vm) for vm in vm_configs]
+
+    # Extract tgen and king info for GRE setup
+    tgens = [m for m in machines_config if m.name and m.name.startswith('tgen-')]
+    tgen_private_ips = [m.private_ip for m in tgens]
+    tgen_interfaces = [m.interface for m in tgens]
+
+    king = next((m for m in machines_config if m.name == 'king'), None)
+    king_private_ip = king.private_ip if king else None
+    king_interface = king.interface if king else None
+
+    # GRE setup example
+    gre = GRESetup(node_type="moat", private_ip=king_private_ip, interface=king_interface)
+    success = gre.moat(
+        king_private_ip=king_private_ip,
+        traffic_gen_ips=tgen_private_ips
+    )
+    if success:
+        logger.info("GRE setup successfully done.")
+    else:
+        logger.error("GRE setup failed.")
+        sys.exit(1)
+
     # Run the repository cloning setup first, wait for it to complete
     loop = asyncio.get_event_loop()
     loop.run_until_complete(setup_machines(machines))
 
-    with Miner(traffic_generators=traffic_generators, machines=machines) as miner:
+    with Miner(traffic_generators=machines, machines=machines) as miner:
         while not miner.should_exit:
             miner.log_status()
             time.sleep(5)

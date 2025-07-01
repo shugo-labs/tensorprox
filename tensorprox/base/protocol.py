@@ -21,6 +21,10 @@ class VMConfig(BaseModel):
 
 class MachineConfig(BaseModel):
     app_credentials: dict = Field(default_factory=dict)
+    vnet_name: str
+    subnet_name: str
+    vnet_address_space: str = "10.0.0.0/8"
+    subnet_address_prefix: str = "10.0.0.0/24"
     machines_config: List[VMConfig] = Field(default_factory=list)
     is_valid: bool = True
 

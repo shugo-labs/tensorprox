@@ -1,4 +1,5 @@
-name,image,size,admin_username,location,cores,ram
-tgen-0,Ubuntu2204,Standard_B1ms,azureuser,eastus,1,2
-tgen-1,Ubuntu2204,Standard_B1ms,azureuser,eastus,1,2
-king,Ubuntu2204,Standard_B1ms,azureuser,eastus,1,2
+name,image,size,admin_username,location,cores,ram,private_ip,interface
+moat,Ubuntu2204,Standard_B1ms,azureuser,eastus,1,2,10.0.0.4,eth0
+king,Ubuntu2204,Standard_B1ms,azureuser,eastus,1,2,10.0.0.5,eth0
+tgen-0,Ubuntu2204,Standard_B1ms,azureuser,eastus,1,2,10.0.0.6,eth0
+tgen-1,Ubuntu2204,Standard_B1ms,azureuser,eastus,1,2,10.0.0.7,eth0
