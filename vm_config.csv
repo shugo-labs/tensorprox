@@ -1,4 +1,4 @@
-name,image,size,admin_username,custom_data,location,cores,gb
-tgen-0,Ubuntu2204,Standard_B1ms,azureuser,cloud-init1.txt,eastus,1,2
-tgen-1,Ubuntu2204,Standard_B1ms,azureuser,cloud-init2.txt,eastus,1,2
-king,Ubuntu2204,Standard_B1ms,azureuser,cloud-init3.txt,eastus,1,2
+name,image,size,admin_username,location,cores,ram
+tgen-0,Ubuntu2204,Standard_B1ms,azureuser,eastus,1,2
+tgen-1,Ubuntu2204,Standard_B1ms,azureuser,eastus,1,2
+king,Ubuntu2204,Standard_B1ms,azureuser,eastus,1,2
