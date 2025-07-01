@@ -6,43 +6,22 @@ from tensorprox import settings
 settings.settings = settings.Settings.load(mode="validator")
 settings = settings.settings
 
-class VMConfig(BaseModel):
-    name: str | None = None
-    image: str | None = None
-    size: str | None = None
-    admin_username: str | None = None
-    location: str | None = None
-    cores: int | None = None
-    ram: int | None = None
-    private_ip: str | None = None
-    interface: str | None= None
-
-    def get(self, key, default=None):
-        return getattr(self, key, default)
-
-
 class MachineConfig(BaseModel):
     app_credentials: dict = Field(default_factory=dict)
-    vnet_name: str
-    subnet_name: str
+    vnet_name: str | None = None
+    subnet_name: str | None = None
     vnet_address_space: str = "10.0.0.0/8"
     subnet_address_prefix: str = "10.0.0.0/24"
-    machines_config: List[VMConfig] = Field(default_factory=list)
-    is_valid: bool = True
+    location: str = "eastus"
+    tgens_size: str = "Standard_B1ms"
+    king_size: str = "Standard_B1ms"
+    num_tgens: int = 2
 
     @model_validator(mode='before')
-    def truncate_traffic_generators(cls, values):
-        machines_config = values.get('machines_config', [])
-        # Identify tgens by name
-        tgens = [m for m in machines_config if getattr(m, 'name', '').startswith('tgen-')]
-        # Cap tgens to MAX_TGENS
-        capped_tgens = tgens[:MAX_TGENS]
-        # Keep only the king machine
-        king = [m for m in machines_config if getattr(m, 'name', '') == 'king']
-        # Rebuild the list: capped tgens + king
-        values['machines_config'] = capped_tgens + king
-        # Set is_valid based on tgens count
-        values['is_valid'] = len(tgens) >= MIN_TGENS
+    def cap_tgen_counts(cls, values):
+        num_tgens = values.get('num_tgens', 2)
+        # Cap the num_tgens within the min and max bounds
+        values['num_tgens'] = max(MIN_TGENS, min(int(num_tgens), MAX_TGENS))
         return values
     
 class PingSynapse(bt.Synapse):
@@ -64,10 +43,17 @@ class PingSynapse(bt.Synapse):
 
     def serialize(self) -> dict[str, Any]:
         return {
+            "max_tgens": self.max_tgens,
             "machine_availabilities": {
                 "app_credentials": self.machine_availabilities.app_credentials,
-                "machines_config": [m.model_dump() for m in self.machine_availabilities.machines_config],
-                "is_valid": self.machine_availabilities.is_valid,
+                "vnet_name": self.machine_availabilities.vnet_name,
+                "subnet_name": self.machine_availabilities.subnet_name,
+                "vnet_address_space": self.machine_availabilities.vnet_address_space,
+                "subnet_address_prefix": self.machine_availabilities.subnet_address_prefix,
+                "location": self.machine_availabilities.location,
+                "tgens_size": self.machine_availabilities.tgens_size,
+                "king_size": self.machine_availabilities.king_size,
+                "num_tgens": self.machine_availabilities.num_tgens,
             },
         }
 
@@ -75,10 +61,17 @@ class PingSynapse(bt.Synapse):
     def deserialize(cls, data: dict) -> "PingSynapse":
         avail_data = data.get("machine_availabilities", {})
         return cls(
+            max_tgens=data.get("max_tgens", MAX_TGENS),
             machine_availabilities=MachineConfig(
                 app_credentials=avail_data.get("app_credentials", {}),
-                machines_config=[VMConfig(**m) for m in avail_data.get("machines_config", [])],
-                is_valid=avail_data.get("is_valid", True),
+                vnet_name=avail_data.get("vnet_name"),
+                subnet_name=avail_data.get("subnet_name"),
+                vnet_address_space=avail_data.get("vnet_address_space", "10.0.0.0/8"),
+                subnet_address_prefix=avail_data.get("subnet_address_prefix", "10.0.0.0/24"),
+                location=avail_data.get("location", "eastus"),
+                tgens_size=avail_data.get("tgens_size", "Standard_B1ms"),
+                king_size=avail_data.get("king_size", "Standard_B1ms"),
+                num_tgens=avail_data.get("num_tgens", 2),
             ),
         )
 

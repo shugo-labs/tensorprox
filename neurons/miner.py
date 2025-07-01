@@ -53,7 +53,7 @@ import time
 from loguru import logger
 from tensorprox.base.miner import BaseMinerNeuron
 from tensorprox.utils.logging import ErrorLoggingEvent, log_event
-from tensorprox.base.protocol import PingSynapse, ChallengeSynapse, MachineConfig, VMConfig
+from tensorprox.base.protocol import PingSynapse, ChallengeSynapse, MachineConfig
 from tensorprox.utils.utils import *
 from tensorprox.core.immutable.gre_setup import GRESetup
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -63,7 +63,7 @@ import asyncio
 import socket
 import struct
 from pydantic import Field, PrivateAttr
-from typing import List, Tuple, Any
+from typing import List, Tuple, Any, Dict
 import select
 from collections import defaultdict
 import numpy as np
@@ -76,59 +76,48 @@ from pathlib import Path
 
 NEURON_STOP_ON_FORWARD_EXCEPTION: bool = False
 
-def load_azure_credentials(env_path=".env.miner") -> dict:
+def load_azure_credentials() -> dict:
     """
     Loads Azure credentials and resource group from a .env.miner file.
     Returns a dictionary with keys: AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, AZURE_RESOURCE_GROUP
     """
+
     creds = {}
-    env_file = Path(env_path)
-    if not env_file.exists():
-        raise FileNotFoundError(f"Azure credentials file not found: {env_path}")
-    with env_file.open("r") as f:
-        for line in f:
-            if line.strip() and not line.strip().startswith("#"):
-                key, value = line.strip().split("=", 1)
-                creds[key.strip()] = value.strip()
-    required = ["AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID", "AZURE_RESOURCE_GROUP"]
-    for k in required:
-        if k not in creds:
-            raise ValueError(f"Missing {k} in {env_path}")
+    azure_keys = ["AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID", "AZURE_RESOURCE_GROUP"]
+    
+    # Check that all required Azure keys are present
+    for k in azure_keys:
+        creds[k] = os.environ.get(k)
+        
     return creds
 
-def load_vm_config(csv_path="vm_config.csv") -> list:
-    """
-    Loads VM creation parameters from a CSV file. Each row is a dict with keys matching VMConfig fields.
-    """
-    config_file = Path(csv_path)
-    if not config_file.exists():
-        raise FileNotFoundError(f"VM config file not found: {csv_path}")
-    vms = []
-    with config_file.open("r", newline="") as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            vms.append({k: v.strip() for k, v in row.items()})
-    return vms
-
-def load_network_config(env_path=".env.miner") -> dict:
+def load_network_config() -> dict:
     """
     Loads VNet and subnet info from .env.miner.
     Returns a dictionary with keys: VNET_NAME, VNET_ADDRESS_SPACE, SUBNET_NAME, SUBNET_ADDRESS_PREFIX
     """
-    config = {}
-    env_file = Path(env_path)
-    if not env_file.exists():
-        raise FileNotFoundError(f"Config file not found: {env_path}")
-    with env_file.open("r") as f:
-        for line in f:
-            if line.strip() and not line.strip().startswith("#"):
-                key, value = line.strip().split("=", 1)
-                config[key.strip()] = value.strip()
-    required = ["VNET_NAME", "VNET_ADDRESS_SPACE", "SUBNET_NAME", "SUBNET_ADDRESS_PREFIX"]
-    for k in required:
-        if k not in config:
-            raise ValueError(f"Missing {k} in {env_path}")
-    return config
+
+    network_config = {}
+    network_keys = ["VNET_NAME", "VNET_ADDRESS_SPACE", "SUBNET_NAME", "SUBNET_ADDRESS_PREFIX"]
+    
+    # Check that all required network keys are present
+    for k in network_keys:
+        network_config[k] = os.environ.get(k)
+        
+    return network_config
+
+def load_vm_config() -> dict:
+    """
+    Loads VM config info from .env.miner.
+    Returns a dictionary with keys: LOCATION, TGENS_SIZE, KING_SIZE, NUM_TGENS
+    """
+    vm_config = {}
+    vm_keys = ["LOCATION", "TGENS_SIZE", "KING_SIZE", "NUM_TGENS"]
+    
+    for k in vm_keys:
+        vm_config[k] = os.environ.get(k)
+
+    return vm_config
 
 class Miner(BaseMinerNeuron):
     """
@@ -144,29 +133,25 @@ class Miner(BaseMinerNeuron):
     packet_buffers: Dict[str, List[Tuple[bytes, int]]] = Field(default_factory=lambda: defaultdict(list))
     batch_interval: int = 10
     max_tgens: int = 0
-    azure_creds: dict = Field(default=None)
-    machines_config: List[VMConfig] = Field(default=None)
-    network_config: dict = Field(default=None)
+    azure_creds: dict = Field(default_factory=dict)
+    machines_config: dict = Field(default_factory=dict)
+    network_config: dict = Field(default_factory=dict)
 
     _lock: asyncio.Lock = PrivateAttr()
     _model: DecisionTreeClassifier = PrivateAttr()
     _imputer: SimpleImputer = PrivateAttr()
     _scaler: StandardScaler = PrivateAttr()
 
-    def __init__(self, traffic_generators=None, machines=None, **data):
+    def __init__(self, **data):
         """Initializes the Miner neuron with necessary machine learning models and configurations."""
 
         super().__init__(**data)
         self._lock = asyncio.Lock()
-        self.azure_creds = azure_creds
-        self.machines_config = machines_config
-        self.network_config = network_config
 
         base_path = os.path.expanduser("~/tensorprox/model") 
         self._model = joblib.load(os.path.join(base_path, "decision_tree.pkl"))
         self._imputer = joblib.load(os.path.join(base_path, "imputer.pkl"))
         self._scaler = joblib.load(os.path.join(base_path, "scaler.pkl"))
-
 
     async def forward(self, synapse: PingSynapse) -> PingSynapse:
         """
@@ -183,22 +168,23 @@ class Miner(BaseMinerNeuron):
 
         try:
 
-            # Build app_credentials dict (provider name as key)
-            app_credentials = {"Azure": azure_creds}
-
             # Create new MachineConfig
             machine_config = MachineConfig(
-                app_credentials=app_credentials, 
-                machines_config=machines_config,
-                vnet_name=network_config["VNET_NAME"],
-                subnet_name=network_config["SUBNET_NAME"],
-                vnet_address_space=network_config["VNET_ADDRESS_SPACE"],
-                subnet_address_prefix=network_config["SUBNET_ADDRESS_PREFIX"]
+                app_credentials=self.azure_creds, 
+                vnet_name=self.network_config.get("VNET_NAME"),
+                subnet_name=self.network_config.get("SUBNET_NAME"),
+                vnet_address_space=self.network_config.get("VNET_ADDRESS_SPACE", "10.0.0.0/8"),
+                subnet_address_prefix=self.network_config.get("SUBNET_ADDRESS_PREFIX", "10.0.0.0/24"),
+                location = self.machines_config.get("LOCATION", "eastus"),
+                tgens_size = self.machines_config.get("TGENS_SIZE", "Standard_B1ms"),
+                king_size = self.machines_config.get("KING_SIZE", "Standard_B1ms"),
+                num_tgens = self.machines_config.get("NUM_TGENS", 2),
             )
             
             # Respond with new PingSynapse 
-            logger.debug(f"⏩ Forwarding Ping synapse with machine details to validator {synapse.dendrite.hotkey}.")
-            return PingSynapse(machine_availabilities=machine_config)
+            synapse.machine_availabilities = machine_config
+            logger.debug(f"⏩ Forwarding Ping synapse with machine details to validator {synapse.dendrite.hotkey} : {synapse}.")
+            return synapse
 
         except Exception as e:
             logger.exception(e)
@@ -553,17 +539,15 @@ class Miner(BaseMinerNeuron):
         return prediction[0] if isinstance(prediction, np.ndarray) and len(prediction) > 0 else None
 
         
-def run_gre_setup(king_private_ip, moat_private_ip, moat_interface, tgen_private_ips):
+def run_gre_setup(num_tgens):
 
     logger.info("Running GRE Setup...")
     
     try:
         # Performing GRE Setup before starting
-        gre = GRESetup(node_type="moat", private_ip=moat_private_ip, interface=moat_interface)
-        success = gre.moat(
-            king_private_ip=king_private_ip,
-            traffic_gen_ips=tgen_private_ips
-        )
+        tgen_private_ips = [f"10.0.0.{6 + i}" for i in range(num_tgens)]
+        gre = GRESetup(node_type="moat", private_ip="10.0.0.4", interface="eth0")
+        success = gre.moat(king_private_ip="10.0.0.5", traffic_gen_ips=tgen_private_ips)
         if success :
             logger.info("GRE setup successfully done.")
         else :
@@ -579,30 +563,12 @@ if __name__ == "__main__":
 
     # Load Azure credentials, VM config, and network config
     azure_creds = load_azure_credentials()
-    vm_configs = load_vm_config()
+    machines_config = load_vm_config()
     network_config = load_network_config()
 
-    # Build machines_config as list of VMConfig
-    machines_config = [VMConfig(**vm) for vm in vm_configs]
+    num_tgens = int(os.environ.get("NUM_TGENS", 2))
+    run_gre_setup(num_tgens)
 
-    # Extract tgen and king info for GRE setup
-    tgens = [m for m in machines_config if m.name and m.name.startswith('tgen-')]
-    tgen_private_ips = [m.private_ip for m in tgens]
-    tgen_interfaces = [m.interface for m in tgens]
-
-    moat = next((m for m in machines_config if m.name == 'moat'), None)
-    moat_private_ip = moat.private_ip if moat else None
-    moat_interface = moat.interface if moat else None
-
-    king = next((m for m in machines_config if m.name == 'king'), None)
-    king_private_ip = king.private_ip if king else None
-    king_interface = king.interface if king else None
-
-    run_gre_setup(king_private_ip, moat_private_ip, moat_interface, tgen_private_ips)
-
-    logger.info(f"AZURE CREDS : {azure_creds}")
-    logger.info(f"MACHINES CONFIG : {machines_config}")
-    logger.info(f"NETWORK CONFIG : {network_config}")
     with Miner(azure_creds=azure_creds, machines_config=machines_config, network_config=network_config) as miner:
         while not miner.should_exit:
             miner.log_status()
