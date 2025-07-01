@@ -53,7 +53,7 @@ import time
 from loguru import logger
 from tensorprox.base.miner import BaseMinerNeuron
 from tensorprox.utils.logging import ErrorLoggingEvent, log_event
-from tensorprox.base.protocol import PingSynapse, ChallengeSynapse, MachineDetails
+from tensorprox.base.protocol import PingSynapse, ChallengeSynapse, MachineConfig, VMConfig
 from tensorprox.utils.utils import *
 from tensorprox.core.immutable.gre_setup import GRESetup
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -84,6 +84,40 @@ KING_INTERFACE: str = os.environ.get("KING_INTERFACE")
 MOAT_PRIVATE_IP: str = os.environ.get("MOAT_PRIVATE_IP")
 MOAT_INTERFACE: str = os.environ.get("MOAT_INTERFACE")
 INITIAL_PK_PATH: str = os.environ.get("PRIVATE_KEY_PATH")
+
+def load_azure_credentials(env_path=".env.miner") -> dict:
+    """
+    Loads Azure credentials and resource group from a .env.miner file.
+    Returns a dictionary with keys: AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, AZURE_RESOURCE_GROUP
+    """
+    creds = {}
+    env_file = Path(env_path)
+    if not env_file.exists():
+        raise FileNotFoundError(f"Azure credentials file not found: {env_path}")
+    with env_file.open("r") as f:
+        for line in f:
+            if line.strip() and not line.strip().startswith("#"):
+                key, value = line.strip().split("=", 1)
+                creds[key.strip()] = value.strip()
+    required = ["AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID", "AZURE_RESOURCE_GROUP"]
+    for k in required:
+        if k not in creds:
+            raise ValueError(f"Missing {k} in {env_path}")
+    return creds
+
+def load_vm_config(csv_path="vm_config.csv") -> list:
+    """
+    Loads VM creation parameters from a CSV file. Each row is a dict with keys matching VMConfig fields.
+    """
+    config_file = Path(csv_path)
+    if not config_file.exists():
+        raise FileNotFoundError(f"VM config file not found: {csv_path}")
+    vms = []
+    with config_file.open("r", newline="") as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            vms.append({k: v.strip() for k, v in row.items()})
+    return vms
 
 class Miner(BaseMinerNeuron):
     """
@@ -123,7 +157,7 @@ class Miner(BaseMinerNeuron):
 
     async def forward(self, synapse: PingSynapse) -> PingSynapse:
         """
-        Handles incoming PingSynapse messages, sets up SSH key pairs, and distributes them to validator.
+        Handles incoming PingSynapse messages and responds with the miner's machine configuration and credentials.
 
         Args:
             synapse (PingSynapse): The synapse message containing machine details and configurations.
@@ -134,47 +168,25 @@ class Miner(BaseMinerNeuron):
         logger.debug(f"📧 Ping received from {synapse.dendrite.hotkey}, IP: {synapse.dendrite.ip}.")
 
         try:
-            ssh_public_key, ssh_private_key = self.generate_ssh_key_pair()
-            synapse.machine_availabilities.key_pair = (ssh_public_key, ssh_private_key)
-
-            # === Step 1: Add traffic generation machines ===
-            # Limit the number of traffic generators to max_tgens
-            self.max_tgens = synapse.max_tgens
-            synapse.machine_availabilities.traffic_generators = [
-                MachineDetails(ip=ip, username=RESTRICTED_USER, private_ip=private_ip, interface=interface, index=str(index))
-                for index, (ip, _, private_ip, interface) in enumerate(self.traffic_generators[:self.max_tgens])  # Limit by max_tgens
-            ]
-
-            # === Step 2: Add infra nodes (king + moat) ===
-            synapse.machine_availabilities.king = MachineDetails(
-                ip=KING_PUBLIC_IP, username=RESTRICTED_USER, private_ip=KING_PRIVATE_IP, interface=KING_INTERFACE
-            )
-            synapse.machine_availabilities.moat_private_ip = MOAT_PRIVATE_IP
-            synapse.machine_availabilities.moat_interface = MOAT_INTERFACE
-
-            # === Step 3: Prepare all SSH key addition tasks (excluding moat) ===
-            tasks = [
-                self.add_ssh_key_to_remote_machine(
-                    machine_ip=ip,
-                    ssh_public_key=ssh_public_key,
-                    username=username
-                )
-                for ip, username, _, _ in self.machines
-            ]
-
-            await asyncio.gather(*tasks)
-
+            # Load Azure credentials and VM config
+            azure_creds = load_azure_credentials()
+            vm_configs = load_vm_config()
+            # Build app_credentials dict (provider name as key)
+            app_credentials = {"Azure": azure_creds}
+            # Build machines_config as list of VMConfig
+            machines_config = [VMConfig(**vm) for vm in vm_configs]
+            # Create new MachineConfig
+            machine_config = MachineConfig(app_credentials=app_credentials, machines_config=machines_config)
+            # Respond with new PingSynapse 
+            logger.debug(f"⏩ Forwarding Ping synapse with machine details to validator {synapse.dendrite.hotkey}.")
+            return PingSynapse(machine_availabilities=machine_config)
         except Exception as e:
             logger.exception(e)
             logger.error(f"Error in forward: {e}")
             log_event(ErrorLoggingEvent(error=str(e)))
             if NEURON_STOP_ON_FORWARD_EXCEPTION:
                 self.should_exit = True
-
-        logger.debug(f"⏩ Forwarding Ping synapse with machine details to validator {synapse.dendrite.hotkey}.")
-        return synapse
-
-
+            return synapse
 
     def handle_challenge(self, synapse: ChallengeSynapse) -> ChallengeSynapse:
         """
@@ -226,7 +238,6 @@ class Miner(BaseMinerNeuron):
                 self.should_exit = True
 
         return synapse
-
 
     def is_allowed_batch(self, features):
         """
@@ -521,126 +532,7 @@ class Miner(BaseMinerNeuron):
 
         return prediction[0] if isinstance(prediction, np.ndarray) and len(prediction) > 0 else None
 
-    def generate_ssh_key_pair(self) -> tuple[str, str]:
-        """
-        Generates a random RSA SSH key pair and returns the private and public keys as strings.
 
-        Returns:
-            tuple[str, str]: A tuple containing:
-                - public_key_str (str): The generated SSH public key in OpenSSH format.
-                - private_key_str (str): The generated RSA private key in PEM format.
-        """
-
-        private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-
-        # Serialize private key
-        private_key_str = private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.TraditionalOpenSSL,
-            encryption_algorithm=serialization.NoEncryption(),
-        ).decode("utf-8")
-
-        # Serialize public key
-        public_key = private_key.public_key()
-        public_key_str = public_key.public_bytes(
-            encoding=serialization.Encoding.OpenSSH,
-            format=serialization.PublicFormat.OpenSSH,
-        ).decode("utf-8")
-
-        return public_key_str, private_key_str
-
-    async def add_ssh_key_to_remote_machine(
-        self,
-        machine_ip: str,
-        ssh_public_key: str,
-        username: str,  # This is the user you connect as (e.g., 'borgg-vm' or 'root')
-        initial_private_key_path: str = INITIAL_PK_PATH,
-        target_user: str = RESTRICTED_USER,
-        timeout: int = 5,
-        retries: int = 3,
-    ):
-        """
-        Asynchronously connects to a remote machine via SSH using asyncssh,
-        generates an SSH key pair for the restriced user, adds the given SSH public key to the
-        authorized_keys file, and updates sudoers for passwordless sudo access.
-
-        Args:
-            machine_ip (str): The public IP of the machine.
-            ssh_public_key (str): The SSH public key to add to the remote machine.
-            initial_private_key_path (str): Path to the initial private key used for SSH authentication.
-            username (str): The username for the SSH connection (e.g., 'borgg-vm' or 'root').
-            timeout (int, optional): Timeout in seconds for the SSH connection. Defaults to 5.
-            retries (int, optional): Number of retry attempts in case of failure. Defaults to 3.
-        """
-        
-
-        for attempt in range(retries):
-            try:
-                logger.info(f"Attempting SSH connection to {machine_ip} with user {username} (Attempt {attempt + 1}/{retries})...")
-
-                connection_params = {
-                    "host": machine_ip,
-                    "username": username,
-                    "client_keys": [initial_private_key_path],
-                    "known_hosts": None,
-                    "connect_timeout": timeout,
-                }
-
-                # Connect to the remote machine
-                async with asyncssh.connect(**connection_params) as conn:
-                    logger.info(f"✅ Successfully connected to {machine_ip} as {username}")
-
-                    # Ensure .ssh directory exists and set proper permissions for the restricted user
-                    commands = [
-                        f"sudo mkdir -p /home/{target_user}/.ssh",
-                        f"sudo chmod 700 /home/{target_user}/.ssh",
-                        f"sudo touch /home/{target_user}/.ssh/authorized_keys",
-                        f"sudo chmod 600 /home/{target_user}/.ssh/authorized_keys",
-                        f"sudo chown -R {target_user}:{target_user} /home/{target_user}/.ssh"
-                    ]
-                    for cmd in commands:
-                        await conn.run(cmd)
-
-                    # Check if the public key already exists in authorized_keys
-                    result = await conn.run(f"sudo cat /home/{target_user}/.ssh/authorized_keys", check=False)
-                    authorized_keys = result.stdout.strip()
-
-                    if ssh_public_key.strip() in authorized_keys:
-                        logger.info(f"SSH key already exists on {machine_ip}.")
-                    else:
-                        # Add the new public key to authorized_keys
-                        logger.info(f"Adding SSH key to {machine_ip}...")
-                        await conn.run(f'sudo -u {target_user} sh -c \'echo "{ssh_public_key.strip()}" >> /home/{target_user}/.ssh/authorized_keys\'')
-
-                        # Ensure correct permissions on authorized_keys
-                        await conn.run(f"sudo chmod 600 /home/{target_user}/.ssh/authorized_keys")
-
-                    # Update sudoers file for passwordless sudo for the restricted user
-                    sudoers_entry = f"{target_user} ALL=(ALL) NOPASSWD: ALL"
-                    logger.info(f"Updating sudoers file for user {target_user}...")
-                    
-                    sudoers_file = f"/etc/sudoers.d/{target_user}"
-                    check_cmd = f"sudo test -f {sudoers_file} && sudo grep -q '^{sudoers_entry}$' {sudoers_file}"
-                    check_result = await conn.run(check_cmd, check=False)
-
-                    if check_result.exit_status != 0:
-                        logger.info(f"Creating sudoers file for {target_user} in /etc/sudoers.d/...")
-                        await conn.run(f'echo "{sudoers_entry}" | sudo tee {sudoers_file} > /dev/null')
-                        await conn.run(f"sudo chmod 440 {sudoers_file}")
-                    else:
-                        logger.info(f"Sudoers entry already exists in /etc/sudoers.d/{target_user}")
-
-                    logger.info(f"Sudoers file updated on {machine_ip} for user {target_user}.")
-
-                    return  # Exit function on success
-
-            except (asyncssh.Error, OSError) as e:
-                logger.error(f"Error connecting to {machine_ip} on attempt {attempt+1}/{retries}: {e}")
-                if attempt == retries - 1:
-                    logger.error(f"Failed to connect to {machine_ip} after {retries} attempts.")
-
-        return
-    
 async def clone_or_update_repository(
     machine_ip: str,
     username: str,

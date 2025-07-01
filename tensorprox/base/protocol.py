@@ -6,31 +6,37 @@ from tensorprox import settings
 settings.settings = settings.Settings.load(mode="validator")
 settings = settings.settings
 
-class MachineDetails(BaseModel):
-    ip: str | None = None
-    username: str | None = None
-    private_ip: str | None = None
-    interface: str | None = None
-    index: str | None = None
+class VMConfig(BaseModel):
+    name: str | None = None
+    image: str | None = None
+    size: str | None = None
+    admin_username: str | None = None
+    location: str | None = None
+    cores: int | None = None
+    ram: int | None = None
 
     def get(self, key, default=None):
         return getattr(self, key, default)
 
 
 class MachineConfig(BaseModel):
-    key_pair: Tuple[str, str] = ("", "")
-    traffic_generators: List[MachineDetails] = Field(default_factory=list)
-    king: MachineDetails = Field(default_factory=MachineDetails)
-    moat_private_ip: str = ""
-    moat_interface: str = ""
+    app_credentials: dict = Field(default_factory=dict)
+    machines_config: List[VMConfig] = Field(default_factory=list)
     is_valid: bool = True
 
     @model_validator(mode='before')
     def truncate_traffic_generators(cls, values):
-        # Truncate the traffic_generators to MAX_TGENS
-        traffic_generators = values.get('traffic_generators', [])
-        values['traffic_generators'] = traffic_generators[:MAX_TGENS]
-        values['is_valid'] = False if len(traffic_generators) < MIN_TGENS else True
+        machines_config = values.get('machines_config', [])
+        # Identify tgens by name
+        tgens = [m for m in machines_config if getattr(m, 'name', '').startswith('tgen-')]
+        # Cap tgens to MAX_TGENS
+        capped_tgens = tgens[:MAX_TGENS]
+        # Keep only the king machine
+        king = [m for m in machines_config if getattr(m, 'name', '') == 'king']
+        # Rebuild the list: capped tgens + king
+        values['machines_config'] = capped_tgens + king
+        # Set is_valid based on tgens count
+        values['is_valid'] = len(tgens) >= MIN_TGENS
         return values
     
 class PingSynapse(bt.Synapse):
@@ -53,24 +59,20 @@ class PingSynapse(bt.Synapse):
     def serialize(self) -> dict[str, Any]:
         return {
             "machine_availabilities": {
-                "key_pair": self.machine_availabilities.key_pair,
-                "traffic_generators": [m.model_dump() for m in self.machine_availabilities.traffic_generators],
-                "king": self.machine_availabilities.king.model_dump(),
-                "moat_private_ip": self.machine_availabilities.moat_private_ip,
+                "app_credentials": self.machine_availabilities.app_credentials,
+                "machines_config": [m.model_dump() for m in self.machine_availabilities.machines_config],
+                "is_valid": self.machine_availabilities.is_valid,
             },
         }
 
     @classmethod
     def deserialize(cls, data: dict) -> "PingSynapse":
         avail_data = data.get("machine_availabilities", {})
-        max_tgens = avail_data.get("max_tgens", MAX_TGENS)  # Ensure max_tgens is obtained from the data or default to MAX_TGENS
-        traffic_gens = avail_data.get("traffic_generators", [])[:max_tgens]  # truncate here
         return cls(
             machine_availabilities=MachineConfig(
-                key_pair=tuple(avail_data.get("key_pair", ("", ""))),
-                traffic_generators=[MachineDetails(**m) for m in traffic_gens],
-                king=MachineDetails(**avail_data.get("king", {})),
-                moat_private_ip=avail_data.get("moat_private_ip", ""),
+                app_credentials=avail_data.get("app_credentials", {}),
+                machines_config=[VMConfig(**m) for m in avail_data.get("machines_config", [])],
+                is_valid=avail_data.get("is_valid", True),
             ),
         )
 
