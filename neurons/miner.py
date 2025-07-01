@@ -76,11 +76,6 @@ from pathlib import Path
 
 NEURON_STOP_ON_FORWARD_EXCEPTION: bool = False
 
-#Miner global vars
-KING_PRIVATE_IP: str = "10.0.0.5"
-MOAT_PRIVATE_IP: str = "10.0.0.4"
-MOAT_INTERFACE: str = "eth0"
-
 def load_azure_credentials(env_path=".env.miner") -> dict:
     """
     Loads Azure credentials and resource group from a .env.miner file.
@@ -149,8 +144,9 @@ class Miner(BaseMinerNeuron):
     packet_buffers: Dict[str, List[Tuple[bytes, int]]] = Field(default_factory=lambda: defaultdict(list))
     batch_interval: int = 10
     max_tgens: int = 0
-    traffic_generators: List[Tuple[str, str, str]] = Field(default=None)
-    machines: List[Tuple[str, str, str]] = Field(default=None)
+    azure_creds: dict = Field(default=None)
+    machines_config: List[VMConfig] = Field(default=None)
+    network_config: dict = Field(default=None)
 
     _lock: asyncio.Lock = PrivateAttr()
     _model: DecisionTreeClassifier = PrivateAttr()
@@ -162,8 +158,9 @@ class Miner(BaseMinerNeuron):
 
         super().__init__(**data)
         self._lock = asyncio.Lock()
-        self.traffic_generators = traffic_generators
-        self.machines = machines
+        self.azure_creds = azure_creds
+        self.machines_config = machines_config
+        self.network_config = network_config
 
         base_path = os.path.expanduser("~/tensorprox/model") 
         self._model = joblib.load(os.path.join(base_path, "decision_tree.pkl"))
@@ -181,20 +178,17 @@ class Miner(BaseMinerNeuron):
         Returns:
             PingSynapse: The updated synapse message.
         """
+
         logger.debug(f"📧 Ping received from {synapse.dendrite.hotkey}, IP: {synapse.dendrite.ip}.")
 
         try:
-            # Load Azure credentials and VM config
-            azure_creds = load_azure_credentials()
-            vm_configs = load_vm_config()
-            network_config = load_network_config()  # <-- new
 
             # Build app_credentials dict (provider name as key)
             app_credentials = {"Azure": azure_creds}
-            # Build machines_config as list of VMConfig
-            machines_config = [VMConfig(**vm) for vm in vm_configs]
+
             # Create new MachineConfig
-            machine_config = MachineConfig(app_credentials=app_credentials, 
+            machine_config = MachineConfig(
+                app_credentials=app_credentials, 
                 machines_config=machines_config,
                 vnet_name=network_config["VNET_NAME"],
                 subnet_name=network_config["SUBNET_NAME"],
@@ -205,6 +199,7 @@ class Miner(BaseMinerNeuron):
             # Respond with new PingSynapse 
             logger.debug(f"⏩ Forwarding Ping synapse with machine details to validator {synapse.dendrite.hotkey}.")
             return PingSynapse(machine_availabilities=machine_config)
+
         except Exception as e:
             logger.exception(e)
             logger.error(f"Error in forward: {e}")
@@ -557,193 +552,17 @@ class Miner(BaseMinerNeuron):
 
         return prediction[0] if isinstance(prediction, np.ndarray) and len(prediction) > 0 else None
 
-
-async def clone_or_update_repository(
-    machine_ip: str,
-    username: str,
-    initial_private_key_path: str = INITIAL_PK_PATH,
-    repo_path: str = f"/home/{RESTRICTED_USER}/tensorprox",
-    repo_url: str = "https://github.com/shugo-labs/tensorprox.git",
-    branch: str = "main",
-    sparse_folder: str = "tensorprox/core/immutable",
-    timeout: int = 5,
-    retries: int = 3,
-):
-    """
-    Asynchronously connects to a remote machine via SSH using asyncssh,
-    and either clones or updates a specific folder of a GitHub repository using sparse checkout.
-
-    Args:
-        machine_ip (str): The public IP of the machine.
-        repo_url (str): The GitHub repository URL.
-        branch (str): The branch to clone or pull.
-        initial_private_key_path (str): Path to the initial private key for SSH authentication.
-        username (str): The username for the SSH connection.
-        sparse_folder (str): The relative path of the folder to clone within the repository.
-        timeout (int, optional): Timeout in seconds for the SSH connection. Defaults to 5.
-        retries (int, optional): Number of retry attempts in case of failure. Defaults to 3.
-    """
-    for attempt in range(retries):
-        try:
-            logger.info(f"Attempting SSH connection to {machine_ip} with user {username} (Attempt {attempt + 1}/{retries})...")
-
-            connection_params = {
-                "host": machine_ip,
-                "username": username,
-                "client_keys": [initial_private_key_path],
-                "known_hosts": None,
-                "connect_timeout": timeout,
-            }
-
-            async with asyncssh.connect(**connection_params) as conn:
-                logger.info(f"✅ Successfully connected to {machine_ip} as {username}")
-
-                # Check if Git is installed
-                try:
-                    await conn.run("git --version", check=True)
-                    logger.info(f"Git is already installed on {machine_ip}.")
-                except asyncssh.ProcessError:
-                    logger.warning(f"Git is not installed on {machine_ip}. Installing Git...")
-                    install_git_command = "sudo apt-get update && sudo apt-get install -y git"
-                    await conn.run(install_git_command, check=True)
-                    logger.info(f"Git installation successful on {machine_ip}.")
-
-                # Clone or update the repository with sparse checkout
-                result = await conn.run(f"sudo test -d {repo_path}/.git", check=False)
-                repo_exists = result.returncode == 0
-
-                if repo_exists:
-                    # Pull the latest changes
-                    logger.info(f"Repository already exists at {repo_path} on {machine_ip}. Pulling latest changes...")
-                    pull_command = (
-                        f"sudo bash -c 'cd {repo_path} && "
-                        f"git fetch origin {branch} && "
-                        f"git checkout {branch} && "
-                        f"git pull origin {branch}'"
-                    )
-                    result = await conn.run(pull_command, check=True)
-                    logger.info(f"Repository updated successfully on {machine_ip}: {result.stdout}")
-                else:
-                    # Sparse checkout setup
-                    logger.info(f"Setting up sparse checkout on {machine_ip} for folder '{sparse_folder}'...")
-                    clone_commands = [
-                        f"sudo mkdir -p {repo_path}",
-                        f"sudo bash -c 'cd {repo_path} && git init'",
-                        f"sudo bash -c 'cd {repo_path} && git remote add origin {repo_url}'",
-                        f"sudo bash -c 'cd {repo_path} && git config core.sparseCheckout true'",
-                        f"sudo bash -c 'echo \"{sparse_folder}\" | sudo tee {repo_path}/.git/info/sparse-checkout'",
-                        f"sudo bash -c 'cd {repo_path} && git fetch origin {branch}'",
-                        f"sudo bash -c 'cd {repo_path} && git checkout {branch}'",
-                    ]
-
-                    for command in clone_commands:
-                        await conn.run(command, check=True)
-                    
-                    logger.info(f"Sparse checkout completed successfully on {machine_ip} for folder '{sparse_folder}'.")
-
-                return  # Exit function on success
-
-        except (asyncssh.Error, OSError) as e:
-            logger.error(f"Error cloning/updating repository on attempt {attempt + 1}/{retries}: {e}")
-            if attempt == retries - 1:
-                logger.error(f"Failed after {retries} attempts.")
-
-    return
-
-async def clone_repositories(machines: List[tuple]):
-    """
-    This function clones or updates the repositories on the remote machines.
-    """
-    tasks = []
-    for machine_ip, username, _, _ in machines:
-        tasks.append(clone_or_update_repository(
-            machine_ip=machine_ip,
-            username=username,
-        ))
-
-    # Run all cloning tasks concurrently and wait for them to complete
-    await asyncio.gather(*tasks)
-
-
-async def run_whitelist_setup(
-    ip: str,
-    private_key_path: str,
-    username: str,
-    remote_path: str = "/tmp/restrict.sh",
-    local_script_path: str = os.path.join(BASE_DIR, "tensorprox/core/restrict.sh"),
-    restricted_user: str = RESTRICTED_USER
-):    
-    """
-    This function will execute the restrict.sh setup on the remote machine.
-    It uploads the restrict.sh script, makes it executable, runs it, and then removes it.
-    
-    Args:
-        ip (str): IP address of the remote machine.
-        private_key_path (str): Path to the private SSH key for authentication.
-        username (str): SSH username for the remote machine.
-        remote_path (str): Path on the remote machine where the script will be uploaded (default is "/tmp/restrict.sh").
         
-    Returns:
-        result (str): The result of executing the restrict.sh script.
-    """
-    
-    try:
-        # Upload the whitelist script to the remote machine using SCP
-        await send_file_via_scp(local_script_path, remote_path, ip, private_key_path, username)
-        
-        # Make the script executable and run it with the restricted user
-        result = await ssh_connect_execute(
-            ip, 
-            private_key_path, 
-            username, 
-            f"chmod +x {remote_path} && bash {remote_path} {restricted_user} && rm -rf {remote_path}"
-        )
-        
-        return result
-    
-    except Exception as e:
-        # Handle any exceptions and return an error message
-        return f"An error occurred: {str(e)}"
-
-async def setup_machines(machines: List[tuple], initial_private_key_path: str = INITIAL_PK_PATH):
-    """
-    Set up repository cloning for multiple machines using their corresponding IPs and usernames.
-    
-    Args:
-        ips (list): A list of IP addresses for the machines.
-        initial_private_key_path (str): Path to the private SSH key used for authentication.
-        usernames (list): A list of usernames corresponding to each machine's IP.
-    """
-    
-    logger.info("Starting Restricted User creation + files cloning ...")
-
-    tasks = []
-
-    for machine_ip, username, _, _ in machines:
-        tasks.append(run_whitelist_setup(machine_ip, initial_private_key_path, username))
-    
-    # Run all whitelist setup tasks concurrently and wait for them to complete
-    setup_results = await asyncio.gather(*tasks)
-    
-    # If any whitelist setup fails, don't proceed with cloning
-    if all(setup_results):
-        logger.info("Whitelist setup successful on all machines, proceeding with cloning.")
-        await clone_repositories(machines)
-    else:
-        logger.info("Whitelist setup failed on one or more machines, aborting cloning.")
-
-
-        
-def run_gre_setup(traffic_generators):
+def run_gre_setup(king_private_ip, moat_private_ip, moat_interface, tgen_private_ips):
 
     logger.info("Running GRE Setup...")
     
     try:
         # Performing GRE Setup before starting
-        gre = GRESetup(node_type="moat", private_ip=MOAT_PRIVATE_IP, interface=MOAT_INTERFACE)
+        gre = GRESetup(node_type="moat", private_ip=moat_private_ip, interface=moat_interface)
         success = gre.moat(
-            king_private_ip=KING_PRIVATE_IP,
-            traffic_gen_ips=[private_ip for (_, _, private_ip, _) in traffic_generators]
+            king_private_ip=king_private_ip,
+            traffic_gen_ips=tgen_private_ips
         )
         if success :
             logger.info("GRE setup successfully done.")
@@ -754,29 +573,6 @@ def run_gre_setup(traffic_generators):
     except Exception as e:
         logger.error(f"Error during GRE Setup: {e}")
         sys.exit(1)
-
-def load_trafficgen_machine_tuples(file_path = os.path.join(BASE_DIR, "trafficgen_machines.csv")) -> list[tuple[str, str]]:
-    """
-    Reads trafficgen_machines.csv and returns a list of (public_ip, username) tuples.
-    """
-
-    # Convert string to Path object
-    file_path = Path(file_path)
-
-    if not file_path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
-
-    machines = []
-    with file_path.open("r", newline="") as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            public_ip = row.get("public_ip", "").strip()
-            username = row.get("username", "").strip()
-            private_ip = row.get("private_ip", "").strip()
-            interface = row.get("interface", "").strip()
-            if public_ip and username:
-                machines.append((public_ip, username, private_ip, interface))
-    return machines
 
 if __name__ == "__main__":
     logger.info("Miner Instance started.")
@@ -794,27 +590,20 @@ if __name__ == "__main__":
     tgen_private_ips = [m.private_ip for m in tgens]
     tgen_interfaces = [m.interface for m in tgens]
 
+    moat = next((m for m in machines_config if m.name == 'moat'), None)
+    moat_private_ip = moat.private_ip if moat else None
+    moat_interface = moat.interface if moat else None
+
     king = next((m for m in machines_config if m.name == 'king'), None)
     king_private_ip = king.private_ip if king else None
     king_interface = king.interface if king else None
 
-    # GRE setup example
-    gre = GRESetup(node_type="moat", private_ip=king_private_ip, interface=king_interface)
-    success = gre.moat(
-        king_private_ip=king_private_ip,
-        traffic_gen_ips=tgen_private_ips
-    )
-    if success:
-        logger.info("GRE setup successfully done.")
-    else:
-        logger.error("GRE setup failed.")
-        sys.exit(1)
+    run_gre_setup(king_private_ip, moat_private_ip, moat_interface, tgen_private_ips)
 
-    # Run the repository cloning setup first, wait for it to complete
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(setup_machines(machines))
-
-    with Miner(traffic_generators=machines, machines=machines) as miner:
+    logger.info(f"AZURE CREDS : {azure_creds}")
+    logger.info(f"MACHINES CONFIG : {machines_config}")
+    logger.info(f"NETWORK CONFIG : {network_config}")
+    with Miner(azure_creds=azure_creds, machines_config=machines_config, network_config=network_config) as miner:
         while not miner.should_exit:
             miner.log_status()
             time.sleep(5)

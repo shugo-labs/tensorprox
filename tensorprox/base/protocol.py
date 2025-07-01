@@ -14,6 +14,8 @@ class VMConfig(BaseModel):
     location: str | None = None
     cores: int | None = None
     ram: int | None = None
+    private_ip: str | None = None
+    interface: str | None= None
 
     def get(self, key, default=None):
         return getattr(self, key, default)
