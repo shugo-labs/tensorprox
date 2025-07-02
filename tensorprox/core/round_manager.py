@@ -9,7 +9,7 @@ secure access control through key management.
 
 --------------------------------------------------------------------------------
 FEATURES:
-- **Logging & Debugging:** Provides structured logging via Loguru and Python’s 
+- **Logging & Debugging:** Provides structured logging via Loguru and Python's 
   built-in logging module.
 - **SSH Session Management:** Supports key-based authentication, session key 
   generation, and automated secure key insertion.
@@ -75,7 +75,7 @@ import os
 import json
 import random
 from tensorprox import *
-from typing import List, Dict, Tuple, Union, Callable
+from typing import List, Dict, Tuple, Union, Callable, Optional
 from loguru import logger
 from pydantic import BaseModel
 from tensorprox.base.protocol import PingSynapse, ChallengeSynapse
@@ -87,6 +87,8 @@ import logging
 from functools import partial
 import shlex
 import traceback
+import aiohttp
+import socket
 
 ######################################################################
 # LOGGING and ENVIRONMENT SETUP
@@ -259,7 +261,6 @@ class RoundManager(BaseModel):
     
     async def query_availability(self, uid: int) -> Tuple['PingSynapse', Dict[str, Union[int, str]]]:
         """Query the availability of a given UID.
-        
         This function attempts to retrieve machine availability information for a miner
         identified by `uid`. It validates the response, checks for SSH key pairs, and 
         verifies SSH connectivity to each machine.
@@ -272,64 +273,86 @@ class RoundManager(BaseModel):
                 - A `PingSynapse` object containing the miner's availability details.
                 - A dictionary with the UID's availability status, including status code and message.
         """
-
-        # Initialize a dummy synapse for example purposes
         synapse = PingSynapse(machine_availabilities=MachineConfig())
         uid, synapse = await self.dendrite_call(uid, synapse)
-
         uid_status_availability = {"uid": uid, "ping_status_message" : None, "ping_status_code" : None}
-
         if synapse is None:
             uid_status_availability["ping_status_message"] = "Query failed."
             uid_status_availability["ping_status_code"] = 500
             return synapse, uid_status_availability
-
-        # Check the validity of the traffic generators
-        if not synapse.machine_availabilities.is_valid:
-            uid_status_availability["ping_status_message"] = "Not enough traffic generators (minimum 2 required)."
-            uid_status_availability["ping_status_code"] = 400
+        # Extract VM config
+        machine_cfg = synapse.machine_availabilities
+        app_credentials = machine_cfg.app_credentials
+        resource_group = app_credentials.get("AZURE_RESOURCE_GROUP")
+        location = machine_cfg.location
+        vnet_name = machine_cfg.vnet_name
+        subnet_name = machine_cfg.subnet_name
+        vnet_address_space = machine_cfg.vnet_address_space
+        subnet_address_prefix = machine_cfg.subnet_address_prefix
+        tgens_size = machine_cfg.tgens_size
+        king_size = machine_cfg.king_size
+        num_tgens = machine_cfg.num_tgens
+        ssh_public_key = getattr(machine_cfg, "ssh_public_key", "")
+        admin_username = getattr(machine_cfg, "admin_username", "azureuser")
+        image_reference = getattr(machine_cfg, "image_reference", {
+            "publisher": "Canonical",
+            "offer": "UbuntuServer",
+            "sku": "22.04-LTS",
+            "version": "latest",
+        })
+        # 1. Provision all VMs in parallel and wait for readiness
+        vm_tasks = []
+        king_vm_name = f"king-{uid}"
+        vm_tasks.append(ensure_vm_and_ready(
+            app_credentials,
+            resource_group,
+            king_vm_name,
+            location,
+            king_size,
+            vnet_name,
+            subnet_name,
+            vnet_address_space,
+            subnet_address_prefix,
+            ssh_public_key,
+            admin_username,
+            image_reference,
+        ))
+        tgen_vm_names = [f"tgen-{uid}-{i}" for i in range(num_tgens)]
+        for tgen_vm_name in tgen_vm_names:
+            vm_tasks.append(ensure_vm_and_ready(
+                app_credentials,
+                resource_group,
+                tgen_vm_name,
+                location,
+                tgens_size,
+                vnet_name,
+                subnet_name,
+                vnet_address_space,
+                subnet_address_prefix,
+                ssh_public_key,
+                admin_username,
+                image_reference,
+            ))
+        try:
+            vm_ips = await asyncio.gather(*vm_tasks)
+        except Exception as e:
+            uid_status_availability["ping_status_message"] = f"VM provisioning failed: {e}"
+            uid_status_availability["ping_status_code"] = 500
             return synapse, uid_status_availability
-    
-        if not synapse.machine_availabilities.key_pair:
-            uid_status_availability["ping_status_message"] = "Missing SSH Key Pair."
-            uid_status_availability["ping_status_code"] = 400
-            return synapse, uid_status_availability
-
-        # Extract SSH key pair safely
-        ssh_pub, ssh_priv = synapse.machine_availabilities.key_pair
-        original_key_path = f"/var/tmp/original_key_{uid}.pem"
-        save_file_with_permissions(ssh_priv, original_key_path)
-
+        king_ip = vm_ips[0]
+        tgen_ips = vm_ips[1:]
+        # 2. SSH checks for all VMs
         all_machines_available = True
-
-        # Create a list containing all machines to check - king and all traffic generators
-        machines_to_check = synapse.machine_availabilities.traffic_generators + [synapse.machine_availabilities.king]
-        
-        # Check all machines
-        for machine_details in machines_to_check:
-
-            ip = machine_details.ip
-            ssh_user = machine_details.username
-
-            if not is_valid_ip(ip):
-                all_machines_available = False
-                uid_status_availability["ping_status_message"] = "Invalid IP format."
-                uid_status_availability["ping_status_code"] = 400
-                break
-
-            # Test SSH Connection with asyncssh
-            client = await ssh_connect_execute(ip, original_key_path, ssh_user)
-
+        for ip, ssh_user in [(king_ip, admin_username)] + [(ip, admin_username) for ip in tgen_ips]:
+            client = await ssh_connect_execute(ip, None, ssh_user)  # Use None for key_path if using agent/ssh config
             if not client:
                 all_machines_available = False
-                uid_status_availability["ping_status_message"] = "SSH connection failed."
+                uid_status_availability["ping_status_message"] = f"SSH connection failed for {ip}."
                 uid_status_availability["ping_status_code"] = 500
                 break
-
         if all_machines_available:
             uid_status_availability["ping_status_message"] = f"✅ All machines are accessible for UID {uid}."
             uid_status_availability["ping_status_code"] = 200
-
         return synapse, uid_status_availability
 
 
@@ -431,116 +454,6 @@ class RoundManager(BaseModel):
             remote_base_directory=remote_base_directory
         )
     
-    async def process_lockdown(
-        self,
-        ip: str,
-        ssh_user: str,
-        key_path: str,
-        remote_base_directory: str,
-        ssh_dir: str,
-        authorized_keys_path: str,
-        authorized_keys_bak: str,
-        revert_timeout: int,
-        script_name: str = "lockdown.sh",
-        linked_files: list = []
-    ) -> bool:
-        """
-        Executes the lockdown script on the remote server.
-
-        This method prepares the arguments for running the lockdown script and calls the `run` method
-        to execute it on the remote server.
-
-        Args:
-            ip (str): The IP address of the remote server.
-            ssh_user (str): The SSH username to access the server.
-            key_path (str): The path to the SSH private key for authentication.
-            remote_base_directory (str): The base directory on the remote server.
-            ssh_dir (str): The directory where SSH keys are stored.
-            authorized_keys_path (str): The path to the authorized keys file on the remote server.
-            script_name (str, optional): The name of the script to execute (default is "lockdown.sh").
-            linked_files (list, optional): List of linked files to verify along with the script (default is an empty list).
-
-        Returns:
-            bool: Returns `True` if the lockdown process was successful, otherwise `False`.
-        """
-
-        remote_script_path = get_immutable_path(remote_base_directory, script_name)
-        files_to_verify = [script_name] + linked_files
-
-        args = [
-            '/usr/bin/bash', 
-            remote_script_path,
-            ssh_user, 
-            ssh_dir, 
-            self.validator_ip,
-            authorized_keys_path,
-            authorized_keys_bak,
-            str(revert_timeout)
-        ]
-
-        return await self.run(
-            ip=ip,
-            ssh_user=ssh_user,
-            key_path=key_path,
-            args=args,
-            files_to_verify=files_to_verify,
-            remote_base_directory=remote_base_directory
-        )
-    
-    async def process_revert(
-        self,
-        ip: str,
-        ssh_user: str,
-        key_path: str,
-        remote_base_directory: str,
-        authorized_keys_bak: str,
-        authorized_keys_path: str,
-        revert_log: str,
-        script_name: str = "revert.sh",
-        linked_files: list = []
-    ) -> bool:
-        """
-        Executes the revert script on the remote server.
-
-        This method prepares the arguments for running the revert script and calls the `run` method
-        to execute it on the remote server.
-
-        Args:
-            ip (str): The IP address of the remote server.
-            ssh_user (str): The SSH username to access the server.
-            key_path (str): The path to the SSH private key for authentication.
-            remote_base_directory (str): The base directory on the remote server.
-            authorized_keys_bak (str): The path to the backup authorized keys file.
-            authorized_keys_path (str): The path to the authorized keys file on the remote server.
-            revert_log (str): The path to the revert log.
-            script_name (str, optional): The name of the script to execute (default is "revert.sh").
-            linked_files (list, optional): List of linked files to verify along with the script (default is an empty list).
-
-        Returns:
-            bool: Returns `True` if the revert process was successful, otherwise `False`.
-        """
-
-        remote_script_path = get_immutable_path(remote_base_directory, script_name)
-        files_to_verify = [script_name] + linked_files
-
-        args = [
-            '/usr/bin/bash', 
-            remote_script_path,
-            ssh_user,
-            ip, 
-            authorized_keys_bak, 
-            authorized_keys_path,
-            revert_log
-        ]
-
-        return await self.run(
-            ip=ip,
-            ssh_user=ssh_user,
-            key_path=key_path,
-            args=args,
-            files_to_verify=files_to_verify,
-            remote_base_directory=remote_base_directory
-        )
     
     async def process_gre_setup(
         self,
@@ -731,15 +644,13 @@ class RoundManager(BaseModel):
         timeout: int = ROUND_TIMEOUT
     ) -> List[Dict[str, Union[int, str]]]:
         """
-        A generic function to execute different tasks (such as setup, lockdown, revert, challenge) on miners. 
+        A generic function to execute different tasks (such as setup, challenge) on miners. 
         This function orchestrates the process of executing the provided task on multiple miners in parallel, 
         handling individual machine configurations, and ensuring each miner completes the task within a specified timeout.
 
         Args:
             task (str): The type of task to perform. Possible values are:
                 'setup': Setup the miner environment (e.g., install dependencies).
-                'lockdown': Lockdown the miner, restricting access or making it inaccessible.
-                'revert': Revert any changes made to the miner (restore to a previous state).
                 'challenge': Run a challenge procedure on the miner.
             miners (List[Tuple[int, PingSynapse]]): List of miners represented as tuples containing the unique ID (`int`) 
                                                     and the `PingSynapse` object, which holds machine configuration details.
@@ -792,12 +703,7 @@ class RoundManager(BaseModel):
                 interface = machine_details.interface
                 ssh_user = machine_details.username
                 index = machine_details.index
-                ssh_dir = get_authorized_keys_dir(ssh_user)  # Get directory for authorized keys
-                authorized_keys_path = f"{ssh_dir}/authorized_keys"  # Path to the authorized keys file
-                key_path = f"/var/tmp/original_key_{uid}.pem" if task == "initial_setup" else os.path.join(SESSION_KEY_DIR, f"session_key_{uid}_{ip}")  # Set key path based on the task type
-                authorized_keys_bak = f"{ssh_dir}/authorized_keys.bak_{backup_suffix}"  # Backup path for authorized keys
-                revert_log = f"/tmp/revert_log_{uid}_{backup_suffix}.log"  # Log path for revert operations
-                revert_timeout = LOCKDOWN_TIMEOUT + CHALLENGE_TIMEOUT #duration of the lockdown
+                key_path = os.path.join(SESSION_KEY_DIR, f"session_key_{uid}_{ip}")  # Set key path
 
                 # Get machine-specific details like private IP and default directories
                 moat_private_ip = self.moat_private_ips[uid]  # Private IP for the Moat machine
@@ -815,12 +721,7 @@ class RoundManager(BaseModel):
                         result = await self.process_initial_setup(
                             ip,
                             ssh_user,
-                            key_path,
-                            remote_base_directory,
-                            uid,
-                            ssh_dir,
-                            authorized_keys_path,
-                            authorized_keys_bak
+                            key_path
                         )
                     elif task == "gre_setup":
                         result = await self.process_gre_setup(
@@ -833,17 +734,6 @@ class RoundManager(BaseModel):
                             moat_private_ip,
                             private_ip,
                             interface
-                        )
-                    elif task == "lockdown":
-                        result = await self.process_lockdown(
-                            ip,
-                            ssh_user,
-                            key_path,
-                            remote_base_directory,
-                            ssh_dir,
-                            authorized_keys_path,
-                            authorized_keys_bak,
-                            revert_timeout
                         )
                     elif task == "challenge":
                         result = await self.process_challenge(
@@ -918,7 +808,7 @@ class RoundManager(BaseModel):
                 await asyncio.wait_for(process_miner(uid, synapse), timeout=timeout)
 
                 state = (
-                    "GET_READY" if task == "lockdown" 
+                    "GET_READY" if task == "gre" 
                     else "END_ROUND" if task == "challenge" 
                     else None
                 )
@@ -968,4 +858,163 @@ class RoundManager(BaseModel):
                 }
         
         return [{"uid": uid, **status} for uid, status in task_status.items()]
+
+async def create_azure_vm_async(
+    app_credentials: dict,
+    resource_group: str,
+    vm_name: str,
+    location: str,
+    size: str,
+    vnet_name: str,
+    subnet_name: str,
+    vnet_address_space: str,
+    subnet_address_prefix: str,
+    ssh_public_key: str,
+    admin_username: str,
+    image_reference: dict,
+    **kwargs
+):
+    """
+    Asynchronously create an Azure VM using the provided parameters.
+    """
+    if not (DefaultAzureCredential and ComputeManagementClient and NetworkManagementClient):
+        raise ImportError("Azure SDK not installed. Please install azure-identity, azure-mgmt-compute, azure-mgmt-network.")
+
+    credential = DefaultAzureCredential()
+    compute_client = ComputeManagementClient(credential, app_credentials["AZURE_CLIENT_ID"])
+    network_client = NetworkManagementClient(credential, app_credentials["AZURE_CLIENT_ID"])
+
+    # 1. Ensure VNet and Subnet exist (create if not)
+    vnet_params = {
+        "location": location,
+        "address_space": {"address_prefixes": [vnet_address_space]},
+    }
+    await network_client.virtual_networks.begin_create_or_update(resource_group, vnet_name, vnet_params)
+
+    subnet_params = {
+        "address_prefix": subnet_address_prefix,
+    }
+    await network_client.subnets.begin_create_or_update(resource_group, vnet_name, subnet_name, subnet_params)
+
+    # 2. Create Public IP
+    public_ip_params = {
+        "location": location,
+        "public_ip_allocation_method": "Dynamic",
+    }
+    public_ip_name = f"{vm_name}-ip"
+    await network_client.public_ip_addresses.begin_create_or_update(resource_group, public_ip_name, public_ip_params)
+
+    # 3. Create NIC
+    subnet = await network_client.subnets.get(resource_group, vnet_name, subnet_name)
+    public_ip = await network_client.public_ip_addresses.get(resource_group, public_ip_name)
+    nic_params = {
+        "location": location,
+        "ip_configurations": [{
+            "name": f"{vm_name}-ipconfig",
+            "subnet": {"id": subnet.id},
+            "public_ip_address": {"id": public_ip.id},
+        }],
+    }
+    nic_name = f"{vm_name}-nic"
+    nic = await network_client.network_interfaces.begin_create_or_update(resource_group, nic_name, nic_params)
+    nic_result = await nic.result()
+
+    # 4. Create VM
+
+    image_reference = {
+        "publisher": "Canonical",
+        "offer": "UbuntuServer",
+        "sku": "22.04-LTS",
+        "version": "latest",
+    }
+
+    os_profile = {
+        "computer_name": vm_name,
+        "admin_username": admin_username,
+    }
+
+    os_profile["linux_configuration"] = {
+        "disable_password_authentication": True,
+        "ssh": {
+            "public_keys": [{
+                "path": f"/home/{admin_username}/.ssh/authorized_keys",
+                "key_data": ssh_public_key,
+            }],
+        },
+    }
+    vm_params = {
+        "location": location,
+        "storage_profile": {"image_reference": image_reference},
+        "hardware_profile": {"vm_size": size},
+        "os_profile": os_profile,
+        "network_profile": {"network_interfaces": [{"id": nic_result.id}]},
+    }
+    await compute_client.virtual_machines.begin_create_or_update(resource_group, vm_name, vm_params)
+    await credential.close()
+    await compute_client.close()
+    await network_client.close()
+    return True
+
+async def vm_exists_async(compute_client, resource_group, vm_name):
+    try:
+        vm = await compute_client.virtual_machines.get(resource_group, vm_name)
+        return vm is not None
+    except Exception:
+        return False
+
+async def get_vm_public_ip_async(network_client, resource_group, vm_name):
+    public_ip_name = f"{vm_name}-ip"
+    try:
+        public_ip = await network_client.public_ip_addresses.get(resource_group, public_ip_name)
+        return public_ip.ip_address
+    except Exception:
+        return None
+
+async def wait_for_ssh(ip, port=22, timeout=300, interval=5):
+    import time
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            with socket.create_connection((ip, port), timeout=5):
+                return True
+        except Exception:
+            await asyncio.sleep(interval)
+    return False
+
+async def ensure_vm_and_ready(app_credentials, resource_group, vm_name, location, size, vnet_name, subnet_name, vnet_address_space, subnet_address_prefix, ssh_public_key, admin_username, image_reference):
+    credential = DefaultAzureCredential()
+    compute_client = ComputeManagementClient(credential, app_credentials["AZURE_CLIENT_ID"])
+    network_client = NetworkManagementClient(credential, app_credentials["AZURE_CLIENT_ID"])
+    # 1. Check if VM exists
+    if not await vm_exists_async(compute_client, resource_group, vm_name):
+        await create_azure_vm_async(
+            app_credentials,
+            resource_group,
+            vm_name,
+            location,
+            size,
+            vnet_name,
+            subnet_name,
+            vnet_address_space,
+            subnet_address_prefix,
+            ssh_public_key=ssh_public_key,
+            admin_username=admin_username,
+            image_reference=image_reference,
+        )
+    # 2. Wait for public IP
+    ip = None
+    for _ in range(60):
+        ip = await get_vm_public_ip_async(network_client, resource_group, vm_name)
+        if ip:
+            break
+        await asyncio.sleep(5)
+    if not ip:
+        raise RuntimeError(f"VM {vm_name} did not get a public IP in time.")
+    # 3. Wait for SSH port open
+    if not await wait_for_ssh(ip):
+        raise RuntimeError(f"VM {vm_name} SSH port not open in time.")
+    await credential.close()
+    await compute_client.close()
+    await network_client.close()
+    return ip
 

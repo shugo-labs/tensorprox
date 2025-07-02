@@ -422,46 +422,16 @@ class Validator(BaseValidatorNeuron):
         
         gre_completed_uids = [uid for uid, _ in gre_completed_miners]
 
-        # Step 4: Lockdown
-        with Timer() as lockdown_timer:
-            logger.info(f"🔒 Locking down miners with revert scheduling : {gre_completed_uids}")
-            try:
-                
-                lockdown_results = await round_manager.execute_task(
-                    task="lockdown",
-                    miners=gre_completed_miners,
-                    subset_miners=subset_miners,
-                    timeout=LOCKDOWN_TIMEOUT
-                )
-
-            except Exception as e:
-                logger.error(f"Error during lockdown phase: {e}")
-                lockdown_results = []
-                return False
-            
-        logger.debug(f"Lockdown phase completed in {lockdown_timer.elapsed_time:.2f} seconds")
-
-        locked_miners = [
-            (uid, synapse) for uid, synapse in gre_completed_miners
-            if any(entry["uid"] == uid and entry["lockdown_status_code"] == 200 for entry in lockdown_results)
-        ]
-
-        if not locked_miners:
-            logger.warning("No miners are available for challenge phase.")
-            return False
-
-        locked_uids = [uid for uid, _ in locked_miners]
-
-        # Step 5: Challenge
+        # Step 4: Challenge
         with Timer() as challenge_timer:
             
-            logger.info(f"🚀 Starting challenge phase for miners: {locked_uids} | Duration: {CHALLENGE_DURATION} seconds")
+            logger.info(f"🚀 Starting challenge phase for miners: {gre_completed_uids} | Duration: {CHALLENGE_DURATION} seconds")
 
             try:
 
                 challenge_results = await round_manager.execute_task(
                     task="challenge",
-                    miners=locked_miners,
+                    miners=gre_completed_miners,
                     subset_miners=subset_miners,
                     label_hashes=label_hashes,
                     playlists=playlists,
@@ -479,7 +449,6 @@ class Validator(BaseValidatorNeuron):
             all_miners_availability=all_miners_availability,
             setup_status=setup_results,
             gre_status=gre_results,
-            lockdown_status=lockdown_results,
             challenge_status=challenge_results,
             uids=subset_miners,
         )

@@ -7,6 +7,7 @@ settings.settings = settings.Settings.load(mode="validator")
 settings = settings.settings
 
 class MachineConfig(BaseModel):
+    provider: str | None = None
     app_credentials: dict = Field(default_factory=dict)
     vnet_name: str | None = None
     subnet_name: str | None = None
@@ -45,6 +46,7 @@ class PingSynapse(bt.Synapse):
         return {
             "max_tgens": self.max_tgens,
             "machine_availabilities": {
+                "provider": self.machine_availabilities.provider,
                 "app_credentials": self.machine_availabilities.app_credentials,
                 "vnet_name": self.machine_availabilities.vnet_name,
                 "subnet_name": self.machine_availabilities.subnet_name,
@@ -63,6 +65,7 @@ class PingSynapse(bt.Synapse):
         return cls(
             max_tgens=data.get("max_tgens", MAX_TGENS),
             machine_availabilities=MachineConfig(
+                provider=avail_data.get("provider"),
                 app_credentials=avail_data.get("app_credentials", {}),
                 vnet_name=avail_data.get("vnet_name"),
                 subnet_name=avail_data.get("subnet_name"),

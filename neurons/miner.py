@@ -76,6 +76,13 @@ from pathlib import Path
 
 NEURON_STOP_ON_FORWARD_EXCEPTION: bool = False
 
+def load_provider() -> str:
+    """
+    Loads Provider name from a .env.miner file.
+    """
+        
+    return os.environ.get("PROVIDER")
+
 def load_azure_credentials() -> dict:
     """
     Loads Azure credentials and resource group from a .env.miner file.
@@ -133,6 +140,7 @@ class Miner(BaseMinerNeuron):
     packet_buffers: Dict[str, List[Tuple[bytes, int]]] = Field(default_factory=lambda: defaultdict(list))
     batch_interval: int = 10
     max_tgens: int = 0
+    provider: str = Field(default_factory=str)
     azure_creds: dict = Field(default_factory=dict)
     machines_config: dict = Field(default_factory=dict)
     network_config: dict = Field(default_factory=dict)
@@ -170,15 +178,16 @@ class Miner(BaseMinerNeuron):
 
             # Create new MachineConfig
             machine_config = MachineConfig(
+                provider=self.provider,
                 app_credentials=self.azure_creds, 
                 vnet_name=self.network_config.get("VNET_NAME"),
                 subnet_name=self.network_config.get("SUBNET_NAME"),
-                vnet_address_space=self.network_config.get("VNET_ADDRESS_SPACE", "10.0.0.0/8"),
-                subnet_address_prefix=self.network_config.get("SUBNET_ADDRESS_PREFIX", "10.0.0.0/24"),
-                location = self.machines_config.get("LOCATION", "eastus"),
-                tgens_size = self.machines_config.get("TGENS_SIZE", "Standard_B1ms"),
-                king_size = self.machines_config.get("KING_SIZE", "Standard_B1ms"),
-                num_tgens = self.machines_config.get("NUM_TGENS", 2),
+                vnet_address_space=self.network_config.get("VNET_ADDRESS_SPACE"),
+                subnet_address_prefix=self.network_config.get("SUBNET_ADDRESS_PREFIX"),
+                location = self.machines_config.get("LOCATION"),
+                tgens_size = self.machines_config.get("TGENS_SIZE"),
+                king_size = self.machines_config.get("KING_SIZE"),
+                num_tgens = self.machines_config.get("NUM_TGENS"),
             )
             
             # Respond with new PingSynapse 
@@ -539,15 +548,15 @@ class Miner(BaseMinerNeuron):
         return prediction[0] if isinstance(prediction, np.ndarray) and len(prediction) > 0 else None
 
         
-def run_gre_setup(num_tgens):
+def run_gre_setup(num_tgens: int, moat_interface: str):
 
     logger.info("Running GRE Setup...")
     
     try:
         # Performing GRE Setup before starting
         tgen_private_ips = [f"10.0.0.{6 + i}" for i in range(num_tgens)]
-        gre = GRESetup(node_type="moat", private_ip="10.0.0.4", interface="eth0")
-        success = gre.moat(king_private_ip="10.0.0.5", traffic_gen_ips=tgen_private_ips)
+        gre = GRESetup(node_type="moat", private_ip=MOAT_PRIVATE_IP, interface=moat_interface)
+        success = gre.moat(king_private_ip=KING_PRIVATE_IP, traffic_gen_ips=tgen_private_ips)
         if success :
             logger.info("GRE setup successfully done.")
         else :
@@ -562,14 +571,17 @@ if __name__ == "__main__":
     logger.info("Miner Instance started.")
 
     # Load Azure credentials, VM config, and network config
+    provider = load_provider()
     azure_creds = load_azure_credentials()
     machines_config = load_vm_config()
     network_config = load_network_config()
 
-    num_tgens = int(os.environ.get("NUM_TGENS", 2))
-    run_gre_setup(num_tgens)
+    moat_interface = AZURE_INTERFACE if provider == "AZURE" else None
 
-    with Miner(azure_creds=azure_creds, machines_config=machines_config, network_config=network_config) as miner:
+    num_tgens = int(os.environ.get("NUM_TGENS", 2))
+    run_gre_setup(num_tgens, moat_interface)
+
+    with Miner(provider=provider, azure_creds=azure_creds, machines_config=machines_config, network_config=network_config) as miner:
         while not miner.should_exit:
             miner.log_status()
             time.sleep(5)

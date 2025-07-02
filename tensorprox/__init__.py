@@ -36,5 +36,10 @@ RESTRICTED_USER = "valiops"
 #Temporary path for session_keys storage
 SESSION_KEY_DIR = "/var/tmp/session_keys"
 
-# Fixed overlay network IPs
+# Fixed network IPs
 KING_OVERLAY_IP = "10.0.0.1"
+MOAT_PRIVATE_IP = "10.0.0.4"
+KING_PRIVATE_IP = "10.0.0.5"
+
+#Fixed Interfaces
+AZURE_INTERFACE = "eth0"
