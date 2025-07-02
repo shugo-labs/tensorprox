@@ -261,6 +261,7 @@ class RoundManager(BaseModel):
     
     async def query_availability(self, uid: int) -> Tuple['PingSynapse', Dict[str, Union[int, str]]]:
         """Query the availability of a given UID.
+        
         This function attempts to retrieve machine availability information for a miner
         identified by `uid`. It validates the response, checks for SSH key pairs, and 
         verifies SSH connectivity to each machine.
@@ -273,86 +274,64 @@ class RoundManager(BaseModel):
                 - A `PingSynapse` object containing the miner's availability details.
                 - A dictionary with the UID's availability status, including status code and message.
         """
+
+        # Initialize a dummy synapse for example purposes
         synapse = PingSynapse(machine_availabilities=MachineConfig())
         uid, synapse = await self.dendrite_call(uid, synapse)
+
         uid_status_availability = {"uid": uid, "ping_status_message" : None, "ping_status_code" : None}
+
         if synapse is None:
             uid_status_availability["ping_status_message"] = "Query failed."
             uid_status_availability["ping_status_code"] = 500
             return synapse, uid_status_availability
-        # Extract VM config
-        machine_cfg = synapse.machine_availabilities
-        app_credentials = machine_cfg.app_credentials
-        resource_group = app_credentials.get("AZURE_RESOURCE_GROUP")
-        location = machine_cfg.location
-        vnet_name = machine_cfg.vnet_name
-        subnet_name = machine_cfg.subnet_name
-        vnet_address_space = machine_cfg.vnet_address_space
-        subnet_address_prefix = machine_cfg.subnet_address_prefix
-        tgens_size = machine_cfg.tgens_size
-        king_size = machine_cfg.king_size
-        num_tgens = machine_cfg.num_tgens
-        ssh_public_key = getattr(machine_cfg, "ssh_public_key", "")
-        admin_username = getattr(machine_cfg, "admin_username", "azureuser")
-        image_reference = getattr(machine_cfg, "image_reference", {
-            "publisher": "Canonical",
-            "offer": "UbuntuServer",
-            "sku": "22.04-LTS",
-            "version": "latest",
-        })
-        # 1. Provision all VMs in parallel and wait for readiness
-        vm_tasks = []
-        king_vm_name = f"king-{uid}"
-        vm_tasks.append(ensure_vm_and_ready(
-            app_credentials,
-            resource_group,
-            king_vm_name,
-            location,
-            king_size,
-            vnet_name,
-            subnet_name,
-            vnet_address_space,
-            subnet_address_prefix,
-            ssh_public_key,
-            admin_username,
-            image_reference,
-        ))
-        tgen_vm_names = [f"tgen-{uid}-{i}" for i in range(num_tgens)]
-        for tgen_vm_name in tgen_vm_names:
-            vm_tasks.append(ensure_vm_and_ready(
-                app_credentials,
-                resource_group,
-                tgen_vm_name,
-                location,
-                tgens_size,
-                vnet_name,
-                subnet_name,
-                vnet_address_space,
-                subnet_address_prefix,
-                ssh_public_key,
-                admin_username,
-                image_reference,
-            ))
-        try:
-            vm_ips = await asyncio.gather(*vm_tasks)
-        except Exception as e:
-            uid_status_availability["ping_status_message"] = f"VM provisioning failed: {e}"
-            uid_status_availability["ping_status_code"] = 500
+
+        # Check the validity of the traffic generators
+        if not synapse.machine_availabilities.is_valid:
+            uid_status_availability["ping_status_message"] = "Not enough traffic generators (minimum 2 required)."
+            uid_status_availability["ping_status_code"] = 400
             return synapse, uid_status_availability
-        king_ip = vm_ips[0]
-        tgen_ips = vm_ips[1:]
-        # 2. SSH checks for all VMs
+    
+        if not synapse.machine_availabilities.key_pair:
+            uid_status_availability["ping_status_message"] = "Missing SSH Key Pair."
+            uid_status_availability["ping_status_code"] = 400
+            return synapse, uid_status_availability
+
+        # Extract SSH key pair safely
+        ssh_pub, ssh_priv = synapse.machine_availabilities.key_pair
+        original_key_path = f"/var/tmp/original_key_{uid}.pem"
+        save_file_with_permissions(ssh_priv, original_key_path)
+
         all_machines_available = True
-        for ip, ssh_user in [(king_ip, admin_username)] + [(ip, admin_username) for ip in tgen_ips]:
-            client = await ssh_connect_execute(ip, None, ssh_user)  # Use None for key_path if using agent/ssh config
+
+        # Create a list containing all machines to check - king and all traffic generators
+        machines_to_check = synapse.machine_availabilities.traffic_generators + [synapse.machine_availabilities.king]
+        
+        # Check all machines
+        for machine_details in machines_to_check:
+
+            ip = machine_details.ip
+            ssh_user = machine_details.username
+
+            if not is_valid_ip(ip):
+                all_machines_available = False
+                uid_status_availability["ping_status_message"] = "Invalid IP format."
+                uid_status_availability["ping_status_code"] = 400
+                break
+
+            # Test SSH Connection with asyncssh
+            client = await ssh_connect_execute(ip, original_key_path, ssh_user)
+
             if not client:
                 all_machines_available = False
-                uid_status_availability["ping_status_message"] = f"SSH connection failed for {ip}."
+                uid_status_availability["ping_status_message"] = "SSH connection failed."
                 uid_status_availability["ping_status_code"] = 500
                 break
+
         if all_machines_available:
             uid_status_availability["ping_status_message"] = f"✅ All machines are accessible for UID {uid}."
             uid_status_availability["ping_status_code"] = 200
+
         return synapse, uid_status_availability
 
 
