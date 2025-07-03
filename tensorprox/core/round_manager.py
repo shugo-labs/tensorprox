@@ -89,6 +89,12 @@ import shlex
 import traceback
 import aiohttp
 import socket
+from tensorprox.core.apis.azure_api import (
+    get_azure_access_token,
+    retrieve_vm_infrastructure, 
+    provision_azure_vms_for_uid,
+    clear_vms
+)
 
 ######################################################################
 # LOGGING and ENVIRONMENT SETUP
@@ -293,6 +299,8 @@ class RoundManager(BaseModel):
         num_tgens = synapse.machine_availabilities.num_tgens
         tgens_size = synapse.machine_availabilities.tgens_size
         king_size = synapse.machine_availabilities.king_size
+        vnet_name = synapse.machine_availabilities.vnet_name
+        subnet_name = synapse.machine_availabilities.subnet_name
 
         machine_config = {
             'app_credentials': credentials,
@@ -307,10 +315,26 @@ class RoundManager(BaseModel):
         _, public_key = await generate_local_session_keypair(session_key_path)
 
         token = await get_azure_access_token(credentials)
-        subnet_id, nsg_id = await create_vm_infrastructure(token, subscription_id, resource_group, location, uid)
-        king_machine, traffic_generators = await provision_azure_vms_for_uid(uid, machine_config, public_key)
 
-        logger.info(f"Response: king_machine={king_machine}, traffic_generators={traffic_generators}, moat_private_ip={moat_private_ip}")
+        subnet_id, nsg_id = await retrieve_vm_infrastructure(
+            token, 
+            subscription_id, 
+            resource_group, 
+            location, 
+            uid, 
+            vnet_name, 
+            subnet_name
+        )
+        
+        king_machine, traffic_generators = await provision_azure_vms_for_uid(
+            uid, 
+            machine_config, 
+            public_key, 
+            subnet_id, 
+            nsg_id
+        )
+
+        logger.info(f"Response: king_machine={king_machine}, traffic_generators={traffic_generators}, moat_private_ip={MOAT_PRIVATE_IP}")
 
         all_machines_available = True
 
