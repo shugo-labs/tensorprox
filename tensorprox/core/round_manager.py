@@ -275,7 +275,7 @@ class RoundManager(BaseModel):
                 - A dictionary with the UID's availability status, including status code and message.
         """
 
-        # Initialize a dummy synapse for example purposes
+        # Initialize a dummy synapse
         synapse = PingSynapse(machine_availabilities=MachineConfig())
         uid, synapse = await self.dendrite_call(uid, synapse)
 
@@ -286,26 +286,36 @@ class RoundManager(BaseModel):
             uid_status_availability["ping_status_code"] = 500
             return synapse, uid_status_availability
 
-        # Check the validity of the traffic generators
-        if not synapse.machine_availabilities.is_valid:
-            uid_status_availability["ping_status_message"] = "Not enough traffic generators (minimum 2 required)."
-            uid_status_availability["ping_status_code"] = 400
-            return synapse, uid_status_availability
-    
-        if not synapse.machine_availabilities.key_pair:
-            uid_status_availability["ping_status_message"] = "Missing SSH Key Pair."
-            uid_status_availability["ping_status_code"] = 400
-            return synapse, uid_status_availability
+        credentials = synapse.machine_availabilities.app_credentials
+        subscription_id = credentials["AZURE_SUBSCRIPTION_ID"]
+        resource_group = credentials["AZURE_RESOURCE_GROUP"]
+        location = synapse.machine_availabilities.location
+        num_tgens = synapse.machine_availabilities.num_tgens
+        tgens_size = synapse.machine_availabilities.tgens_size
+        king_size = synapse.machine_availabilities.king_size
 
-        # Extract SSH key pair safely
-        ssh_pub, ssh_priv = synapse.machine_availabilities.key_pair
-        original_key_path = f"/var/tmp/original_key_{uid}.pem"
-        save_file_with_permissions(ssh_priv, original_key_path)
+        machine_config = {
+            'app_credentials': credentials,
+            'location': location,
+            'num_tgens': num_tgens,
+            'tgens_size': tgens_size,
+            'king_size': king_size
+        }
+
+        # Generate the session key pair
+        session_key_path = os.path.join(SESSION_KEY_DIR, f"session_key_{uid}")
+        _, public_key = await generate_local_session_keypair(session_key_path)
+
+        token = await get_azure_access_token(credentials)
+        subnet_id, nsg_id = await create_vm_infrastructure(token, subscription_id, resource_group, location, uid)
+        king_machine, traffic_generators = await provision_azure_vms_for_uid(uid, machine_config, public_key)
+
+        logger.info(f"Response: king_machine={king_machine}, traffic_generators={traffic_generators}, moat_private_ip={moat_private_ip}")
 
         all_machines_available = True
 
         # Create a list containing all machines to check - king and all traffic generators
-        machines_to_check = synapse.machine_availabilities.traffic_generators + [synapse.machine_availabilities.king]
+        machines_to_check = [king_machine]+traffic_generators
         
         # Check all machines
         for machine_details in machines_to_check:
@@ -320,7 +330,7 @@ class RoundManager(BaseModel):
                 break
 
             # Test SSH Connection with asyncssh
-            client = await ssh_connect_execute(ip, original_key_path, ssh_user)
+            client = await ssh_connect_execute(ip, session_key_path, ssh_user)
 
             if not client:
                 all_machines_available = False
