@@ -2,6 +2,7 @@ import asyncio
 import aiohttp
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
+from loguru import logger
 
 async def get_azure_access_token(credentials: Dict[str, str]) -> str:
     """Get OAuth2 access token using miner's Azure credentials."""
@@ -104,15 +105,29 @@ async def retrieve_vm_infrastructure(token: str, subscription_id: str, resource_
     Use existing VNet infrastructure.
     Return subnet_id and nsg_id.
     """
+    #DELETE FOR PRODUCTION!
+    if uid == 14:
+        logger.info(f"UID 14 validating VNet {vnet_name} and subnet {subnet_name}...")
 
     # Validate that the VNet and subnet exist
     subnet_id = await validate_existing_vnet(token, subscription_id, resource_group, vnet_name, subnet_name)
     
     if subnet_id is None:
+        #DELETE FOR PRODUCTION!
+        if uid == 14:
+            logger.error(f"UID 14 VNet '{vnet_name}' or subnet '{subnet_name}' not found!")
         raise Exception(f"VNet '{vnet_name}' or subnet '{subnet_name}' not found in resource group '{resource_group}'")
+    
+    #DELETE FOR PRODUCTION!
+    if uid == 14:
+        logger.info(f"UID 14 creating NSG...")
     
     # Find or create appropriate NSG
     nsg_id = await create_nsg(token, subscription_id, resource_group, location, vnet_name, uid)
+    
+    #DELETE FOR PRODUCTION!
+    if uid == 14:
+        logger.info(f"UID 14 infrastructure validated - subnet_id: {subnet_id}, nsg_id: {nsg_id}")
     
     return subnet_id, nsg_id
 
@@ -259,11 +274,16 @@ async def provision_azure_vms_for_uid(uid: int, machine_config: Dict, public_key
         - traffic_generators list [{ip, username}, ...]
         - moat_private_ip string
     """
+    #DELETE FOR PRODUCTION!
+    logger.info(f"UID {uid} provision_azure_vms_for_uid called with subnet_id={subnet_id}, nsg_id={nsg_id}")
+    
     credentials = machine_config['app_credentials']
     subscription_id = credentials['AZURE_SUBSCRIPTION_ID']
     resource_group = credentials['AZURE_RESOURCE_GROUP']
     location = machine_config.get('location', 'westeurope')
     
+    #DELETE FOR PRODUCTION!
+    logger.info(f"UID {uid} getting Azure token for VM provisioning...")
     token = await get_azure_access_token(credentials)
     
     # Get VM specs from synapse response
@@ -271,12 +291,17 @@ async def provision_azure_vms_for_uid(uid: int, machine_config: Dict, public_key
     king_size = machine_config.get('king_size', 'Standard_B1ms')
     tgens_size = machine_config.get('tgens_size', 'Standard_B1ms')
     
+    #DELETE FOR PRODUCTION!
+    logger.info(f"UID {uid} creating {num_tgens} TGens, King size: {king_size}, TGen size: {tgens_size}")
+    
     timestamp = int(datetime.now().timestamp())
 
     # Create VMs concurrently
     vm_tasks = []
     
     # King VM
+    #DELETE FOR PRODUCTION!
+    logger.info(f"UID {uid} adding King VM task...")
     vm_tasks.append(create_vm_with_resources(
         token, subscription_id, resource_group, location,
         f'tp-king-{uid}-{timestamp}', king_size, subnet_id, nsg_id,
@@ -284,6 +309,8 @@ async def provision_azure_vms_for_uid(uid: int, machine_config: Dict, public_key
     ))
     
     # TGen VMs
+    #DELETE FOR PRODUCTION!
+    logger.info(f"UID {uid} adding {num_tgens} TGen VM tasks...")
     for i in range(num_tgens):
         vm_tasks.append(create_vm_with_resources(
             token, subscription_id, resource_group, location,
@@ -292,17 +319,31 @@ async def provision_azure_vms_for_uid(uid: int, machine_config: Dict, public_key
         ))
     
     # Get all public IPs
-    public_ips = await asyncio.gather(*vm_tasks)
-    
-    # Build return objects
-    king_machine = {'ip': public_ips[0], 'username': 'azureuser'}
-    traffic_generators = [
-        {'ip': public_ips[i+1], 'username': 'azureuser'} 
-        for i in range(num_tgens)
-    ]
-    
-    # FIXED: Return the actual moat_ip parameter
-    return king_machine, traffic_generators, moat_ip
+    try:
+        #DELETE FOR PRODUCTION!
+        logger.info(f"UID {uid} starting VM creation tasks...")
+        public_ips = await asyncio.gather(*vm_tasks)
+        
+        #DELETE FOR PRODUCTION!
+        logger.info(f"UID {uid} VM creation completed, got public IPs: {public_ips}")
+        
+        # Build return objects
+        king_machine = {'ip': public_ips[0], 'username': 'azureuser'}
+        traffic_generators = [
+            {'ip': public_ips[i+1], 'username': 'azureuser'} 
+            for i in range(num_tgens)
+        ]
+        
+        #DELETE FOR PRODUCTION!
+        logger.info(f"UID {uid} returning king_machine={king_machine}, traffic_generators={traffic_generators}, moat_ip={moat_ip}")
+        
+        # FIXED: Return the actual moat_ip parameter
+        return king_machine, traffic_generators, moat_ip
+        
+    except Exception as e:
+        #DELETE FOR PRODUCTION!
+        logger.error(f"UID {uid} VM provisioning failed: {e}")
+        raise
 
 async def azure_delete_with_lro(session: aiohttp.ClientSession, url: str, headers: Dict, resource_name: str) -> bool:
     """Azure-compliant DELETE with Long-Running Operation support."""

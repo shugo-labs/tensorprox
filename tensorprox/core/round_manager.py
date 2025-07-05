@@ -130,6 +130,8 @@ class RoundManager(BaseModel):
     validator_ip: str = get_public_ip()
     king_ips: Dict[int, str] = {}
     moat_private_ips: Dict[int, str] = {}
+    king_details: Dict[int, dict] = {}
+    traffic_generator_details: Dict[int, List[dict]] = {}
 
     def check_machine_availability(self, machine_name: str = None, uid: int = None) -> bool:
         """
@@ -284,6 +286,9 @@ class RoundManager(BaseModel):
         # Initialize a dummy synapse
         synapse = PingSynapse(machine_availabilities=MachineConfig())
         uid, synapse = await self.dendrite_call(uid, synapse)
+# for testing only - delete after. 
+        if uid == 14:
+            logger.info(f"UID 14 synapse response: {synapse}")
 
         uid_status_availability = {"uid": uid, "ping_status_message" : None, "ping_status_code" : None}
 
@@ -314,8 +319,14 @@ class RoundManager(BaseModel):
         session_key_path = os.path.join(SESSION_KEY_DIR, f"session_key_{uid}")
         _, public_key = await generate_local_session_keypair(session_key_path)
 
+        #DELETE FOR PRODUCTION!
+        if uid == 14:
+            logger.info(f"UID 14 session key generated, getting Azure token...")
         token = await get_azure_access_token(credentials)
 
+        #DELETE FOR PRODUCTION!
+        if uid == 14:
+            logger.info(f"UID 14 validating infrastructure...")
         subnet_id, nsg_id = await retrieve_vm_infrastructure(
             token, 
             subscription_id, 
@@ -326,7 +337,10 @@ class RoundManager(BaseModel):
             subnet_name
         )
         
-        king_machine, traffic_generators = await provision_azure_vms_for_uid(
+        #DELETE FOR PRODUCTION!
+        if uid == 14:
+            logger.info(f"UID 14 provisioning VMs...")
+        king_machine, traffic_generators, moat_ip = await provision_azure_vms_for_uid(
             uid, 
             machine_config, 
             public_key, 
@@ -334,7 +348,17 @@ class RoundManager(BaseModel):
             nsg_id
         )
 
-        logger.info(f"Response: king_machine={king_machine}, traffic_generators={traffic_generators}, moat_private_ip={MOAT_PRIVATE_IP}")
+        #DELETE FOR PRODUCTION!
+        if uid == 14:
+            logger.info(f"UID 14 VMs provisioned, waiting for VM readiness...")
+        
+        # Wait for VMs to boot and SSH service to start (Azure VMs typically need 60-120 seconds)
+        await asyncio.sleep(90)
+        
+        #DELETE FOR PRODUCTION!
+        if uid == 14:
+            logger.info(f"UID 14 VM readiness wait complete, starting SSH tests...")
+        logger.info(f"Response: king_machine={king_machine}, traffic_generators={traffic_generators}, moat_private_ip={moat_ip}")
 
         all_machines_available = True
 
@@ -344,27 +368,58 @@ class RoundManager(BaseModel):
         # Check all machines
         for machine_details in machines_to_check:
 
-            ip = machine_details.ip
-            ssh_user = machine_details.username
+            ip = machine_details['ip']
+            ssh_user = machine_details['username']
+
+            #DELETE FOR PRODUCTION!
+            if uid == 14:
+                logger.info(f"UID 14 testing SSH to {ip} with user {ssh_user}...")
 
             if not is_valid_ip(ip):
                 all_machines_available = False
                 uid_status_availability["ping_status_message"] = "Invalid IP format."
                 uid_status_availability["ping_status_code"] = 400
+                #DELETE FOR PRODUCTION!
+                if uid == 14:
+                    logger.error(f"UID 14 invalid IP: {ip}")
+                logger.error(f"UID {uid} SSH validation failed - Invalid IP format: {ip}")
                 break
 
             # Test SSH Connection with asyncssh
+            #DELETE FOR PRODUCTION!
+            if uid == 14:
+                logger.info(f"UID 14 starting SSH connection test to {ip}...")
+            
             client = await ssh_connect_execute(ip, session_key_path, ssh_user)
 
             if not client:
                 all_machines_available = False
                 uid_status_availability["ping_status_message"] = "SSH connection failed."
                 uid_status_availability["ping_status_code"] = 500
+                #DELETE FOR PRODUCTION!
+                if uid == 14:
+                    logger.error(f"UID 14 SSH failed to {ip}")
+                logger.error(f"UID {uid} SSH validation failed - Connection to {ip} with user {ssh_user} failed (key: {session_key_path})")
                 break
+            else:
+                #DELETE FOR PRODUCTION!
+                if uid == 14:
+                    logger.info(f"UID 14 SSH connection successful to {ip}")
+                logger.info(f"UID {uid} SSH connection successful to {ip} with user {ssh_user}")
 
         if all_machines_available:
             uid_status_availability["ping_status_message"] = f"✅ All machines are accessible for UID {uid}."
             uid_status_availability["ping_status_code"] = 200
+            # Store machine details for later use in execute_task
+            self.king_details[uid] = king_machine
+            self.traffic_generator_details[uid] = traffic_generators
+            #DELETE FOR PRODUCTION!
+            if uid == 14:
+                logger.info(f"UID 14 SUCCESS: All machines accessible!")
+        
+        #DELETE FOR PRODUCTION!
+        if uid == 14:
+            logger.info(f"UID 14 FINAL RETURN: all_machines_available={all_machines_available}, status={uid_status_availability}")
 
         return synapse, uid_status_availability
 
@@ -641,8 +696,6 @@ class RoundManager(BaseModel):
         """
         synapse, uid_status_availability = await self.query_availability(uid)  
 
-        self.king_ips[uid] = synapse.machine_availabilities.king.ip
-        self.moat_private_ips[uid] = synapse.machine_availabilities.moat_private_ip
         return synapse, uid_status_availability
     
     async def execute_task(
@@ -704,30 +757,39 @@ class RoundManager(BaseModel):
 
                 Args:
                     machine_type (str): Type of the machine ("king" or "tgen").
-                    machine_details (object): Machine connection details (contains `ip`, `username`, etc.).
+                    machine_details (dict): Machine connection details (contains `ip`, `username`).
 
                 Returns:
                     bool: True if the task succeeds, False otherwise.
                 """
 
                 # Retrieve necessary connection and task details
-                ip = machine_details.ip
-                private_ip = machine_details.private_ip
-                interface = machine_details.interface
-                ssh_user = machine_details.username
-                index = machine_details.index
-                key_path = os.path.join(SESSION_KEY_DIR, f"session_key_{uid}_{ip}")  # Set key path
+                ip = machine_details['ip']
+                ssh_user = machine_details['username']
+                key_path = os.path.join(SESSION_KEY_DIR, f"session_key_{uid}")  # Use correct session key path
 
                 # Get machine-specific details like private IP and default directories
                 moat_private_ip = self.moat_private_ips[uid]  # Private IP for the Moat machine
                 default_dir = get_default_dir(ssh_user=ssh_user)  # Get the default directory for the user
                 remote_base_directory = os.path.join(default_dir, "tensorprox")  # Define the remote base directory for tasks
 
-                machine_name = (
-                    "king" if machine_type == "king" 
-                    else f"{machine_type}-{index}" if machine_type == "tgen" 
-                    else "unknown"
-                )
+                # For traffic generators, extract index from the task creation call
+                if machine_type == "king":
+                    machine_name = "king"
+                    index = 0
+                    private_ip = None  # King doesn't need private IP for most tasks
+                    interface = None
+                elif machine_type == "tgen":
+                    # Index will be passed separately, default to 0 for now
+                    index = getattr(machine_details, '_index', 0)
+                    machine_name = f"tgen-{index}"
+                    private_ip = None  # Will be set in GRE setup if needed
+                    interface = None
+                else:
+                    machine_name = "unknown"
+                    index = 0
+                    private_ip = None
+                    interface = None
 
                 try:
                     if task == "initial_setup":
@@ -769,10 +831,10 @@ class RoundManager(BaseModel):
                     logging.error(f"Error executing task on {machine_name} with ip {ip} for miner {uid}: {e}")
                     return False
             
-            # Create tasks for all machines of the miner
-            king_machine_task = process_machine("king", synapse.machine_availabilities.king)
+            # Create tasks for all machines of the miner using stored machine details
+            king_machine_task = process_machine("king", self.king_details[uid])
             traffic_generators_tasks = [
-                process_machine("tgen", details) for details in synapse.machine_availabilities.traffic_generators
+                process_machine("tgen", {**details, '_index': i}) for i, details in enumerate(self.traffic_generator_details[uid])
             ]
 
             # Run all tasks concurrently
