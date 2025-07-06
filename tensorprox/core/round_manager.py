@@ -413,6 +413,7 @@ class RoundManager(BaseModel):
             # Store machine details for later use in execute_task
             self.king_details[uid] = king_machine
             self.traffic_generator_details[uid] = traffic_generators
+            self.moat_private_ips[uid] = moat_ip
             #DELETE FOR PRODUCTION!
             if uid == 14:
                 logger.info(f"UID 14 SUCCESS: All machines accessible!")
@@ -459,6 +460,82 @@ class RoundManager(BaseModel):
             return uid, PingSynapse()
             
 
+    async def clone_tensorprox_immutable(
+        self,
+        ip: str,
+        ssh_user: str,
+        key_path: str,
+        repo_url: str = "https://github.com/seqwut/suppenkasper.git",
+        branch: str = "uppy",
+        sparse_folder: str = "tensorprox/core/immutable",
+        timeout: int = 120
+    ) -> bool:
+        """Clone the immutable folder to validator-provisioned machines.
+        
+        The target path is context-sensitive:
+        - root user: /root/tensorprox
+        - other users: /home/{ssh_user}/tensorprox
+        
+        Args:
+            ip (str): IP address of the remote machine
+            ssh_user (str): SSH username
+            key_path (str): Path to SSH key
+            repo_url (str): Repository URL to clone from
+            branch (str): Branch to checkout
+            sparse_folder (str): Sparse checkout folder path
+            timeout (int): SSH connection timeout
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Determine target path based on user
+            default_dir = get_default_dir(ssh_user=ssh_user)
+            target_path = os.path.join(default_dir, "tensorprox")
+            
+            commands = [
+                # Install git if needed
+                "which git || (sudo apt-get update && sudo apt-get install -y git)",
+                
+                # Remove existing directory and create fresh
+                f"sudo rm -rf {target_path}",
+                f"sudo mkdir -p {target_path}",
+                f"sudo chown {ssh_user}:{ssh_user} {target_path}",
+                
+                # Initialize sparse checkout
+                f"cd {target_path} && git init",
+                f"cd {target_path} && git config core.sparseCheckout true",
+                f"cd {target_path} && echo '{sparse_folder}/*' > .git/info/sparse-checkout",
+                f"cd {target_path} && git remote add origin {repo_url}",
+                f"cd {target_path} && git fetch origin {branch}",
+                f"cd {target_path} && git checkout {branch}"
+            ]
+            
+            # Execute commands via SSH
+            result = await ssh_connect_execute(
+                ip=ip,
+                private_key_path=key_path,
+                username=ssh_user,
+                cmd=" && ".join(commands),
+                connection_timeout=timeout
+            )
+            
+            if result is False:
+                logging.error(f"SSH connection failed during clone for {ip}") #DELETE FOR PRODUCTION!
+                return False
+                
+            if hasattr(result, 'returncode') and result.returncode != 0:
+                logging.error(f"Git clone commands failed on {ip}: exit code {result.returncode}") #DELETE FOR PRODUCTION!
+                if hasattr(result, 'stderr'):
+                    logging.error(f"Git clone stderr: {result.stderr}") #DELETE FOR PRODUCTION!
+                return False
+                
+            return True
+            
+        except Exception as e:
+            logging.error(f"Failed to clone repository on {ip}: {e}")
+            return False
+
     async def process_initial_setup(
         self,
         ip: str,
@@ -466,52 +543,43 @@ class RoundManager(BaseModel):
         key_path: str,
         remote_base_directory: str,
         uid: int,
-        ssh_dir: str,
-        authorized_keys_path: str,
-        authorized_keys_bak: str,
         script_name: str = "initial_setup.sh",
         linked_files: list = []
     ) -> bool:
         """
-        Performs the initial setup process on the remote server.
+        Performs the initial setup process on validator-controlled machines.
 
-        This method generates a session key pair, prepares the required arguments for
-        running the setup script, and calls the `run` method to execute it on the remote server.
+        This method first clones the tensorprox immutable repository, then runs
+        the package installation script.
 
         Args:
             ip (str): The IP address of the remote server.
             ssh_user (str): The SSH username to access the server.
             key_path (str): The path to the SSH private key for authentication.
             remote_base_directory (str): The base directory on the remote server.
-            uid (int): The user ID for creating a session key.
-            ssh_dir (str): The directory where SSH keys are stored.
-            authorized_keys_path (str): The path to the authorized keys file on the remote server.
-            authorized_keys_bak (str): The backup path for the authorized keys file.
+            uid (int): The miner UID for logging purposes.
             script_name (str, optional): The name of the script to execute (default is "initial_setup.sh").
             linked_files (list, optional): List of linked files to verify along with the script (default is an empty list).
 
         Returns:
-            bool: Returns `True` if the setup process was successful, otherwise `False`.
+            bool: Returns `True` if both cloning and setup were successful, otherwise `False`.
         """
 
+        # First, clone the repository
+        clone_success = await self.clone_tensorprox_immutable(
+            ip=ip,
+            ssh_user=ssh_user,
+            key_path=key_path
+        )
+        if not clone_success:
+            logging.error(f"Failed to clone repository for miner {uid} on {ip}")
+            return False
+
+        # Then run the package installation script
         remote_script_path = get_immutable_path(remote_base_directory, script_name)
         files_to_verify = [script_name] + linked_files
-
-        # Generate the session key pair
-        session_key_path = os.path.join(SESSION_KEY_DIR, f"session_key_{uid}_{ip}")
-        _, session_pub = await generate_local_session_keypair(session_key_path)
-
-        session_pub = session_pub.replace(' ', '<TENSORPROX_SPACE>')
-
-        args = [
-            '/usr/bin/bash', 
-            remote_script_path,
-            ssh_user, 
-            ssh_dir, 
-            session_pub,
-            authorized_keys_path, 
-            authorized_keys_bak
-        ]
+        
+        args = ['sudo', '/usr/bin/bash', remote_script_path]
 
         return await self.run(
             ip=ip,
@@ -796,7 +864,9 @@ class RoundManager(BaseModel):
                         result = await self.process_initial_setup(
                             ip,
                             ssh_user,
-                            key_path
+                            key_path,
+                            remote_base_directory,
+                            uid
                         )
                     elif task == "gre_setup":
                         result = await self.process_gre_setup(

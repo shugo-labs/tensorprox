@@ -60,6 +60,7 @@ from datetime import datetime, timezone
 import random
 import time
 import hashlib
+import traceback
 
 executor = ThreadPoolExecutor(max_workers=1)
 
@@ -374,7 +375,11 @@ class Validator(BaseValidatorNeuron):
                 )
 
             except Exception as e:
+                #DELETE FOR PRODUCTION! Enhanced error logging for debugging
                 logger.error(f"Error during setup phase: {e}")
+                logger.error(f"#DELETE FOR PRODUCTION! Full traceback: {traceback.format_exc()}")
+                logger.error(f"#DELETE FOR PRODUCTION! Available miners: {available_miners}")
+                logger.error(f"#DELETE FOR PRODUCTION! Subset miners: {subset_miners}")
                 setup_results = []
                 return False
 
