@@ -635,7 +635,7 @@ class RoundManager(BaseModel):
             moat_private_ip,
             private_ip,
             interface,
-            index
+            str(index)  # Ensure index is string for command line
         ]
 
         return await self.run(
@@ -845,19 +845,19 @@ class RoundManager(BaseModel):
                 if machine_type == "king":
                     machine_name = "king"
                     index = 0
-                    private_ip = None  # King doesn't need private IP for most tasks
-                    interface = None
+                    private_ip = machine_details.get('private_ip')  # Get private IP from Azure response
+                    interface = AZURE_INTERFACE  # Use constant from __init__.py
                 elif machine_type == "tgen":
                     # Index will be passed separately, default to 0 for now
-                    index = getattr(machine_details, '_index', 0)
+                    index = machine_details.get('_index', 0)
                     machine_name = f"tgen-{index}"
-                    private_ip = None  # Will be set in GRE setup if needed
-                    interface = None
+                    private_ip = machine_details.get('private_ip')  # Get private IP from Azure response
+                    interface = AZURE_INTERFACE  # Use constant from __init__.py
                 else:
                     machine_name = "unknown"
                     index = 0
                     private_ip = None
-                    interface = None
+                    interface = AZURE_INTERFACE  # Use constant from __init__.py
 
                 try:
                     if task == "initial_setup":
@@ -869,17 +869,23 @@ class RoundManager(BaseModel):
                             uid
                         )
                     elif task == "gre_setup":
-                        result = await self.process_gre_setup(
-                            ip,
-                            ssh_user,
-                            key_path,
-                            remote_base_directory,
-                            machine_type,
-                            index,
-                            moat_private_ip,
-                            private_ip,
-                            interface
-                        )
+                        if not private_ip or not interface:
+                            logger.error(f"Missing network config for {machine_type} {machine_name}: private_ip={private_ip}, interface={interface}") #DELETE FOR PRODUCTION!
+                            result = False
+                        else:
+                            result = await self.process_gre_setup(
+                                ip,
+                                ssh_user,
+                                key_path,
+                                remote_base_directory,
+                                machine_type,
+                                index,
+                                moat_private_ip,
+                                private_ip,
+                                interface
+                            )
+                            if not result:
+                                logger.error(f"GRE setup failed for {machine_type} {machine_name} at {ip}") #DELETE FOR PRODUCTION!
                     elif task == "challenge":
                         result = await self.process_challenge(
                             ip,

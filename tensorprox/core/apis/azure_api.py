@@ -184,8 +184,8 @@ async def get_public_ip_address(token: str, subscription_id: str, resource_group
 
 async def create_vm_with_resources(token: str, subscription_id: str, resource_group: str,
                                  location: str, vm_name: str, vm_size: str, subnet_id: str,
-                                 nsg_id: str, private_ip: str, public_key: str) -> str:
-    """Create VM with NIC and public IP. Return public IP address."""
+                                 nsg_id: str, private_ip: str, public_key: str) -> Tuple[str, str]:
+    """Create VM with NIC and public IP. Return tuple of (public_ip, private_ip)."""
     headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
     
     # Create public IP
@@ -253,8 +253,9 @@ async def create_vm_with_resources(token: str, subscription_id: str, resource_gr
                 error_text = await vm_response.text()
                 raise Exception(f"Failed to create VM {vm_name}: {vm_response.status} - {error_text}")
     
-    # Get public IP address
-    return await get_public_ip_address(token, subscription_id, resource_group, f"{vm_name}-pip")
+    # Get public IP address and return both public and private IPs
+    public_ip = await get_public_ip_address(token, subscription_id, resource_group, f"{vm_name}-pip")
+    return public_ip, private_ip
 
 async def provision_azure_vms_for_uid(uid: int, machine_config: Dict, public_key: str, subnet_id: str, nsg_id: str, moat_ip: str = "10.0.0.4") -> Tuple[Dict, List[Dict], str]:
     """
@@ -318,19 +319,19 @@ async def provision_azure_vms_for_uid(uid: int, machine_config: Dict, public_key
             f'10.0.0.{6+i}', public_key
         ))
     
-    # Get all public IPs
+    # Get all public and private IPs
     try:
         #DELETE FOR PRODUCTION!
         logger.info(f"UID {uid} starting VM creation tasks...")
-        public_ips = await asyncio.gather(*vm_tasks)
+        vm_results = await asyncio.gather(*vm_tasks)
         
         #DELETE FOR PRODUCTION!
-        logger.info(f"UID {uid} VM creation completed, got public IPs: {public_ips}")
+        logger.info(f"UID {uid} VM creation completed, got results: {vm_results}")
         
-        # Build return objects
-        king_machine = {'ip': public_ips[0], 'username': 'azureuser'}
+        # Build return objects with both public and private IPs
+        king_machine = {'ip': vm_results[0][0], 'username': 'azureuser', 'private_ip': vm_results[0][1]}
         traffic_generators = [
-            {'ip': public_ips[i+1], 'username': 'azureuser'} 
+            {'ip': vm_results[i+1][0], 'username': 'azureuser', 'private_ip': vm_results[i+1][1]} 
             for i in range(num_tgens)
         ]
         
