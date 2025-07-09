@@ -141,7 +141,7 @@ class Miner(BaseMinerNeuron):
 
     def __init__(self, config: dict, **data):
         """Initializes the Miner neuron with necessary machine learning models and configurations."""
-        self.config = config
+        data['config'] = config  # Pass config through data dict
         super().__init__(**data)
         self._lock = asyncio.Lock()
 
@@ -551,7 +551,9 @@ def run_gre_setup(num_tgens: int, moat_interface: str):
     try:
         # Performing GRE Setup before starting
         tgen_private_ips = [f"10.0.0.{6 + i}" for i in range(num_tgens)]
+        logger.info(f"Creating GRESetup with interface: {moat_interface}, private_ip: {MOAT_PRIVATE_IP}")
         gre = GRESetup(node_type="moat", private_ip=MOAT_PRIVATE_IP, interface=moat_interface)
+        logger.info(f"Calling moat() with king_ip: {KING_PRIVATE_IP}, tgen_ips: {tgen_private_ips}")
         success = gre.moat(king_private_ip=KING_PRIVATE_IP, traffic_gen_ips=tgen_private_ips)
         if success :
             logger.info("GRE setup successfully done.")
@@ -573,7 +575,7 @@ if __name__ == "__main__":
     provider_interfaces = {
         "AZURE": "eth0",
         "GCP": "ens4",
-        "AWS": "eth0"  # For future use
+        "LINODE": "eth0"  # For future use
     }
     moat_interface = provider_interfaces.get(config["provider"], "eth0")
     

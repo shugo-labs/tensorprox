@@ -287,8 +287,8 @@ class RoundManager(BaseModel):
         synapse = PingSynapse(machine_availabilities=MachineConfig())
         uid, synapse = await self.dendrite_call(uid, synapse)
 # for testing only - delete after. 
-        if uid == 14:
-            logger.info(f"UID 14 synapse response: {synapse}")
+        if uid == 9:
+            logger.info(f"UID 9 synapse response: {synapse}")
 
         uid_status_availability = {"uid": uid, "ping_status_message" : None, "ping_status_code" : None}
 
@@ -332,13 +332,13 @@ class RoundManager(BaseModel):
             }
             
             #DELETE FOR PRODUCTION!
-            if uid == 14:
-                logger.info(f"UID 14 session key generated, getting Azure token...")
+            if uid == 9:
+                logger.info(f"UID 9 session key generated, getting Azure token...")
             token = await get_azure_access_token(credentials)
             
             #DELETE FOR PRODUCTION!
-            if uid == 14:
-                logger.info(f"UID 14 validating infrastructure...")
+            if uid == 9:
+                logger.info(f"UID 9 validating infrastructure...")
             subnet_id, nsg_id = await retrieve_vm_infrastructure(
                 token, 
                 credentials["AZURE_SUBSCRIPTION_ID"], 
@@ -350,8 +350,8 @@ class RoundManager(BaseModel):
             )
             
             #DELETE FOR PRODUCTION!
-            if uid == 14:
-                logger.info(f"UID 14 provisioning VMs...")
+            if uid == 9:
+                logger.info(f"UID 9 provisioning VMs...")
             king_machine, traffic_generators, moat_ip = await provision_azure_vms_for_uid(
                 uid, 
                 machine_config, 
@@ -363,15 +363,15 @@ class RoundManager(BaseModel):
             raise ValueError(f"Unsupported provider: {provider}")
 
         #DELETE FOR PRODUCTION!
-        if uid == 14:
-            logger.info(f"UID 14 VMs provisioned, waiting for VM readiness...")
+        if uid == 9:
+            logger.info(f"UID 9 VMs provisioned, waiting for VM readiness...")
         
         # Wait for VMs to boot and SSH service to start (Azure VMs typically need 60-120 seconds)
         await asyncio.sleep(90)
         
         #DELETE FOR PRODUCTION!
-        if uid == 14:
-            logger.info(f"UID 14 VM readiness wait complete, starting SSH tests...")
+        if uid == 9:
+            logger.info(f"UID 9 VM readiness wait complete, starting SSH tests...")
         logger.info(f"Response: king_machine={king_machine}, traffic_generators={traffic_generators}, moat_private_ip={moat_ip}")
 
         all_machines_available = True
@@ -386,23 +386,23 @@ class RoundManager(BaseModel):
             ssh_user = machine_details['username']
 
             #DELETE FOR PRODUCTION!
-            if uid == 14:
-                logger.info(f"UID 14 testing SSH to {ip} with user {ssh_user}...")
+            if uid == 9:
+                logger.info(f"UID 9 testing SSH to {ip} with user {ssh_user}...")
 
             if not is_valid_ip(ip):
                 all_machines_available = False
                 uid_status_availability["ping_status_message"] = "Invalid IP format."
                 uid_status_availability["ping_status_code"] = 400
                 #DELETE FOR PRODUCTION!
-                if uid == 14:
-                    logger.error(f"UID 14 invalid IP: {ip}")
+                if uid == 9:
+                    logger.error(f"UID 9 invalid IP: {ip}")
                 logger.error(f"UID {uid} SSH validation failed - Invalid IP format: {ip}")
                 break
 
             # Test SSH Connection with asyncssh
             #DELETE FOR PRODUCTION!
-            if uid == 14:
-                logger.info(f"UID 14 starting SSH connection test to {ip}...")
+            if uid == 9:
+                logger.info(f"UID 9 starting SSH connection test to {ip}...")
             
             client = await ssh_connect_execute(ip, session_key_path, ssh_user)
 
@@ -411,14 +411,14 @@ class RoundManager(BaseModel):
                 uid_status_availability["ping_status_message"] = "SSH connection failed."
                 uid_status_availability["ping_status_code"] = 500
                 #DELETE FOR PRODUCTION!
-                if uid == 14:
-                    logger.error(f"UID 14 SSH failed to {ip}")
+                if uid == 9:
+                    logger.error(f"UID 9 SSH failed to {ip}")
                 logger.error(f"UID {uid} SSH validation failed - Connection to {ip} with user {ssh_user} failed (key: {session_key_path})")
                 break
             else:
                 #DELETE FOR PRODUCTION!
-                if uid == 14:
-                    logger.info(f"UID 14 SSH connection successful to {ip}")
+                if uid == 9:
+                    logger.info(f"UID 9 SSH connection successful to {ip}")
                 logger.info(f"UID {uid} SSH connection successful to {ip} with user {ssh_user}")
 
         if all_machines_available:
@@ -429,12 +429,12 @@ class RoundManager(BaseModel):
             self.traffic_generator_details[uid] = traffic_generators
             self.moat_private_ips[uid] = moat_ip
             #DELETE FOR PRODUCTION!
-            if uid == 14:
-                logger.info(f"UID 14 SUCCESS: All machines accessible!")
+            if uid == 9:
+                logger.info(f"UID 9 SUCCESS: All machines accessible!")
         
         #DELETE FOR PRODUCTION!
-        if uid == 14:
-            logger.info(f"UID 14 FINAL RETURN: all_machines_available={all_machines_available}, status={uid_status_availability}")
+        if uid == 9:
+            logger.info(f"UID 9 FINAL RETURN: all_machines_available={all_machines_available}, status={uid_status_availability}")
 
         return synapse, uid_status_availability
 

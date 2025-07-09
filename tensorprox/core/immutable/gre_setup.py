@@ -2,7 +2,7 @@
 """
 Ultra High-Performance GRE Tunnel Setup with AF_XDP Kernel Bypass
 Optimized for Tbps throughput using direct hardware access
-Supports flexible 10.0.0.0/8 IP addressing for tunnel endpoints only
+Supports flexible 100.0.0.0/8 IP addressing for tunnel endpoints only
 DOES NOT modify primary interface routing
 Enhanced for virtualized environments with automatic resource scaling
 """
@@ -23,7 +23,7 @@ DEBUG_LEVEL = 2
 
 # ===== GRE CONFIGURATION =====
 # Fixed overlay network IPs
-KING_OVERLAY_IP = "10.0.0.1"
+KING_OVERLAY_IP = "100.0.0.1"
 
 # Fixed GRE tunnel keys
 MOAT_KING_KEY = 10001
@@ -1079,7 +1079,7 @@ class GRESetup:
     # // Performance-optimized tunnel traffic processor for virtio
     # #define GRE_PROTO 47
     # #define IPIP_PROTO 4
-    # #define OVERLAY_NETWORK 0x0A000000 // 10.0.0.0
+    # #define OVERLAY_NETWORK 0x0A000000 // 100.0.0.0
     # #define OVERLAY_MASK    0xFF000000 // /8
 
     # // Packet verdict counter map
@@ -1503,18 +1503,18 @@ class GRESetup:
             # Traffic generators need routes to the king
             self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", ipip_ip, "dev", tunnel_name, "metric", "100"])
         
-        # Add route for entire 10.0.0.0/8 subnet with higher metric
-        self.run_cmd(["ip", "route", "add", "10.0.0.0/8", "via", ipip_ip, "dev", tunnel_name, "metric", "101"])
+        # Add route for entire 100.0.0.0/8 subnet with higher metric
+        self.run_cmd(["ip", "route", "add", "100.0.0.0/8", "via", ipip_ip, "dev", tunnel_name, "metric", "101"])
         
         # 4. Setup policy routing for tunnel traffic
         # Table 100: For traffic from/to tunnel interfaces
         self.run_cmd(["ip", "rule", "add", "iif", ipip_tunnel_name, "lookup", "100", "pref", "100"])
-        self.run_cmd(["ip", "rule", "add", "from", "10.0.0.0/8", "iif", ipip_tunnel_name, "lookup", "100", "pref", "101"])
+        self.run_cmd(["ip", "rule", "add", "from", "100.0.0.0/8", "iif", ipip_tunnel_name, "lookup", "100", "pref", "101"])
         self.run_cmd(["ip", "rule", "add", "oif", ipip_tunnel_name, "lookup", "100", "pref", "102"])
 
         # Add routes in the policy table
         self.run_cmd(["ip", "route", "add", "default", "via", ipip_ip, "dev", tunnel_name, "table", "100"])
-        self.run_cmd(["ip", "route", "add", "10.0.0.0/8", "via", ipip_ip, "dev", tunnel_name, "table", "100"])
+        self.run_cmd(["ip", "route", "add", "100.0.0.0/8", "via", ipip_ip, "dev", tunnel_name, "table", "100"])
         
         # 5. Set up enhanced acceleration
         self.setup_enhanced_acceleration(ipip_tunnel_name, resource_plan)
@@ -1712,7 +1712,7 @@ class GRESetup:
             
             # Add route to king in this table
             self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", "192.168.101.2", "dev", "gre-king", "table", str(table_id)])
-            self.run_cmd(["ip", "route", "add", "10.0.0.0/8", "via", "192.168.101.2", "dev", "gre-king", "table", str(table_id)])
+            self.run_cmd(["ip", "route", "add", "100.0.0.0/8", "via", "192.168.101.2", "dev", "gre-king", "table", str(table_id)])
         
         # Table 200: King → all traffic generators
         self.run_cmd(["ip", "rule", "add", "iif", "gre-king", "lookup", "200", "pref", "200"])
@@ -1723,8 +1723,8 @@ class GRESetup:
             self.run_cmd(["ip", "route", "add", tgen_overlay_ip, "via", f"{tgen['subnet']}.1", "dev", tgen["name"], "table", "200"])
         
         # Table 300: Catch-all for any traffic from any tunnel interface
-        self.run_cmd(["ip", "rule", "add", "from", "10.0.0.0/8", "lookup", "300", "pref", "300"])
-        self.run_cmd(["ip", "rule", "add", "to", "10.0.0.0/8", "lookup", "300", "pref", "301"])
+        self.run_cmd(["ip", "rule", "add", "from", "100.0.0.0/8", "lookup", "300", "pref", "300"])
+        self.run_cmd(["ip", "rule", "add", "to", "100.0.0.0/8", "lookup", "300", "pref", "301"])
         
         # Add route to king in catch-all table
         self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", "192.168.101.2", "dev", "gre-king", "table", "300"])
@@ -1751,7 +1751,7 @@ class GRESetup:
 
         log("[INFO] Moat node setup complete with enhanced acceleration", level=1)
         log(f"[INFO] Supporting {len(traffic_gen_ips)} traffic generation machines", level=1)
-        log("[INFO] Supporting dynamic IPs in 10.0.0.0/8 subnet for all traffic generators", level=1)
+        log("[INFO] Supporting dynamic IPs in 100.0.0.0/8 subnet for all traffic generators", level=1)
         
         # Log resource allocation for performance monitoring
         log(f"[INFO] MOAT node using {resource_plan['dpdk_cores']} DPDK cores, {resource_plan['hugepages_gb']}GB hugepages", level=0)

@@ -12,19 +12,19 @@ __version__ = "0.1.2"
 __spec_version__ = _version_to_int(__version__)
 
 #Inner parameters
-EPSILON: int = 180 # 3 minutes
-DELTA: int = 420 # 8 minutes
-CHALLENGE_DURATION: int = 900 #15 minutes
+EPSILON: int = 30 # 30 seconds
+DELTA: int = 10 # 10 seconds
+CHALLENGE_DURATION: int = 10 # 10 seconds
 MIN_TGENS = 2
 MAX_TGENS = 8
 
 #Timeouts
-ROUND_TIMEOUT: int = 2220 # 37 minutes
-QUERY_AVAILABILITY_TIMEOUT: int = 60 # 1 minute
-INITIAL_SETUP_TIMEOUT: int = 240 # 4 minutes
-LOCKDOWN_TIMEOUT: int = 120 # 2 minutes
-GRE_SETUP_TIMEOUT: int = 360 #6 minutes
-CHALLENGE_TIMEOUT: int = CHALLENGE_DURATION + DELTA #23 minutes
+ROUND_TIMEOUT: int = 570 # 9 minutes 30 seconds
+QUERY_AVAILABILITY_TIMEOUT: int = 180 # 3 minutes (for Azure VM provisioning testing)
+INITIAL_SETUP_TIMEOUT: int = 120 # 2 minutes
+LOCKDOWN_TIMEOUT: int = 10 # 10 seconds
+GRE_SETUP_TIMEOUT: int = 300 # 5 Minutes
+CHALLENGE_TIMEOUT: int = CHALLENGE_DURATION + DELTA # 20 seconds
 EPOCH_TIME: int = ROUND_TIMEOUT + EPSILON
 
 # Store the base path dynamically, assuming `tensorprox` is the base directory
@@ -37,7 +37,7 @@ RESTRICTED_USER = "valiops"
 SESSION_KEY_DIR = "/var/tmp/session_keys"
 
 # Fixed network IPs
-KING_OVERLAY_IP = "10.0.0.1"
+KING_OVERLAY_IP = "100.0.0.1"
 MOAT_PRIVATE_IP = "10.0.0.4"
 KING_PRIVATE_IP = "10.0.0.5"
 
