@@ -76,55 +76,47 @@ from pathlib import Path
 
 NEURON_STOP_ON_FORWARD_EXCEPTION: bool = False
 
-def load_provider() -> str:
+def load_miner_config() -> dict:
     """
-    Loads Provider name from a .env.miner file.
+    Loads miner configuration using GENERIC field names.
+    Works for ANY cloud provider - no provider-specific fields here!
     """
+    config = {
+        # Provider selection
+        "provider": os.environ.get("PROVIDER", "AZURE"),
         
-    return os.environ.get("PROVIDER")
-
-def load_azure_credentials() -> dict:
-    """
-    Loads Azure credentials and resource group from a .env.miner file.
-    Returns a dictionary with keys: AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, AZURE_RESOURCE_GROUP
-    """
-
-    creds = {}
-    azure_keys = ["AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID", "AZURE_RESOURCE_GROUP"]
-    
-    # Check that all required Azure keys are present
-    for k in azure_keys:
-        creds[k] = os.environ.get(k)
+        # Generic cloud credentials
+        "project_id": os.environ.get("CLOUD_PROJECT_ID"),
+        "auth_id": os.environ.get("CLOUD_AUTH_ID"),
+        "auth_secret": os.environ.get("CLOUD_AUTH_SECRET"),
+        "resource_group": os.environ.get("CLOUD_RESOURCE_GROUP"),
         
-    return creds
-
-def load_network_config() -> dict:
-    """
-    Loads VNet and subnet info from .env.miner.
-    Returns a dictionary with keys: VNET_NAME, VNET_ADDRESS_SPACE, SUBNET_NAME, SUBNET_ADDRESS_PREFIX
-    """
-
-    network_config = {}
-    network_keys = ["VNET_NAME", "VNET_ADDRESS_SPACE", "SUBNET_NAME", "SUBNET_ADDRESS_PREFIX"]
-    
-    # Check that all required network keys are present
-    for k in network_keys:
-        network_config[k] = os.environ.get(k)
+        # Generic network config
+        "vpc_name": os.environ.get("VPC_NAME"),
+        "subnet_name": os.environ.get("SUBNET_NAME"),
+        "vpc_cidr": os.environ.get("VPC_CIDR", "10.0.0.0/8"),
+        "subnet_cidr": os.environ.get("SUBNET_CIDR", "10.0.0.0/24"),
         
-    return network_config
-
-def load_vm_config() -> dict:
-    """
-    Loads VM config info from .env.miner.
-    Returns a dictionary with keys: LOCATION, TGENS_SIZE, KING_SIZE, NUM_TGENS
-    """
-    vm_config = {}
-    vm_keys = ["LOCATION", "TGENS_SIZE", "KING_SIZE", "NUM_TGENS"]
+        # Generic compute config
+        "region": os.environ.get("REGION"),
+        "vm_size_small": os.environ.get("VM_SIZE_SMALL"),
+        "vm_size_large": os.environ.get("VM_SIZE_LARGE"),
+        "num_tgens": int(os.environ.get("NUM_TGENS", 2)),
+        # Separate custom specs for King
+        "custom_king_ram_mb": int(os.environ.get("CUSTOM_KING_RAM_MB")) if os.environ.get("CUSTOM_KING_RAM_MB") else None,
+        "custom_king_cpu_count": int(os.environ.get("CUSTOM_KING_CPU_COUNT")) if os.environ.get("CUSTOM_KING_CPU_COUNT") else None,
+        # Separate custom specs for TGens
+        "custom_tgen_ram_mb": int(os.environ.get("CUSTOM_TGEN_RAM_MB")) if os.environ.get("CUSTOM_TGEN_RAM_MB") else None,
+        "custom_tgen_cpu_count": int(os.environ.get("CUSTOM_TGEN_CPU_COUNT")) if os.environ.get("CUSTOM_TGEN_CPU_COUNT") else None,
+    }
     
-    for k in vm_keys:
-        vm_config[k] = os.environ.get(k)
+    # Log loaded configuration (without sensitive credentials)
+    logger.info(f"Loaded configuration for provider: {config['provider']}")
+    logger.info(f"Network: {config['vpc_name']} / {config['subnet_name']}")
+    logger.info(f"Compute: {config['region']} with {config['num_tgens']} TGens")
+    
+    return config
 
-    return vm_config
 
 class Miner(BaseMinerNeuron):
     """
@@ -140,19 +132,16 @@ class Miner(BaseMinerNeuron):
     packet_buffers: Dict[str, List[Tuple[bytes, int]]] = Field(default_factory=lambda: defaultdict(list))
     batch_interval: int = 10
     max_tgens: int = 0
-    provider: str = Field(default_factory=str)
-    azure_creds: dict = Field(default_factory=dict)
-    machines_config: dict = Field(default_factory=dict)
-    network_config: dict = Field(default_factory=dict)
+    config: dict = Field(default_factory=dict)
 
     _lock: asyncio.Lock = PrivateAttr()
     _model: DecisionTreeClassifier = PrivateAttr()
     _imputer: SimpleImputer = PrivateAttr()
     _scaler: StandardScaler = PrivateAttr()
 
-    def __init__(self, **data):
+    def __init__(self, config: dict, **data):
         """Initializes the Miner neuron with necessary machine learning models and configurations."""
-
+        self.config = config
         super().__init__(**data)
         self._lock = asyncio.Lock()
 
@@ -178,16 +167,23 @@ class Miner(BaseMinerNeuron):
 
             # Create new MachineConfig
             machine_config = MachineConfig(
-                provider=self.provider,
-                app_credentials=self.azure_creds, 
-                vnet_name=self.network_config.get("VNET_NAME"),
-                subnet_name=self.network_config.get("SUBNET_NAME"),
-                vnet_address_space=self.network_config.get("VNET_ADDRESS_SPACE"),
-                subnet_address_prefix=self.network_config.get("SUBNET_ADDRESS_PREFIX"),
-                location = self.machines_config.get("LOCATION"),
-                tgens_size = self.machines_config.get("TGENS_SIZE"),
-                king_size = self.machines_config.get("KING_SIZE"),
-                num_tgens = self.machines_config.get("NUM_TGENS"),
+                provider=self.config["provider"],
+                project_id=self.config["project_id"],
+                auth_id=self.config["auth_id"],
+                auth_secret=self.config["auth_secret"],
+                resource_group=self.config["resource_group"],
+                vpc_name=self.config["vpc_name"],
+                subnet_name=self.config["subnet_name"],
+                vpc_cidr=self.config["vpc_cidr"],
+                subnet_cidr=self.config["subnet_cidr"],
+                region=self.config["region"],
+                vm_size_small=self.config["vm_size_small"],
+                vm_size_large=self.config["vm_size_large"],
+                num_tgens=self.config["num_tgens"],
+                custom_king_ram_mb=self.config.get("custom_king_ram_mb"),
+                custom_king_cpu_count=self.config.get("custom_king_cpu_count"),
+                custom_tgen_ram_mb=self.config.get("custom_tgen_ram_mb"),
+                custom_tgen_cpu_count=self.config.get("custom_tgen_cpu_count"),
             )
             
             # Respond with new PingSynapse 
@@ -569,20 +565,26 @@ def run_gre_setup(num_tgens: int, moat_interface: str):
 
 if __name__ == "__main__":
     logger.info("Miner Instance started.")
-
-    # Load Azure credentials, VM config, and network config
-    provider = load_provider()
-    azure_creds = load_azure_credentials()
-    machines_config = load_vm_config()
-    network_config = load_network_config()
-
-    moat_interface = AZURE_INTERFACE if provider == "AZURE" else None
-
-    num_tgens = int(os.environ.get("NUM_TGENS", 2))
+    
+    # Single unified config load
+    config = load_miner_config()
+    
+    # Interface selection based on provider
+    provider_interfaces = {
+        "AZURE": "eth0",
+        "GCP": "ens4",
+        "AWS": "eth0"  # For future use
+    }
+    moat_interface = provider_interfaces.get(config["provider"], "eth0")
+    
+    # GRE setup
+    num_tgens = config["num_tgens"]
     run_gre_setup(num_tgens, moat_interface)
-
-    with Miner(provider=provider, azure_creds=azure_creds, machines_config=machines_config, network_config=network_config) as miner:
+    
+    # Start miner with unified config
+    with Miner(config=config) as miner:
         while not miner.should_exit:
             miner.log_status()
             time.sleep(5)
-        logger.warning("Ending miner...")
+    
+    logger.warning("Ending miner...")

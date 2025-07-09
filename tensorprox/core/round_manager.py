@@ -297,56 +297,70 @@ class RoundManager(BaseModel):
             uid_status_availability["ping_status_code"] = 500
             return synapse, uid_status_availability
 
-        credentials = synapse.machine_availabilities.app_credentials
-        subscription_id = credentials["AZURE_SUBSCRIPTION_ID"]
-        resource_group = credentials["AZURE_RESOURCE_GROUP"]
-        location = synapse.machine_availabilities.location
-        num_tgens = synapse.machine_availabilities.num_tgens
-        tgens_size = synapse.machine_availabilities.tgens_size
-        king_size = synapse.machine_availabilities.king_size
-        vnet_name = synapse.machine_availabilities.vnet_name
-        subnet_name = synapse.machine_availabilities.subnet_name
-
-        machine_config = {
-            'app_credentials': credentials,
-            'location': location,
-            'num_tgens': num_tgens,
-            'tgens_size': tgens_size,
-            'king_size': king_size
-        }
-
-        # Generate the session key pair
+        # Extract provider from synapse
+        provider = synapse.machine_availabilities.provider
+        
+        # Generate session key pair
         session_key_path = os.path.join(SESSION_KEY_DIR, f"session_key_{uid}")
         _, public_key = await generate_local_session_keypair(session_key_path)
-
-        #DELETE FOR PRODUCTION!
-        if uid == 14:
-            logger.info(f"UID 14 session key generated, getting Azure token...")
-        token = await get_azure_access_token(credentials)
-
-        #DELETE FOR PRODUCTION!
-        if uid == 14:
-            logger.info(f"UID 14 validating infrastructure...")
-        subnet_id, nsg_id = await retrieve_vm_infrastructure(
-            token, 
-            subscription_id, 
-            resource_group, 
-            location, 
-            uid, 
-            vnet_name, 
-            subnet_name
-        )
         
-        #DELETE FOR PRODUCTION!
-        if uid == 14:
-            logger.info(f"UID 14 provisioning VMs...")
-        king_machine, traffic_generators, moat_ip = await provision_azure_vms_for_uid(
-            uid, 
-            machine_config, 
-            public_key, 
-            subnet_id, 
-            nsg_id
-        )
+        # Initialize variables
+        king_machine = None
+        traffic_generators = None
+        moat_ip = None
+        
+        # Route based on provider
+        if provider == "AZURE":
+            # Translate generic fields to Azure-specific
+            credentials = {}
+            credentials["AZURE_CLIENT_ID"] = synapse.machine_availabilities.auth_id
+            credentials["AZURE_CLIENT_SECRET"] = synapse.machine_availabilities.auth_secret
+            credentials["AZURE_TENANT_ID"] = synapse.machine_availabilities.project_id
+            credentials["AZURE_RESOURCE_GROUP"] = synapse.machine_availabilities.resource_group
+            # Extract subscription ID from resource group path
+            if synapse.machine_availabilities.resource_group and "/" in synapse.machine_availabilities.resource_group:
+                credentials["AZURE_SUBSCRIPTION_ID"] = synapse.machine_availabilities.resource_group.split("/")[2]
+            else:
+                credentials["AZURE_SUBSCRIPTION_ID"] = None
+            
+            machine_config = {
+                'app_credentials': credentials,
+                'location': synapse.machine_availabilities.region,
+                'num_tgens': synapse.machine_availabilities.num_tgens,
+                'tgens_size': synapse.machine_availabilities.vm_size_small,
+                'king_size': synapse.machine_availabilities.vm_size_large
+            }
+            
+            #DELETE FOR PRODUCTION!
+            if uid == 14:
+                logger.info(f"UID 14 session key generated, getting Azure token...")
+            token = await get_azure_access_token(credentials)
+            
+            #DELETE FOR PRODUCTION!
+            if uid == 14:
+                logger.info(f"UID 14 validating infrastructure...")
+            subnet_id, nsg_id = await retrieve_vm_infrastructure(
+                token, 
+                credentials["AZURE_SUBSCRIPTION_ID"], 
+                credentials["AZURE_RESOURCE_GROUP"], 
+                synapse.machine_availabilities.region, 
+                uid, 
+                synapse.machine_availabilities.vpc_name, 
+                synapse.machine_availabilities.subnet_name
+            )
+            
+            #DELETE FOR PRODUCTION!
+            if uid == 14:
+                logger.info(f"UID 14 provisioning VMs...")
+            king_machine, traffic_generators, moat_ip = await provision_azure_vms_for_uid(
+                uid, 
+                machine_config, 
+                public_key, 
+                subnet_id, 
+                nsg_id
+            )
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
 
         #DELETE FOR PRODUCTION!
         if uid == 14:

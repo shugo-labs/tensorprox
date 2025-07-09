@@ -7,16 +7,42 @@ settings.settings = settings.Settings.load(mode="validator")
 settings = settings.settings
 
 class MachineConfig(BaseModel):
+    # Provider identification
     provider: str | None = None
-    app_credentials: dict = Field(default_factory=dict)
-    vnet_name: str | None = None
+    
+    # Generic cloud credentials
+    project_id: str | None = None
+    auth_id: str | None = None
+    auth_secret: str | None = None
+    resource_group: str | None = None
+    
+    # Generic network config
+    vpc_name: str | None = None
     subnet_name: str | None = None
-    vnet_address_space: str = "10.0.0.0/8"
-    subnet_address_prefix: str = "10.0.0.0/24"
-    location: str = "eastus"
-    tgens_size: str = "Standard_B1ms"
-    king_size: str = "Standard_B1ms"
+    vpc_cidr: str | None = None
+    subnet_cidr: str | None = None
+    
+    # Generic compute config
+    region: str | None = None
+    vm_size_small: str | None = None
+    vm_size_large: str | None = None
     num_tgens: int = 2
+    
+    # Optional custom VM specs for King
+    custom_king_ram_mb: int | None = None
+    custom_king_cpu_count: int | None = None
+    
+    # Optional custom VM specs for TGens
+    custom_tgen_ram_mb: int | None = None
+    custom_tgen_cpu_count: int | None = None
+    
+    # Legacy fields for backward compatibility
+    app_credentials: dict = Field(default_factory=dict)
+    vnet_address_space: str | None = None
+    subnet_address_prefix: str | None = None
+    location: str | None = None
+    tgens_size: str | None = None
+    king_size: str | None = None
 
     @model_validator(mode='before')
     def cap_tgen_counts(cls, values):
@@ -47,15 +73,29 @@ class PingSynapse(bt.Synapse):
             "max_tgens": self.max_tgens,
             "machine_availabilities": {
                 "provider": self.machine_availabilities.provider,
-                "app_credentials": self.machine_availabilities.app_credentials,
-                "vnet_name": self.machine_availabilities.vnet_name,
+                "project_id": self.machine_availabilities.project_id,
+                "auth_id": self.machine_availabilities.auth_id,
+                "auth_secret": self.machine_availabilities.auth_secret,
+                "resource_group": self.machine_availabilities.resource_group,
+                "vpc_name": self.machine_availabilities.vpc_name,
                 "subnet_name": self.machine_availabilities.subnet_name,
+                "vpc_cidr": self.machine_availabilities.vpc_cidr,
+                "subnet_cidr": self.machine_availabilities.subnet_cidr,
+                "region": self.machine_availabilities.region,
+                "vm_size_small": self.machine_availabilities.vm_size_small,
+                "vm_size_large": self.machine_availabilities.vm_size_large,
+                "num_tgens": self.machine_availabilities.num_tgens,
+                "custom_king_ram_mb": self.machine_availabilities.custom_king_ram_mb,
+                "custom_king_cpu_count": self.machine_availabilities.custom_king_cpu_count,
+                "custom_tgen_ram_mb": self.machine_availabilities.custom_tgen_ram_mb,
+                "custom_tgen_cpu_count": self.machine_availabilities.custom_tgen_cpu_count,
+                # Legacy fields
+                "app_credentials": self.machine_availabilities.app_credentials,
                 "vnet_address_space": self.machine_availabilities.vnet_address_space,
                 "subnet_address_prefix": self.machine_availabilities.subnet_address_prefix,
                 "location": self.machine_availabilities.location,
                 "tgens_size": self.machine_availabilities.tgens_size,
                 "king_size": self.machine_availabilities.king_size,
-                "num_tgens": self.machine_availabilities.num_tgens,
             },
         }
 
@@ -66,15 +106,29 @@ class PingSynapse(bt.Synapse):
             max_tgens=data.get("max_tgens", MAX_TGENS),
             machine_availabilities=MachineConfig(
                 provider=avail_data.get("provider"),
-                app_credentials=avail_data.get("app_credentials", {}),
-                vnet_name=avail_data.get("vnet_name"),
+                project_id=avail_data.get("project_id"),
+                auth_id=avail_data.get("auth_id"),
+                auth_secret=avail_data.get("auth_secret"),
+                resource_group=avail_data.get("resource_group"),
+                vpc_name=avail_data.get("vpc_name"),
                 subnet_name=avail_data.get("subnet_name"),
-                vnet_address_space=avail_data.get("vnet_address_space", "10.0.0.0/8"),
-                subnet_address_prefix=avail_data.get("subnet_address_prefix", "10.0.0.0/24"),
-                location=avail_data.get("location", "eastus"),
-                tgens_size=avail_data.get("tgens_size", "Standard_B1ms"),
-                king_size=avail_data.get("king_size", "Standard_B1ms"),
+                vpc_cidr=avail_data.get("vpc_cidr"),
+                subnet_cidr=avail_data.get("subnet_cidr"),
+                region=avail_data.get("region"),
+                vm_size_small=avail_data.get("vm_size_small"),
+                vm_size_large=avail_data.get("vm_size_large"),
                 num_tgens=avail_data.get("num_tgens", 2),
+                custom_king_ram_mb=avail_data.get("custom_king_ram_mb"),
+                custom_king_cpu_count=avail_data.get("custom_king_cpu_count"),
+                custom_tgen_ram_mb=avail_data.get("custom_tgen_ram_mb"),
+                custom_tgen_cpu_count=avail_data.get("custom_tgen_cpu_count"),
+                # Legacy fields
+                app_credentials=avail_data.get("app_credentials", {}),
+                vnet_address_space=avail_data.get("vnet_address_space"),
+                subnet_address_prefix=avail_data.get("subnet_address_prefix"),
+                location=avail_data.get("location"),
+                tgens_size=avail_data.get("tgens_size"),
+                king_size=avail_data.get("king_size"),
             ),
         )
 
