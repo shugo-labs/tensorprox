@@ -1446,8 +1446,8 @@ class GRESetup:
             gre_ip = f"{tunnel_subnet}.1"
             ipip_ip = f"{tunnel_subnet}.2"
             
-            # Assign a single IP from 10.200.77.x range using node index (1-255)
-            overlay_ip = f"10.200.77.{node_index + 1}" 
+            # Assign a single IP from 100.200.77.x range using node index (1-255)
+            overlay_ip = f"100.200.77.{node_index + 1}" 
             
             moat_key = TGEN_MOAT_KEY_BASE + node_index
             tunnel_name = "gre-moat"
@@ -1498,7 +1498,7 @@ class GRESetup:
         if self.node_type == "king":
             # King needs routes to all possible traffic generator subnets
             # We'll add a general route for the entire traffic generator subnet
-            self.run_cmd(["ip", "route", "add", "10.200.77.0/24", "via", ipip_ip, "dev", tunnel_name, "metric", "100"])
+            self.run_cmd(["ip", "route", "add", "100.200.77.0/24", "via", ipip_ip, "dev", tunnel_name, "metric", "100"])
         else:
             # Traffic generators need routes to the king
             self.run_cmd(["ip", "route", "add", KING_OVERLAY_IP, "via", ipip_ip, "dev", tunnel_name, "metric", "100"])
@@ -1697,7 +1697,7 @@ class GRESetup:
         for tgen in tgen_tunnels:
 
             # Assign a single IP for each traffic generator
-            tgen_overlay_ip = f"10.200.77.{tgen['index'] + 1}"
+            tgen_overlay_ip = f"100.200.77.{tgen['index'] + 1}"
             
             # Add routes for this traffic generator's subnet
             self.run_cmd(["ip", "route", "add", tgen_overlay_ip, "via", f"{tgen['subnet']}.1", "dev", tgen["name"], "metric", "100"])
@@ -1719,7 +1719,7 @@ class GRESetup:
         
         # Add routes for all traffic generator subnets in the king->tgen table
         for tgen in tgen_tunnels:
-            tgen_overlay_ip = f"10.200.77.{tgen['index'] + 1}"
+            tgen_overlay_ip = f"100.200.77.{tgen['index'] + 1}"
             self.run_cmd(["ip", "route", "add", tgen_overlay_ip, "via", f"{tgen['subnet']}.1", "dev", tgen["name"], "table", "200"])
         
         # Table 300: Catch-all for any traffic from any tunnel interface
@@ -1731,7 +1731,7 @@ class GRESetup:
         
         # Add routes for all traffic generators in catch-all table
         for tgen in tgen_tunnels:
-            tgen_overlay_ip = f"10.200.77.{tgen['index'] + 1}"
+            tgen_overlay_ip = f"100.200.77.{tgen['index'] + 1}"
             self.run_cmd(["ip", "route", "add", tgen_overlay_ip, "via", f"{tgen['subnet']}.1", "dev", tgen["name"], "table", "300"])
 
         # 7. Set up enhanced acceleration for the moat node
