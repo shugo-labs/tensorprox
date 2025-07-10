@@ -359,19 +359,65 @@ class RoundManager(BaseModel):
                 subnet_id, 
                 nsg_id
             )
+        elif provider == "GCP":
+            # Import GCP-specific functions
+            from tensorprox.core.apis.gcp_api import (
+                get_gcp_access_token,
+                retrieve_vm_infrastructure as gcp_retrieve_infrastructure,
+                provision_gcp_vms_for_uid,
+                translate_config
+            )
+            
+            # Pass full generic config to GCP API
+            machine_config = synapse.machine_availabilities.dict()
+            
+            # Get GCP access token
+            token = await get_gcp_access_token(machine_config)
+            
+            # GCP API will handle translation internally
+            gcp_config = translate_config(machine_config)
+            project_id = gcp_config["GCP_PROJECT_ID"]
+            zone = machine_config["region"]
+            vpc_name = machine_config["vpc_name"]
+            subnet_name = machine_config["subnet_name"]
+            
+            # Retrieve infrastructure (miners provide subnets with firewall rules)
+            subnet_link = await gcp_retrieve_infrastructure(
+                token,
+                project_id,
+                zone,
+                uid,
+                vpc_name,
+                subnet_name
+            )
+            
+            # Provision VMs with custom specs if provided
+            king_machine, traffic_generators, moat_ip = await provision_gcp_vms_for_uid(
+                uid,
+                machine_config,
+                public_key,
+                subnet_link
+            )
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
-        #DELETE FOR PRODUCTION!
-        if uid == 9:
-            logger.info(f"UID 9 VMs provisioned, waiting for VM readiness...")
-        
-        # Wait for VMs to boot and SSH service to start (Azure VMs typically need 60-120 seconds)
-        await asyncio.sleep(90)
-        
-        #DELETE FOR PRODUCTION!
-        if uid == 9:
-            logger.info(f"UID 9 VM readiness wait complete, starting SSH tests...")
+        # Provider-specific VM readiness handling
+        if provider == "AZURE":
+            #DELETE FOR PRODUCTION!
+            if uid == 9:
+                logger.info(f"UID 9 Azure VMs provisioned, waiting for VM readiness...")
+            
+            # Azure still uses static wait (can be improved later)
+            await asyncio.sleep(90)
+            
+            #DELETE FOR PRODUCTION!
+            if uid == 9:
+                logger.info(f"UID 9 Azure VM readiness wait complete, starting SSH tests...")
+        elif provider == "GCP":
+            # GCP handles readiness polling internally in provision_gcp_vms_for_uid
+            #DELETE FOR PRODUCTION!
+            if uid == 9:
+                logger.info(f"UID 9 GCP VMs ready, starting SSH tests...")
         logger.info(f"Response: king_machine={king_machine}, traffic_generators={traffic_generators}, moat_private_ip={moat_ip}")
 
         all_machines_available = True
@@ -752,6 +798,9 @@ class RoundManager(BaseModel):
                 return dummy_synapse, uid_status_availability
             except Exception as e:
                 # General exception fallback (optional, but good practice)
+                #DELETE FOR PRODUCTION!
+                if uid == 9:
+                    logger.error(f"Exception in check_miner for UID {uid}: {str(e)}")
                 dummy_synapse = PingSynapse(machine_availabilities=MachineConfig())
                 uid_status_availability = {
                     "uid": uid,
@@ -855,23 +904,28 @@ class RoundManager(BaseModel):
                 default_dir = get_default_dir(ssh_user=ssh_user)  # Get the default directory for the user
                 remote_base_directory = os.path.join(default_dir, "tensorprox")  # Define the remote base directory for tasks
 
+                # Determine network interface based on provider
+                provider = synapse.machine_availabilities.provider
+                if provider == "GCP":
+                    from tensorprox.core.apis.gcp_api import GCP_INTERFACE
+                    interface = GCP_INTERFACE
+                else:
+                    interface = AZURE_INTERFACE  # Default to Azure interface
+
                 # For traffic generators, extract index from the task creation call
                 if machine_type == "king":
                     machine_name = "king"
                     index = 0
-                    private_ip = machine_details.get('private_ip')  # Get private IP from Azure response
-                    interface = AZURE_INTERFACE  # Use constant from __init__.py
+                    private_ip = machine_details.get('private_ip')  # Get private IP from provider response
                 elif machine_type == "tgen":
                     # Index will be passed separately, default to 0 for now
                     index = machine_details.get('_index', 0)
                     machine_name = f"tgen-{index}"
-                    private_ip = machine_details.get('private_ip')  # Get private IP from Azure response
-                    interface = AZURE_INTERFACE  # Use constant from __init__.py
+                    private_ip = machine_details.get('private_ip')  # Get private IP from provider response
                 else:
                     machine_name = "unknown"
                     index = 0
                     private_ip = None
-                    interface = AZURE_INTERFACE  # Use constant from __init__.py
 
                 try:
                     if task == "initial_setup":
