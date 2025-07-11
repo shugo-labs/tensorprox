@@ -22,6 +22,104 @@ GCP_DISK_SIZE_GB = 10
 GCP_NETWORK_TIER = "PREMIUM"
 
 
+class GCPTokenCache:
+    """
+    Thread-safe token cache for GCP authentication.
+    Reduces API calls by caching tokens per service account.
+    """
+    def __init__(self):
+        self._cache = {}  # {auth_id: (token, expiry_time)}
+        self._lock = asyncio.Lock()
+    
+    async def get_token(self, config: Dict[str, str]) -> str:
+        """
+        Get a cached token or generate a new one if expired/missing.
+        
+        Args:
+            config: Generic config dict with auth_id, auth_secret, etc.
+            
+        Returns:
+            Valid OAuth2 access token
+        """
+        auth_id = config.get("auth_id")
+        
+        async with self._lock:
+            # Check cache
+            if auth_id in self._cache:
+                token, expiry = self._cache[auth_id]
+                # Return cached token if still valid (5 min buffer)
+                if expiry > time.time() + 300:
+                    #DELETE FOR PRODUCTION!
+                    logger.debug(f"Using cached token for {auth_id}")
+                    return token
+            
+            # Generate new token
+            #DELETE FOR PRODUCTION!
+            logger.info(f"Generating new token for {auth_id}")
+            token = await self._generate_token(config)
+            
+            # Cache for 55 minutes (tokens valid for 60)
+            self._cache[auth_id] = (token, time.time() + 3300)
+            return token
+    
+    async def _generate_token(self, config: Dict[str, str]) -> str:
+        """
+        Generate a new GCP access token (moved from get_gcp_access_token).
+        """
+        # Translate generic to GCP-specific
+        gcp_config = translate_config(config)
+        
+        service_account_email = gcp_config['GCP_SERVICE_ACCOUNT_EMAIL']
+        private_key = gcp_config['GCP_PRIVATE_KEY']
+        
+        # Handle escaped newlines in private key
+        if '\\n' in private_key:
+            private_key = private_key.replace('\\n', '\n')
+        
+        # Create JWT for service account authentication
+        now = int(time.time())
+        jwt_claims = {
+            "iss": service_account_email,
+            "sub": service_account_email,
+            "aud": "https://oauth2.googleapis.com/token",
+            "iat": now,
+            "exp": now + 3600,
+            "scope": "https://www.googleapis.com/auth/compute"
+        }
+        
+        # Sign JWT with private key
+        signed_jwt = jwt.encode(
+            jwt_claims,
+            private_key,
+            algorithm="RS256"
+        )
+        
+        # Exchange JWT for access token
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                    "assertion": signed_jwt
+                }
+            ) as response:
+                data = await response.json()
+                if "access_token" not in data:
+                    #DELETE FOR PRODUCTION!
+                    if "error" in data:
+                        raise Exception(f"GCP OAuth2 failed: {data.get('error_description', data.get('error'))}")
+                    raise Exception("GCP OAuth2 response missing access_token")
+                return data["access_token"]
+    
+    def clear_cache(self):
+        """Clear all cached tokens (useful for testing or forced refresh)."""
+        self._cache.clear()
+
+
+# Global token cache instance
+_token_cache = GCPTokenCache()
+
+
 def translate_config(config: Dict[str, str]) -> Dict[str, str]:
     """
     Translate generic config fields to GCP-specific fields.
@@ -38,6 +136,7 @@ def translate_config(config: Dict[str, str]) -> Dict[str, str]:
 async def get_gcp_access_token(config: Dict[str, str]) -> str:
     """
     Get OAuth2 access token using generic config.
+    Now uses token caching to reduce OAuth2 API calls.
     
     Args:
         config: Generic config dict from miner
@@ -45,50 +144,7 @@ async def get_gcp_access_token(config: Dict[str, str]) -> str:
     Returns:
         Access token for GCP API calls
     """
-    # Translate generic to GCP-specific
-    gcp_config = translate_config(config)
-    
-    service_account_email = gcp_config['GCP_SERVICE_ACCOUNT_EMAIL']
-    private_key = gcp_config['GCP_PRIVATE_KEY']
-    
-    # Handle escaped newlines in private key
-    if '\\n' in private_key:
-        private_key = private_key.replace('\\n', '\n')
-    
-    # Create JWT for service account authentication
-    now = int(time.time())
-    jwt_claims = {
-        "iss": service_account_email,
-        "sub": service_account_email,
-        "aud": "https://oauth2.googleapis.com/token",
-        "iat": now,
-        "exp": now + 3600,
-        "scope": "https://www.googleapis.com/auth/compute"
-    }
-    
-    # Sign JWT with private key
-    signed_jwt = jwt.encode(
-        jwt_claims,
-        private_key,
-        algorithm="RS256"
-    )
-    
-    # Exchange JWT for access token
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            "https://oauth2.googleapis.com/token",
-            data={
-                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-                "assertion": signed_jwt
-            }
-        ) as response:
-            data = await response.json()
-            if "access_token" not in data:
-                #DELETE FOR PRODUCTION!
-                if "error" in data:
-                    raise Exception(f"GCP OAuth2 failed: {data.get('error_description', data.get('error'))}")
-                raise Exception("GCP OAuth2 response missing access_token")
-            return data["access_token"]
+    return await _token_cache.get_token(config)
 
 
 async def validate_existing_vpc(
@@ -394,6 +450,11 @@ async def provision_gcp_vms_for_uid(
     Returns:
         Tuple of (king_machine, traffic_generators, moat_ip)
     """
+    # Clean up any existing IPs for this UID first
+    #DELETE FOR PRODUCTION!
+    logger.info(f"Cleaning up any existing static IPs for UID {uid}")
+    await cleanup_all_static_ips_for_uid(uid, machine_config)
+    
     # Translate generic config
     gcp_config = translate_config(machine_config)
     project_id = gcp_config["GCP_PROJECT_ID"]
@@ -475,52 +536,91 @@ async def clear_vms(
 ) -> None:
     """
     Delete VMs and associated resources for a UID.
+    Now uses comprehensive cleanup to ensure all IPs are released.
     """
-    # Translate generic config
+    # Use the comprehensive cleanup function
+    #DELETE FOR PRODUCTION!
+    logger.info(f"Running comprehensive cleanup for UID {uid}")
+    await cleanup_all_static_ips_for_uid(uid, machine_config)
+
+
+async def cleanup_all_static_ips_for_uid(
+    uid: int,
+    machine_config: Dict
+) -> None:
+    """
+    Aggressively clean up ALL static IPs associated with king/tgen VMs for a UID.
+    This runs at start of provisioning and end of round.
+    """
     gcp_config = translate_config(machine_config)
     project_id = gcp_config["GCP_PROJECT_ID"]
     zone = machine_config.get("region")
+    region = "-".join(zone.split("-")[:-1])
     
     token = await get_gcp_access_token(machine_config)
     headers = {"Authorization": f"Bearer {token}"}
     
-    # Extract region from zone
-    region = "-".join(zone.split("-")[:-1])
-    
     async with aiohttp.ClientSession() as session:
-        # List all instances with matching names
+        # First, get all VMs and delete them if they exist
         list_url = f"https://compute.googleapis.com/compute/v1/projects/{project_id}/zones/{zone}/instances"
         async with session.get(list_url, headers=headers) as response:
-            data = await response.json()
-            instances = data.get("items", [])
-        
-        # Delete VMs and collect IP addresses to release
-        ip_addresses = []
-        for instance in instances:
-            name = instance["name"]
-            if f"uid-{uid}" in name and str(timestamp) in name:
-                # Collect external IPs before deletion
-                for interface in instance.get("networkInterfaces", []):
-                    for config in interface.get("accessConfigs", []):
-                        if "natIP" in config:
-                            ip_addresses.append(f"{name}-ip")
+            if response.status == 200:
+                data = await response.json()
+                instances = data.get("items", [])
                 
-                # Delete instance
-                delete_url = f"https://compute.googleapis.com/compute/v1/projects/{project_id}/zones/{zone}/instances/{name}"
-                async with session.delete(delete_url, headers=headers) as del_response:
-                    if del_response.status == 200:
-                        operation = await del_response.json()
-                        await gcp_wait_for_operation(session, operation["selfLink"], headers)
-                        logger.info(f"Deleted VM: {name}")
+                # Delete all VMs matching our UID pattern
+                delete_tasks = []
+                for instance in instances:
+                    name = instance["name"]
+                    # Match king or tgen VMs for this UID
+                    if f"uid-{uid}" in name and ("king" in name or "tgen" in name):
+                        delete_url = f"{list_url}/{name}"
+                        delete_tasks.append(delete_instance(session, delete_url, headers, name))
+                
+                if delete_tasks:
+                    #DELETE FOR PRODUCTION!
+                    logger.info(f"Deleting {len(delete_tasks)} VMs for UID {uid}")
+                    results = await asyncio.gather(*delete_tasks, return_exceptions=True)
+                    # Wait for deletions to complete
+                    for result in results:
+                        if isinstance(result, dict) and "selfLink" in result:
+                            await gcp_wait_for_operation(session, result["selfLink"], headers)
         
-        # Release static IPs
-        for ip_name in ip_addresses:
-            ip_url = f"https://compute.googleapis.com/compute/v1/projects/{project_id}/regions/{region}/addresses/{ip_name}"
-            async with session.delete(ip_url, headers=headers) as del_response:
-                if del_response.status == 200:
-                    operation = await del_response.json()
-                    await gcp_wait_for_operation(session, operation["selfLink"], headers)
-                    logger.info(f"Released IP: {ip_name}")
+        # Now clean up ALL static IPs for this UID
+        ip_list_url = f"https://compute.googleapis.com/compute/v1/projects/{project_id}/regions/{region}/addresses"
+        async with session.get(ip_list_url, headers=headers) as response:
+            if response.status == 200:
+                data = await response.json()
+                addresses = data.get("items", [])
+                
+                # Find and delete all IPs for this UID
+                ip_delete_tasks = []
+                for address in addresses:
+                    name = address["name"]
+                    # Match IPs for king or tgen VMs
+                    if f"uid-{uid}" in name and ("king" in name or "tgen" in name):
+                        ip_url = f"{ip_list_url}/{name}"
+                        ip_delete_tasks.append(
+                            session.delete(ip_url, headers=headers)
+                        )
+                
+                if ip_delete_tasks:
+                    #DELETE FOR PRODUCTION!
+                    logger.info(f"Releasing {len(ip_delete_tasks)} static IPs for UID {uid}")
+                    # Execute all IP deletions in parallel
+                    responses = await asyncio.gather(*ip_delete_tasks, return_exceptions=True)
+                    
+                    # Wait for operations to complete
+                    for i, response in enumerate(responses):
+                        if not isinstance(response, Exception):
+                            if hasattr(response, 'status') and response.status == 200:
+                                operation = await response.json()
+                                await gcp_wait_for_operation(session, operation["selfLink"], headers)
+                                #DELETE FOR PRODUCTION!
+                                logger.info(f"Released static IP: {addresses[i]['name']}")
+                            else:
+                                #DELETE FOR PRODUCTION!
+                                logger.warning(f"Failed to release IP")
 
 
 async def gcp_wait_for_operation(
@@ -594,10 +694,14 @@ async def wait_for_vms_ready(
                     # with a small delay is usually sufficient
             
             if all_ready:
-                # Add small buffer for SSH daemon to fully start
+                # All VMs are RUNNING, but SSH may not be ready yet
+                # GCP VMs need time for:
+                # 1. Guest OS to fully boot
+                # 2. SSH daemon to start
+                # 3. Startup script to complete (setting SSH keys)
                 #DELETE FOR PRODUCTION!
-                logger.info("All VMs are RUNNING, waiting 10s for SSH daemons...")
-                await asyncio.sleep(10)
+                logger.info("All VMs are RUNNING, waiting 45s for full SSH readiness...")
+                await asyncio.sleep(45)
                 return
             
             # Check timeout
