@@ -38,7 +38,7 @@ if [[ "$machine_name" == tgen* ]]; then
     echo "[DEBUG] Interface: ipip-$machine_name" >> /tmp/challenge_debug.log
     
     # Start traffic generator with playlist via stdin 
-    nohup bash -c "echo '$playlist_json' | python3 $traffic_gen_path --playlist /dev/stdin --receiver-ips $king_ip --interface ipip-$machine_name" > /tmp/traffic_generator.log 2>&1 &
+    nohup bash -c "echo '$playlist_json' | sudo python3 $traffic_gen_path --playlist /dev/stdin --receiver-ips $king_ip --interface ipip-$machine_name" > /tmp/traffic_generator.log 2>&1 &
     
     # DELETE FOR PRODUCTION!
     sleep 2
