@@ -1,0 +1,90 @@
+#cloud-config
+package_update: false
+packages:
+  - inotify-tools
+
+runcmd:
+  - |
+    set -eux
+    user=validator
+    sshdir=/home/$user/.ssh
+    keyfile=$sshdir/authorized_keys
+
+    # wait (max 30 s) until the GCE guest agent has written the key
+    for i in $(seq 1 30); do
+      [ -f "$keyfile" ] && break
+      sleep 1
+    done
+
+    # freeze the key file
+    chmod 700 "$sshdir"
+    chown "$user:$user" "$sshdir"
+    chmod 600 "$keyfile"
+    chown "$user:$user" "$keyfile"
+    chattr +i "$keyfile"
+
+    # harden SSH daemon
+    sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+    sed -i 's/^#\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' /etc/ssh/sshd_config
+    systemctl restart ssh
+
+    # stop & mask every Google guest component
+    for svc in google-guest-agent google-startup-scripts \
+               google-osconfig-agent google-networking-agent; do
+        systemctl stop  "$svc" || true
+        systemctl disable "$svc" || true
+        systemctl mask "$svc" || true
+    done
+
+    # install the tamper-guard
+    cat >/usr/local/bin/tamper-guard.sh <<'EOF'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    LOG=/var/log/tamper-guard.log
+    echo "$(date --iso-8601=seconds) guard up" >>"$LOG"
+
+    self_destruct() {
+      # Get passed values from metadata
+      PROJECT=$(curl -fsH 'Metadata-Flavor: Google' \
+               http://169.254.169.254/computeMetadata/v1/instance/attributes/gcp-project-id)
+      TOKEN=$(curl -fsH 'Metadata-Flavor: Google' \
+               http://169.254.169.254/computeMetadata/v1/instance/attributes/gcp-token)
+      ZONE=$(curl -fsH 'Metadata-Flavor: Google' \
+            http://169.254.169.254/computeMetadata/v1/instance/zone | awk -F/ '{print $4}')
+      NAME=$(curl -fsH 'Metadata-Flavor: Google' \
+            http://169.254.169.254/computeMetadata/v1/instance/name)
+      
+      # Delete instance using passed token
+      curl -fs -X DELETE -H "Authorization: Bearer ${TOKEN}" \
+           "https://compute.googleapis.com/compute/v1/projects/${PROJECT}/zones/${ZONE}/instances/${NAME}" \
+           || true
+      shutdown -P now
+    }
+
+    inotifywait -qe modify,attrib,move,create,delete /home/validator/.ssh/authorized_keys &
+    curl -fs -H 'Metadata-Flavor: Google' \
+      'http://169.254.169.254/computeMetadata/v1/instance/attributes/ssh-keys?wait_for_change=true&timeout_sec=2147483647' &
+    wait -n
+    echo "$(date --iso-8601=seconds) tamper detected" >>"$LOG"
+    self_destruct
+    EOF
+
+    chmod +x /usr/local/bin/tamper-guard.sh
+
+    cat >/etc/systemd/system/tamper-guard.service <<'EOF'
+    [Unit]
+    Description=Power-off & delete VM if SSH key is altered
+    After=network-online.target
+
+    [Service]
+    Type=simple
+    ExecStart=/usr/local/bin/tamper-guard.sh
+    Restart=always
+    RestartSec=5
+
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+
+    systemctl daemon-reload
+    systemctl enable --now tamper-guard.service

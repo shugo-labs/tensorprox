@@ -22,6 +22,13 @@ GCP_DISK_SIZE_GB = 10
 GCP_NETWORK_TIER = "PREMIUM"
 
 
+def load_cloud_init_template() -> str:
+    """Load the GCP cloud-init security template."""
+    template_path = os.path.join(os.path.dirname(__file__), "gcp-cloud-init.yml")
+    with open(template_path, 'r') as f:
+        return f.read()
+
+
 class GCPTokenCache:
     """
     Thread-safe token cache for GCP authentication.
@@ -287,6 +294,9 @@ async def create_vm_with_resources(
     public_ip_name = f"{vm_name}-ip"
     public_ip = await create_public_ip(token, project_id, region, public_ip_name)
     
+    # Load cloud-init content
+    cloud_init_content = load_cloud_init_template()
+    
     # VM configuration
     vm_config = {
         "name": vm_name,
@@ -323,8 +333,16 @@ async def create_vm_with_resources(
                     "value": f"validator:{public_key}"
                 },
                 {
-                    "key": "startup-script",
-                    "value": "#!/bin/bash\nsudo sysctl -w net.core.rmem_max=134217728\nsudo sysctl -w net.core.wmem_max=134217728"
+                    "key": "user-data",
+                    "value": cloud_init_content
+                },
+                {
+                    "key": "gcp-token",
+                    "value": token
+                },
+                {
+                    "key": "gcp-project-id",
+                    "value": project_id
                 }
             ]
         },
