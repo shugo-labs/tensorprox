@@ -202,7 +202,17 @@ class RoundManager(BaseModel):
 
         cmd = ' '.join(shlex.quote(arg) for arg in args)
         
-        return await check_files_and_execute(ip, key_path, ssh_user, paired_list, cmd)
+        logger.debug(f"Executing command on {ip}: {cmd[:100]}...") #DELETE FOR PRODUCTION!
+        logger.debug(f"Full command: {cmd}") #DELETE FOR PRODUCTION!
+        
+        result = await check_files_and_execute(ip, key_path, ssh_user, paired_list, cmd)
+        
+        if hasattr(result, 'stdout'): #DELETE FOR PRODUCTION!
+            logger.debug(f"Command stdout from {ip}: {result.stdout[:200] if result.stdout else 'empty'}") #DELETE FOR PRODUCTION!
+        if hasattr(result, 'stderr') and result.stderr: #DELETE FOR PRODUCTION!
+            logger.debug(f"Command stderr from {ip}: {result.stderr[:200]}") #DELETE FOR PRODUCTION!
+        
+        return result
     
 
     async def extract_metrics(self, result: str, machine_name: str, label_hashes: dict) -> tuple:
@@ -526,7 +536,7 @@ class RoundManager(BaseModel):
         ssh_user: str,
         key_path: str,
         repo_url: str = "https://github.com/seqwut/suppenkasper.git",
-        branch: str = "uppy",
+        branch: str = "unifiedenv",
         sparse_folder: str = "tensorprox/core/immutable",
         timeout: int = 120
     ) -> bool:
@@ -749,6 +759,8 @@ class RoundManager(BaseModel):
         playlist = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
         label_hashes = json.dumps(label_hashes)
         
+        logger.debug(f"Preparing challenge for {machine_name}: script={remote_script_path}, playlist={'provided' if machine_name != 'king' else 'null'}") #DELETE FOR PRODUCTION!
+        
         args = [
             "/usr/bin/bash",
             remote_script_path,
@@ -759,6 +771,8 @@ class RoundManager(BaseModel):
             KING_OVERLAY_IP,
             remote_traffic_gen,
         ]
+
+        logger.debug(f"Challenge args for {machine_name}: {args[2:5]}...") #DELETE FOR PRODUCTION!
 
         return await self.run(
             ip=ip,
@@ -955,6 +969,7 @@ class RoundManager(BaseModel):
                             if not result:
                                 logger.error(f"GRE setup failed for {machine_type} {machine_name} at {ip}") #DELETE FOR PRODUCTION!
                     elif task == "challenge":
+                        logger.debug(f"Starting challenge execution on {machine_name} at {ip}") #DELETE FOR PRODUCTION!
                         result = await self.process_challenge(
                             ip,
                             ssh_user,
@@ -965,7 +980,9 @@ class RoundManager(BaseModel):
                             label_hashes,
                             playlists
                         )
+                        logger.debug(f"Challenge execution result for {machine_name}: {result}") #DELETE FOR PRODUCTION!
                         result = await self.extract_metrics(result, machine_name, label_hashes)
+                        logger.debug(f"Extracted metrics for {machine_name}: {result}") #DELETE FOR PRODUCTION!
                     else:
                         raise ValueError(f"Unsupported task: {task}")
 
@@ -1027,7 +1044,7 @@ class RoundManager(BaseModel):
                 await asyncio.wait_for(process_miner(uid, synapse), timeout=timeout)
 
                 state = (
-                    "GET_READY" if task == "gre" 
+                    "GET_READY" if task == "gre_setup" 
                     else "END_ROUND" if task == "challenge" 
                     else None
                 )
