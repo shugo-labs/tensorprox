@@ -6,12 +6,6 @@ playlist_json=$(echo "$4" | jq '.' 2>/dev/null)
 king_ip="$5"
 traffic_gen_path="$6"
 
-# DELETE FOR PRODUCTION!
-echo "[DEBUG] Challenge started on $machine_name at $(date)" >> /tmp/challenge_debug.log
-echo "[DEBUG] King IP: $king_ip" >> /tmp/challenge_debug.log
-echo "[DEBUG] Traffic gen path: $traffic_gen_path" >> /tmp/challenge_debug.log
-echo "[DEBUG] Playlist JSON length: ${#playlist_json}" >> /tmp/challenge_debug.log
-
 # Build grep patterns for counting occurrences of each label
 benign_pattern=$(echo "$label_hashes" | jq -r '.BENIGN | join("|")')
 udp_flood_pattern=$(echo "$label_hashes" | jq -r '.UDP_FLOOD | join("|")')
@@ -33,21 +27,9 @@ fi
 
 # Traffic generation for tgen machines
 if [[ "$machine_name" == tgen* ]]; then
-    # DELETE FOR PRODUCTION!
-    echo "[DEBUG] Starting traffic generator on $machine_name" >> /tmp/challenge_debug.log
-    echo "[DEBUG] Interface: ipip-$machine_name" >> /tmp/challenge_debug.log
-    
     # Start traffic generator with playlist via stdin 
-    nohup bash -c "echo '$playlist_json' | sudo python3 $traffic_gen_path --playlist /dev/stdin --receiver-ips $king_ip --interface ipip-$machine_name" > /tmp/traffic_generator.log 2>&1 &
-    
-    # DELETE FOR PRODUCTION!
-    sleep 2
-    echo "[DEBUG] Traffic generator output:" >> /tmp/challenge_debug.log
-    cat /tmp/traffic_generator.log >> /tmp/challenge_debug.log 2>&1 || echo "[DEBUG] No traffic generator log found" >> /tmp/challenge_debug.log
+    nohup bash -c "echo '$playlist_json' | python3 $traffic_gen_path --playlist /dev/stdin --receiver-ips $king_ip --interface ipip-$machine_name" > /tmp/traffic_generator.log 2>&1 &
 fi
-
-# DELETE FOR PRODUCTION!
-echo "[DEBUG] Starting tcpdump on interface gre-moat for $timeout_duration seconds" >> /tmp/challenge_debug.log
 
 # Use fast tcpdump with custom gawk processing and capture output directly
 counts=$(sudo timeout "$timeout_duration" tcpdump -A -l -i "gre-moat" "$filter_traffic" 2>/dev/null | \
@@ -87,13 +69,8 @@ END {
     printf "BENIGN:%d, UDP_FLOOD:%d, TCP_SYN_FLOOD:%d", benign, udp_flood, tcp_syn_flood;
 }' 2>/dev/null)
 
-# DELETE FOR PRODUCTION!
-echo "[DEBUG] Tcpdump completed. Counts: $counts" >> /tmp/challenge_debug.log
-
 # Measure RTT if the machine is tgen
 if [[ "$machine_name" == tgen* ]]; then
-    # DELETE FOR PRODUCTION!
-    echo "[DEBUG] Measuring RTT from $INTERFACE_IP to $king_ip" >> /tmp/challenge_debug.log
 
     # Start ping in background and capture output using process substitution
     ping_output=$(ping -I "$INTERFACE_IP" -c 10 "$king_ip" 2>/dev/null)
@@ -112,9 +89,5 @@ else
     # Output just the counts if the machine is king
     echo "$counts"
 fi
-
-# DELETE FOR PRODUCTION!
-echo "[DEBUG] Challenge completed on $machine_name at $(date)" >> /tmp/challenge_debug.log
-echo "[DEBUG] Final output: $counts${rtt_avg:+, AVG_RTT:$rtt_avg}" >> /tmp/challenge_debug.log
 
 exit 0
