@@ -28,7 +28,7 @@ fi
 # Traffic generation for tgen machines
 if [[ "$machine_name" == tgen* ]]; then
     # Start traffic generator with playlist via stdin 
-    nohup bash -c "echo '$playlist_json' | python3 $traffic_gen_path --playlist /dev/stdin --receiver-ips $king_ip --interface ipip-$machine_name" > /tmp/traffic_generator.log 2>&1 &
+    nohup bash -c "echo '$playlist_json' | sudo python3 $traffic_gen_path --playlist /dev/stdin --receiver-ips $king_ip --interface ipip-$machine_name" > /tmp/traffic_generator.log 2>&1 &
 fi
 
 # Use fast tcpdump with custom gawk processing and capture output directly
