@@ -56,6 +56,8 @@ from tensorprox.utils.logging import ErrorLoggingEvent, log_event
 from tensorprox.base.protocol import PingSynapse, ChallengeSynapse, MachineConfig
 from tensorprox.utils.utils import *
 from tensorprox.core.immutable.gre_setup import GRESetup
+# Explicitly import network constants to ensure they're available
+from tensorprox import KING_OVERLAY_IP, KING_PRIVATE_IP, MOAT_PRIVATE_IP
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 from threading import Thread, Event
@@ -144,6 +146,27 @@ class Miner(BaseMinerNeuron):
         data['config'] = config  # Pass config through data dict
         super().__init__(**data)
         self._lock = asyncio.Lock()
+        
+        # Set capabilities for Python binary to allow raw socket creation
+        try:
+            # Resolve symlinks to get the real Python binary
+            python_path = os.path.realpath(sys.executable)
+            logger.info(f"Setting capabilities for Python binary: {python_path}")
+            
+            # Check if capabilities are already set
+            check_result = os.system(f"getcap {python_path} 2>/dev/null | grep -q 'cap_net_raw'")
+            if check_result == 0:
+                logger.info("✅ Network capabilities already set for Python")
+            else:
+                # Try to set capabilities
+                result = os.system(f"sudo setcap cap_net_raw,cap_net_admin=eip {python_path} 2>&1")
+                if result == 0:
+                    logger.info("✅ Successfully set network capabilities for Python")
+                else:
+                    logger.warning("⚠️ Failed to set capabilities - raw socket creation may fail")
+                    logger.warning("⚠️ You may need to run: sudo setcap cap_net_raw,cap_net_admin=eip $(which python3)")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not set capabilities: {e}")
 
         base_path = os.path.expanduser("~/tensorprox/model") 
         self._model = joblib.load(os.path.join(base_path, "decision_tree.pkl"))
@@ -218,7 +241,7 @@ class Miner(BaseMinerNeuron):
             logger.debug(f"📧 Synapse received from {synapse.dendrite.hotkey}. Task : {task} | State : {state}.")
 
             if state == "GET_READY":
-                interfaces = [f"gre-tgen-{i}" for i in range(min(len(self.traffic_generators),self.max_tgens))]
+                interfaces = [f"gre-tgen-{i}" for i in range(self.config["num_tgens"])]
                 if not self.firewall_active:
                     self.firewall_active = True
                     self.stop_firewall_event.clear()  # Reset stop event
@@ -278,20 +301,20 @@ class Miner(BaseMinerNeuron):
         return allowed, label_type
     
     
-    def run_packet_stream(self, destination_ip, iface):
+    def run_packet_stream(self, destination_ip, ifaces):
         """
         Runs the firewall sniffing logic in an asynchronous event loop.
 
         Args:
-            king_private_ip (str): The private IP address of the King node to forward packets to.
-            iface (str, optional): The network interface to sniff packets from. Defaults to "eth0".
+            destination_ip (str): The destination IP address to filter packets.
+            ifaces (list): List of network interfaces to sniff packets on.
         """
 
         loop = asyncio.new_event_loop()  # Create a new event loop for the sniffing thread
         asyncio.set_event_loop(loop)  # Set the new loop as the current one for this thread
         
         # Ensure that the sniffer doesn't block the main process
-        loop.create_task(self.sniff_packets_stream(destination_ip, iface, self.stop_firewall_event))
+        loop.create_task(self.sniff_packets_stream(destination_ip, ifaces, self.stop_firewall_event))
         loop.run_forever()  # Ensure the loop keeps running
 
 
