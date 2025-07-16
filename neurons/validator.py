@@ -463,6 +463,15 @@ class Validator(BaseValidatorNeuron):
         # Scoring manager will score the round
         task_scorer.score_round(response=response_event, uids=subset_miners, label_hashes=label_hashes, block=self.block, step=self.step)
         
+        # Clean up VMs after scoring is complete
+        logger.info("🧹 Starting VM cleanup for completed round")
+        try:
+            await round_manager.clear_round_vms(gre_completed_miners)
+            logger.info("✅ VM cleanup completed successfully")
+        except Exception as e:
+            logger.error(f"❌ Error during VM cleanup: {e}")
+            # Don't fail the round due to cleanup errors
+        
         return True
         
         

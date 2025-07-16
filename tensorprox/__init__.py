@@ -13,15 +13,15 @@ __spec_version__ = _version_to_int(__version__)
 
 #Inner parameters
 EPSILON: int = 30 # 30 seconds
-DELTA: int = 10 # 10 seconds
-CHALLENGE_DURATION: int = 10 # 10 seconds
+DELTA: int = 60 # 60 seconds
+CHALLENGE_DURATION: int = 300 # 120 seconds
 MIN_TGENS = 2
 MAX_TGENS = 8
 
 #Timeouts
-ROUND_TIMEOUT: int = 570 # 9 minutes 30 seconds
-QUERY_AVAILABILITY_TIMEOUT: int = 180 # 3 minutes (for Azure VM provisioning testing)
-INITIAL_SETUP_TIMEOUT: int = 120 # 2 minutes
+ROUND_TIMEOUT: int = 900 # 9 minutes 30 seconds
+QUERY_AVAILABILITY_TIMEOUT: int = 360 # 6 minutes 
+INITIAL_SETUP_TIMEOUT: int = 360 # 3 minutes
 LOCKDOWN_TIMEOUT: int = 10 # 10 seconds
 GRE_SETUP_TIMEOUT: int = 300 # 5 Minutes
 CHALLENGE_TIMEOUT: int = CHALLENGE_DURATION + DELTA # 20 seconds

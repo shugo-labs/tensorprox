@@ -1094,3 +1094,54 @@ class RoundManager(BaseModel):
                 }
         
         return [{"uid": uid, **status} for uid, status in task_status.items()]
+    
+    async def clear_round_vms(self, miners_to_clear: List[Tuple[int, 'PingSynapse']]) -> None:
+        """
+        Clear VMs for all miners after round completion.
+        
+        This method handles cleanup for different cloud providers in a generic way.
+        Currently supports Azure and GCP providers.
+        
+        Args:
+            miners_to_clear: List of (uid, synapse) tuples for miners whose VMs should be cleared
+        """
+        logger.info(f"Starting VM cleanup for {len(miners_to_clear)} miners")
+        
+        cleanup_tasks = []
+        
+        for uid, synapse in miners_to_clear:
+            try:
+                provider = synapse.machine_availabilities.provider
+                
+                if provider == "GCP":
+                    # Dynamic import of GCP clear_vms to avoid circular dependencies
+                    from tensorprox.core.apis.gcp_api import clear_vms as gcp_clear_vms
+                    
+                    # Pass full generic config to GCP API
+                    machine_config = synapse.machine_availabilities.dict()
+                    
+                    # Use timestamp for tracking
+                    import time
+                    timestamp = int(time.time())
+                    cleanup_tasks.append(gcp_clear_vms(uid, machine_config, timestamp))
+                    
+                else:
+                    logger.warning(f"Unsupported provider '{provider}' for UID {uid}, skipping cleanup")
+                    
+            except Exception as e:
+                logger.error(f"Error preparing cleanup for UID {uid}: {e}")
+                # Continue with other miners even if one fails
+        
+        if cleanup_tasks:
+            # Execute all cleanup tasks concurrently
+            results = await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+            
+            # Log results
+            for i, (uid, _) in enumerate(miners_to_clear):
+                if i < len(results):
+                    if isinstance(results[i], Exception):
+                        logger.error(f"Failed to clear VMs for UID {uid}: {results[i]}")
+                    else:
+                        logger.info(f"Successfully cleared VMs for UID {uid}")
+        
+        logger.info("VM cleanup completed")
