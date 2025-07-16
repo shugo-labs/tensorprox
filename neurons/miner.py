@@ -112,7 +112,7 @@ def load_miner_config() -> dict:
         "custom_tgen_cpu_count": int(os.environ.get("CUSTOM_TGEN_CPU_COUNT")) if os.environ.get("CUSTOM_TGEN_CPU_COUNT") else None,
     }
     
-    # Log loaded configuration (without sensitive credentials)
+    # Log loaded configuration 
     logger.info(f"Loaded configuration for provider: {config['provider']}")
     logger.info(f"Network: {config['vpc_name']} / {config['subnet_name']}")
     logger.info(f"Compute: {config['region']} with {config['num_tgens']} TGens")
