@@ -96,8 +96,6 @@ def load_miner_config() -> dict:
         # Generic network config
         "vpc_name": os.environ.get("VPC_NAME"),
         "subnet_name": os.environ.get("SUBNET_NAME"),
-        "vpc_cidr": os.environ.get("VPC_CIDR", "10.0.0.0/8"),
-        "subnet_cidr": os.environ.get("SUBNET_CIDR", "10.0.0.0/24"),
         
         # Generic compute config
         "region": os.environ.get("REGION"),
@@ -197,8 +195,6 @@ class Miner(BaseMinerNeuron):
                 resource_group=self.config["resource_group"],
                 vpc_name=self.config["vpc_name"],
                 subnet_name=self.config["subnet_name"],
-                vpc_cidr=self.config["vpc_cidr"],
-                subnet_cidr=self.config["subnet_cidr"],
                 region=self.config["region"],
                 vm_size_small=self.config["vm_size_small"],
                 vm_size_large=self.config["vm_size_large"],

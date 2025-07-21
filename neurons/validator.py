@@ -463,6 +463,12 @@ class Validator(BaseValidatorNeuron):
         # Scoring manager will score the round
         task_scorer.score_round(response=response_event, uids=subset_miners, label_hashes=label_hashes, block=self.block, step=self.step)
         
+        # Wait for scoring to complete
+        logger.debug("⏳ Waiting for scoring to complete...")
+        while task_scorer.scoring_round is not None:
+            await asyncio.sleep(0.1)
+        
+        # Now scoring is complete ("Scoring completed for this round." has been logged)
         # Clean up VMs after scoring is complete
         logger.info("🧹 Starting VM cleanup for completed round")
         try:

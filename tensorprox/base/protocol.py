@@ -19,8 +19,6 @@ class MachineConfig(BaseModel):
     # Generic network config
     vpc_name: str | None = None
     subnet_name: str | None = None
-    vpc_cidr: str | None = None
-    subnet_cidr: str | None = None
     
     # Generic compute config
     region: str | None = None
