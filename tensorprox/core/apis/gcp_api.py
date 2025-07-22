@@ -25,20 +25,17 @@ GCP_IMAGE_PROJECT = "ubuntu-os-cloud"
 GCP_DISK_SIZE_GB = 10
 GCP_NETWORK_TIER = "PREMIUM"
 
-# Self-destruction timer calculation (TESTING: 5-minute timer)
+# Self-destruction timer calculation (based on validation round timeouts)
 NETWORK_BUFFER = 300  # 5 minutes for network delays
 SAFETY_MARGIN = 320   # 5.33 minutes safety margin
-# TESTING MODE: 5-minute timer instead of full validation timeout
-SELF_DESTRUCT_TIMEOUT = 300  # 5 minutes for testing
-# PRODUCTION: Use full calculation below (uncomment for production)
-# SELF_DESTRUCT_TIMEOUT = (
-#     QUERY_AVAILABILITY_TIMEOUT + 
-#     INITIAL_SETUP_TIMEOUT + 
-#     GRE_SETUP_TIMEOUT + 
-#     CHALLENGE_TIMEOUT + 
-#     NETWORK_BUFFER + 
-#     SAFETY_MARGIN
-# )  # Total: 2000 seconds (33.33 minutes)
+SELF_DESTRUCT_TIMEOUT = (
+    QUERY_AVAILABILITY_TIMEOUT +    # 360s (6 minutes)
+    INITIAL_SETUP_TIMEOUT +         # 360s (6 minutes) 
+    GRE_SETUP_TIMEOUT +            # 300s (5 minutes)
+    CHALLENGE_TIMEOUT +            # 360s (6 minutes)
+    NETWORK_BUFFER +               # 300s (5 minutes)
+    SAFETY_MARGIN                  # 320s (5.33 minutes)
+)  # Total: 2000 seconds (33.33 minutes)
 
 
 def load_cloud_init_template() -> str:
