@@ -12,6 +12,10 @@ import base64
 from tensorprox import (
     KING_PRIVATE_IP, 
     MOAT_PRIVATE_IP,
+    QUERY_AVAILABILITY_TIMEOUT,
+    INITIAL_SETUP_TIMEOUT,
+    GRE_SETUP_TIMEOUT,
+    CHALLENGE_TIMEOUT,
 )
 
 # GCP-specific constants (should be moved to __init__.py in production)
@@ -20,6 +24,21 @@ GCP_IMAGE_FAMILY = "ubuntu-2204-lts"
 GCP_IMAGE_PROJECT = "ubuntu-os-cloud"
 GCP_DISK_SIZE_GB = 10
 GCP_NETWORK_TIER = "PREMIUM"
+
+# Self-destruction timer calculation (TESTING: 5-minute timer)
+NETWORK_BUFFER = 300  # 5 minutes for network delays
+SAFETY_MARGIN = 320   # 5.33 minutes safety margin
+# TESTING MODE: 5-minute timer instead of full validation timeout
+SELF_DESTRUCT_TIMEOUT = 300  # 5 minutes for testing
+# PRODUCTION: Use full calculation below (uncomment for production)
+# SELF_DESTRUCT_TIMEOUT = (
+#     QUERY_AVAILABILITY_TIMEOUT + 
+#     INITIAL_SETUP_TIMEOUT + 
+#     GRE_SETUP_TIMEOUT + 
+#     CHALLENGE_TIMEOUT + 
+#     NETWORK_BUFFER + 
+#     SAFETY_MARGIN
+# )  # Total: 2000 seconds (33.33 minutes)
 
 
 def load_cloud_init_template() -> str:
@@ -343,6 +362,14 @@ async def create_vm_with_resources(
                 {
                     "key": "gcp-project-id",
                     "value": project_id
+                },
+                {
+                    "key": "self-destruct-timeout",
+                    "value": str(SELF_DESTRUCT_TIMEOUT)
+                },
+                {
+                    "key": "startup-script",
+                    "value": "#!/bin/bash\necho \"[$(date)] Security slot occupied - benign startup script\" | logger -t startup-security\nexit 0"
                 }
             ]
         },
