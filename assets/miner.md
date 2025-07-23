@@ -23,9 +23,9 @@ The Miner machine acts as a real-time traffic firewall during challenge rounds:
 
 ## 🚀 Scalable Participation
 
-Miners must provide access to the traffic generation and King machines (minimum set to 2 tgens + 1 King) via Service Accounts on Cloud Providers. 
+Miners must provide access to the traffic generation and King machines via Service Accounts on Cloud Providers. 
 However, they can insert machines of any size or capacity into their .env.miner files. The traffic generation automatically scales to the capability of the machines, ensuring lightweight traffic on lower-tier setups and progressively increasing load as performance scales.
-This makes it possible to get started with even modest VPS or home lab machines, while encouraging scale-up for higher rewards.
+This makes it possible to get started with even modest VPS, while encouraging scale-up for higher rewards.
 
 ## Overview
 
@@ -828,7 +828,7 @@ Later, copy contents line by line into your local `.env.miner.example` or `.env.
 
 Replace:
 - `moat` → instance name
-- `projectid` → from your `.env`
+- `projectid` → from your cloud shell `.env` + replace in `project=` & in `network-interface=subnet=` 
 - `n2d-standard-8` → your desired machine type for moat 
 - `us-central1-a` → zone in your selected region (from project) 
 - `username:ssh-rsa ...` → replace username with your desired user / login name + your SSH key 
@@ -836,7 +836,22 @@ Replace:
 #### 7.2 Miner / Moat Deployment Command
 
 ```bash
-gcloud compute instances create moat   --project=projectid   --zone=us-central1-a   --machine-type=n2d-standard-8   --network-interface=subnet=projectid-vpc-24,network-tier=PREMIUM,stack-type=IPV4_ONLY,nic-type=VIRTIO_NET,private-network-ip=10.0.0.4,aliases="ipip-range:192.168.101.1/32;ipip-range:192.168.110.2/32"   --can-ip-forward   --maintenance-policy=MIGRATE   --provisioning-model=STANDARD   --no-service-account   --no-scopes   --create-disk=auto-delete=yes,boot=yes,device-name=moat,image=projects/ubuntu-os-cloud/global/images/ubuntu-2204-jammy-v20250722,mode=rw,size=10,type=pd-balanced   --no-shielded-secure-boot   --no-shielded-vtpm   --no-shielded-integrity-monitoring   --reservation-affinity=any   --metadata="ssh-keys=username:ssh-rsa root@localhost"
+gcloud compute instances create moat \
+  --project=projectid \
+  --zone=us-central1-a \
+  --machine-type=n2d-standard-8 \
+  --network-interface=subnet=projectid-vpc-24,network-tier=PREMIUM,stack-type=IPV4_ONLY,nic-type=VIRTIO_NET,private-network-ip=10.0.0.4,aliases="ipip-range:192.168.101.1/32;ipip-range:192.168.110.2/32" \
+  --can-ip-forward \
+  --maintenance-policy=MIGRATE \
+  --provisioning-model=STANDARD \
+  --no-service-account \
+  --no-scopes \
+  --create-disk=auto-delete=yes,boot=yes,device-name=moat,image=projects/ubuntu-os-cloud/global/images/ubuntu-2204-jammy-v20250722,mode=rw,size=10,type=pd-balanced \
+  --no-shielded-secure-boot \
+  --no-shielded-vtpm \
+  --no-shielded-integrity-monitoring \
+  --reservation-affinity=any \
+  --metadata="ssh-keys=validator:ssh-rsa"
 ```
 
 Important:
