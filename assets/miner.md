@@ -35,7 +35,7 @@ This document provides a complete setup guide for deploying a miner on Google Cl
 
 ## SECTION 1: Prepare the Environment (Cloud Shell Setup)
 Repeat this Section for every UID you want to operate on GCP. Create a project in a different Region and keep files in their distinct directory via `mkir`
-`startup.tf processes every operation for you, including: 
+`startup.tf processes every GCP operation including: 
 
 - Project Setup (Name, Region, links to default Billing Account)
 - VPC Setup
