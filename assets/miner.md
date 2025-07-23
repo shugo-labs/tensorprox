@@ -23,20 +23,27 @@ The Miner machine acts as a real-time traffic firewall during challenge rounds:
 
 ## 🚀 Scalable Participation
 
-Miners must provide SSH access to the traffic generation and King machines (minimum set to 2 tgens + 1 King).
-However, they can start with machines of any size or capacity. The traffic generation automatically scales to the capability of the machines, ensuring lightweight traffic on lower-tier setups and progressively increasing load as performance scales.
+Miners must provide access to the traffic generation and King machines (minimum set to 2 tgens + 1 King) via Service Accounts on Cloud Providers. 
+However, they can insert machines of any size or capacity into their .env.miner files. The traffic generation automatically scales to the capability of the machines, ensuring lightweight traffic on lower-tier setups and progressively increasing load as performance scales.
 This makes it possible to get started with even modest VPS or home lab machines, while encouraging scale-up for higher rewards.
-
-# mining-gcp.md
 
 ## Overview
 
-This document provides a complete setup guide for deploying a miner on Google Cloud using Terraform and Shell scripts.
+This document provides a complete setup guide for deploying a miner on Google Cloud using Terraform and a wrapper Shell script.
 
 ---
 
 ## SECTION 1: Prepare the Environment (Cloud Shell Setup)
-Repeat this Section for every UID you want to operate on GCP. Create a project in a different Region and keep files in their distinct directory via `mkir` 
+Repeat this Section for every UID you want to operate on GCP. Create a project in a different Region and keep files in their distinct directory via `mkir`
+`startup.tf processes every operation for you, including: 
+
+- Project Setup (Name, Region, links to default Billing Account)
+- VPC Setup
+- Firewall Rules for flexible usage
+- Least, but working Permissions on Service Account
+- Restricts Service Account to Project Region (= Subject to regional Quota = low damage if malused)
+- Sets up Budget Alert (Please adjust `variable "base_amount"` - default is 1000 - Currency is dynamic) 
+- Sets up monitoring logs for Service Account (you can follow up with custom Actions to refine Account restrictions / Security) 
 
 ### 0. Pre-Requisites
 
@@ -787,8 +794,9 @@ chmod +x deploy.sh
 
 - Enter a project name when prompted.
 - Select a GCP region.
-- Provide billing account ID or leave empty to auto-fetch.
+- Provide billing account ID or leave empty to auto-fetch (works most times).
 - Follow CLI prompts and confirm steps.
+- Use "Cloud Assist" to resolve small errors. It's very helpful!  
 
 ---
 
@@ -810,7 +818,7 @@ cat $project_name.env
 
 ### 6. Prepare `.env.miner`
 
-Copy contents line by line into your local `.env.miner.example` or `.env.miner`.
+Later, copy contents line by line into your local `.env.miner.example` or `.env.miner`.
 
 ---
 
@@ -822,7 +830,7 @@ Replace:
 - `moat` → instance name
 - `projectid` → from your `.env`
 - `n2d-standard-8` → your desired machine type for moat 
-- `us-central1-a` → zone in your selected region
+- `us-central1-a` → zone in your selected region (from project) 
 - `username:ssh-rsa ...` → replace username with your desired user / login name + your SSH key 
 
 #### 7.2 Miner / Moat Deployment Command
