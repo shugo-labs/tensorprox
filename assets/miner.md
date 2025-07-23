@@ -841,7 +841,7 @@ Replace:
 gcloud compute instances create moat \
   --project=projectid \
   --zone=us-central1-a \
-  --machine-type=n2d-standard-8 \
+  --machine-type=n2d-standard-4 \
   --network-interface=subnet=projectid-vpc-24,network-tier=PREMIUM,stack-type=IPV4_ONLY,nic-type=VIRTIO_NET,private-network-ip=10.0.0.4,aliases="ipip-range:192.168.101.1/32;ipip-range:192.168.110.2/32" \
   --can-ip-forward \
   --maintenance-policy=MIGRATE \
