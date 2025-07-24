@@ -230,7 +230,7 @@ async def retrieve_vm_infrastructure(
     if not subnet_link:
         raise ValueError(f"VPC {vpc_name} or subnet {subnet_name} not found")
     
-    logger.info(f"Using miner-provided subnet: {subnet_name} in VPC: {vpc_name}")
+    # logger.info(f"Using miner-provided subnet: {subnet_name} in VPC: {vpc_name}")
     return subnet_link
 
 
@@ -434,7 +434,7 @@ async def check_and_clear_existing_vms(
                         break  # Found in subnet, no need to check other interfaces
         
         if instances_to_delete:
-            logger.info(f"Found {len(instances_to_delete)} existing VMs in subnet to delete: {instances_to_delete}")
+            # logger.info(f"Found {len(instances_to_delete)} existing VMs in subnet to delete: {instances_to_delete}")
             
             # Delete instances
             delete_tasks = []
@@ -458,7 +458,7 @@ async def check_and_clear_existing_vms(
                         if del_response.status == 200:
                             operation = await del_response.json()
                             await gcp_wait_for_operation(session, operation["selfLink"], headers)
-                            logger.info(f"Released IP: {ip_name}")
+                            # logger.info(f"Released IP: {ip_name}")
                 except Exception as e:
                     logger.warning(f"Failed to release IP {ip_name}: {str(e)}")
 

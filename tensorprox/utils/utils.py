@@ -580,7 +580,7 @@ async def ssh_connect_execute(
     """
     try:
         #DELETE FOR PRODUCTION!
-        logger.debug(f"Attempting SSH connection to {ip} (user: {username}, key: {private_key_path}, timeout: {connection_timeout}s)")
+        # logger.debug(f"Attempting SSH connection to {ip} (user: {username}, key: {private_key_path}, timeout: {connection_timeout}s)")
         
         # Use wait_for with a timeout instead of the context manager
         connect_task = asyncssh.connect(
@@ -592,7 +592,7 @@ async def ssh_connect_execute(
         
         client = await asyncio.wait_for(connect_task, timeout=connection_timeout)
         #DELETE FOR PRODUCTION!
-        logger.debug(f"SSH connection established successfully to {ip}")
+        # logger.debug(f"SSH connection established successfully to {ip}")
         
         try:
             if cmd:

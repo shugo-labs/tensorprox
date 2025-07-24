@@ -429,7 +429,7 @@ class RoundManager(BaseModel):
             # if uid == 9:
             #     logger.info(f"UID 9 GCP VMs ready, starting SSH tests...")
             pass
-        logger.info(f"Response: king_machine={king_machine}, traffic_generators={traffic_generators}, moat_private_ip={moat_ip}")
+        # logger.info(f"Response: king_machine={king_machine}, traffic_generators={traffic_generators}, moat_private_ip={moat_ip}")
 
         all_machines_available = True
 
@@ -1108,8 +1108,7 @@ class RoundManager(BaseModel):
         Args:
             miners_to_clear: List of (uid, synapse) tuples for miners whose VMs should be cleared
         """
-        logger.info(f"Starting VM cleanup for {len(miners_to_clear)} miners")
-        
+                
         cleanup_tasks = []
         
         for uid, synapse in miners_to_clear:
@@ -1149,4 +1148,4 @@ class RoundManager(BaseModel):
                         # logger.info(f"Successfully cleared VMs for UID {uid}")
                         pass
         
-        logger.info("VM cleanup completed")
+        
