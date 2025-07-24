@@ -884,6 +884,8 @@ gcloud compute zones list --filter="region:( us-central1 )"
 
 ```bash
 gcloud compute ssh username@moat --project=projectid --zone=us-central1-a
+
+or via your very own ssh conncetion interface. 
 ```
 
 ---
