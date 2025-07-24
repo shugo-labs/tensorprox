@@ -377,7 +377,7 @@ resource "google_project_iam_custom_role" "custom_role" {
   permissions = [
     "compute.networks.get",
     "compute.subnetworks.get",
-    "compute.subnetworks.use",  # Added for subnetwork access during VM creation
+    "compute.subnetworks.use",  
     "compute.subnetworks.useExternalIp",
     "compute.addresses.create",
     "compute.addresses.get",
