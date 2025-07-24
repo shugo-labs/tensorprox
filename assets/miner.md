@@ -837,7 +837,7 @@ Later, copy contents line by line into your local `.env.miner.example` or `.env.
 Replace:
 - `moat` → instance name
 - `projectid` → from your cloud shell `.env` + replace in `project=` & in `network-interface=subnet=` 
-- `n2d-standard-8` → your desired machine type for moat 
+- `n2d-standard-4` → your desired machine type for moat 
 - `us-central1-a` → zone in your selected region (from project) 
 - `username:ssh-rsa ...` → replace username with your desired user / login name + your SSH key 
 
