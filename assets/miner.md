@@ -48,13 +48,17 @@ startup.tf processes every GCP operation including:
 ### 0. Pre-Requisites
 
 - Ensure a **Billing Account** exists and is active.
-- Enable the following APIs:
+- visit [Google Library](https://console.cloud.google.com/apis/library/) 
+- Enable the following APIs (use Searchbar):
   - `Cloud Billing API`
   - `Cloud Billing Budget API`
   - `Cloud Resource Manager API`
   - `Cloud Pub/Sub API`
+  - `Identity and Access Management (IAM) API`
+    
 - Cloud Shell Session with an already active Project set. This is indicated by a yellow `(projectid)`
 - If no active Session, please run `gcloud config set project projectid`
+  This must be a project were you have Billing Account active + the above mentioned APIs. 
 
 ---
 
