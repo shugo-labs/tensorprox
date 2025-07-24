@@ -18,7 +18,7 @@ The Miner machine acts as a real-time traffic firewall during challenge rounds:
 | VRAM      | None          |
 | vCPU      | 8 vCPU        |
 | RAM       | 8 GB          |
-| Storage   | 80 GB         |
+| Storage   | 10 GB         |
 | Network   | >= 1 Gbps     |
 
 ## 🚀 Scalable Participation
