@@ -51,6 +51,8 @@ startup.tf processes every GCP operation including:
 - Enable the following APIs:
   - `Cloud Billing API`
   - `Cloud Billing Budget API`
+  - `Cloud Resource Manager API`
+  - `Cloud Pub/Sub API`
 - Cloud Shell Session with an already active Project set. This is indicated by a yellow `(projectid)`
 - If no active Session, please run `gcloud config set project projectid`
 
