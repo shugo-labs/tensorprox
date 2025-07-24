@@ -32,7 +32,7 @@ if [[ "$machine_name" == tgen* ]]; then
     echo "$playlist_json" > /tmp/playlist.json
 
     # Start traffic generator with the playlist
-    nohup python3 $traffic_gen_path --playlist /tmp/playlist.json --receiver-ips $king_ip --interface ipip-$machine_name > /tmp/traffic_generator.log 2>&1 &
+    sudo nohup python3 $traffic_gen_path --playlist /tmp/playlist.json --receiver-ips $king_ip --interface ipip-$machine_name > /tmp/traffic_generator.log 2>&1 &
 
     # Start continuous ping in background
     nohup ping -I "$INTERFACE_IP" -c "$challenge_duration" "$king_ip" > /tmp/rtt.txt 2>&1 &
