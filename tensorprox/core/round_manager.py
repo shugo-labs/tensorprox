@@ -202,15 +202,15 @@ class RoundManager(BaseModel):
 
         cmd = ' '.join(shlex.quote(arg) for arg in args)
         
-        logger.debug(f"Executing command on {ip}: {cmd[:100]}...") #DELETE FOR PRODUCTION!
-        logger.debug(f"Full command: {cmd}") #DELETE FOR PRODUCTION!
+        # logger.debug(f"Executing command on {ip}: {cmd[:100]}...") #DELETE FOR PRODUCTION!
+        # logger.debug(f"Full command: {cmd}") #DELETE FOR PRODUCTION!
         
         result = await check_files_and_execute(ip, key_path, ssh_user, paired_list, cmd)
         
-        if hasattr(result, 'stdout'): #DELETE FOR PRODUCTION!
-            logger.debug(f"Command stdout from {ip}: {result.stdout[:200] if result.stdout else 'empty'}") #DELETE FOR PRODUCTION!
-        if hasattr(result, 'stderr') and result.stderr: #DELETE FOR PRODUCTION!
-            logger.debug(f"Command stderr from {ip}: {result.stderr[:200]}") #DELETE FOR PRODUCTION!
+        # if hasattr(result, 'stdout'): #DELETE FOR PRODUCTION!
+        #     logger.debug(f"Command stdout from {ip}: {result.stdout[:200] if result.stdout else 'empty'}") #DELETE FOR PRODUCTION!
+        # if hasattr(result, 'stderr') and result.stderr: #DELETE FOR PRODUCTION!
+        #     logger.debug(f"Command stderr from {ip}: {result.stderr[:200]}") #DELETE FOR PRODUCTION!
         
         return result
     
@@ -296,9 +296,9 @@ class RoundManager(BaseModel):
         # Initialize a dummy synapse
         synapse = PingSynapse(machine_availabilities=MachineConfig())
         uid, synapse = await self.dendrite_call(uid, synapse)
-# for testing only - delete after. 
-        if uid == 9:
-            logger.info(f"UID 9 synapse response: {synapse}")
+# # for testing only - delete after. 
+        # if uid == 9:
+        #     logger.info(f"UID 9 synapse response: {synapse}")
 
         uid_status_availability = {"uid": uid, "ping_status_message" : None, "ping_status_code" : None}
 
@@ -341,14 +341,14 @@ class RoundManager(BaseModel):
                 'king_size': synapse.machine_availabilities.vm_size_large
             }
             
-            #DELETE FOR PRODUCTION!
-            if uid == 9:
-                logger.info(f"UID 9 session key generated, getting Azure token...")
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 session key generated, getting Azure token...")
             token = await get_azure_access_token(credentials)
             
-            #DELETE FOR PRODUCTION!
-            if uid == 9:
-                logger.info(f"UID 9 validating infrastructure...")
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 validating infrastructure...")
             subnet_id, nsg_id = await retrieve_vm_infrastructure(
                 token, 
                 credentials["AZURE_SUBSCRIPTION_ID"], 
@@ -359,9 +359,9 @@ class RoundManager(BaseModel):
                 synapse.machine_availabilities.subnet_name
             )
             
-            #DELETE FOR PRODUCTION!
-            if uid == 9:
-                logger.info(f"UID 9 provisioning VMs...")
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 provisioning VMs...")
             king_machine, traffic_generators, moat_ip = await provision_azure_vms_for_uid(
                 uid, 
                 machine_config, 
@@ -413,21 +413,22 @@ class RoundManager(BaseModel):
 
         # Provider-specific VM readiness handling
         if provider == "AZURE":
-            #DELETE FOR PRODUCTION!
-            if uid == 9:
-                logger.info(f"UID 9 Azure VMs provisioned, waiting for VM readiness...")
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 Azure VMs provisioned, waiting for VM readiness...")
             
             # Azure still uses static wait (can be improved later)
             await asyncio.sleep(90)
             
-            #DELETE FOR PRODUCTION!
-            if uid == 9:
-                logger.info(f"UID 9 Azure VM readiness wait complete, starting SSH tests...")
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 Azure VM readiness wait complete, starting SSH tests...")
         elif provider == "GCP":
             # GCP handles readiness polling internally in provision_gcp_vms_for_uid
-            #DELETE FOR PRODUCTION!
-            if uid == 9:
-                logger.info(f"UID 9 GCP VMs ready, starting SSH tests...")
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 GCP VMs ready, starting SSH tests...")
+            pass
         logger.info(f"Response: king_machine={king_machine}, traffic_generators={traffic_generators}, moat_private_ip={moat_ip}")
 
         all_machines_available = True
@@ -441,24 +442,24 @@ class RoundManager(BaseModel):
             ip = machine_details['ip']
             ssh_user = machine_details['username']
 
-            #DELETE FOR PRODUCTION!
-            if uid == 9:
-                logger.info(f"UID 9 testing SSH to {ip} with user {ssh_user}...")
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 testing SSH to {ip} with user {ssh_user}...")
 
             if not is_valid_ip(ip):
                 all_machines_available = False
                 uid_status_availability["ping_status_message"] = "Invalid IP format."
                 uid_status_availability["ping_status_code"] = 400
-                #DELETE FOR PRODUCTION!
-                if uid == 9:
-                    logger.error(f"UID 9 invalid IP: {ip}")
+                # #DELETE FOR PRODUCTION!
+                # if uid == 9:
+                #     logger.error(f"UID 9 invalid IP: {ip}")
                 logger.error(f"UID {uid} SSH validation failed - Invalid IP format: {ip}")
                 break
 
             # Test SSH Connection with asyncssh
-            #DELETE FOR PRODUCTION!
-            if uid == 9:
-                logger.info(f"UID 9 starting SSH connection test to {ip}...")
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 starting SSH connection test to {ip}...")
             
             client = await ssh_connect_execute(ip, session_key_path, ssh_user)
 
@@ -466,16 +467,17 @@ class RoundManager(BaseModel):
                 all_machines_available = False
                 uid_status_availability["ping_status_message"] = "SSH connection failed."
                 uid_status_availability["ping_status_code"] = 500
-                #DELETE FOR PRODUCTION!
-                if uid == 9:
-                    logger.error(f"UID 9 SSH failed to {ip}")
+                # #DELETE FOR PRODUCTION!
+                # if uid == 9:
+                #     logger.error(f"UID 9 SSH failed to {ip}")
                 logger.error(f"UID {uid} SSH validation failed - Connection to {ip} with user {ssh_user} failed (key: {session_key_path})")
                 break
             else:
-                #DELETE FOR PRODUCTION!
-                if uid == 9:
-                    logger.info(f"UID 9 SSH connection successful to {ip}")
-                logger.info(f"UID {uid} SSH connection successful to {ip} with user {ssh_user}")
+                # #DELETE FOR PRODUCTION!
+                # if uid == 9:
+                #     logger.info(f"UID 9 SSH connection successful to {ip}")
+                # logger.info(f"UID {uid} SSH connection successful to {ip} with user {ssh_user}")
+                pass
 
         if all_machines_available:
             uid_status_availability["ping_status_message"] = f"✅ All machines are accessible for UID {uid}."
@@ -484,13 +486,13 @@ class RoundManager(BaseModel):
             self.king_details[uid] = king_machine
             self.traffic_generator_details[uid] = traffic_generators
             self.moat_private_ips[uid] = moat_ip
-            #DELETE FOR PRODUCTION!
-            if uid == 9:
-                logger.info(f"UID 9 SUCCESS: All machines accessible!")
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 SUCCESS: All machines accessible!")
         
-        #DELETE FOR PRODUCTION!
-        if uid == 9:
-            logger.info(f"UID 9 FINAL RETURN: all_machines_available={all_machines_available}, status={uid_status_availability}")
+        # #DELETE FOR PRODUCTION!
+        # if uid == 9:
+        #     logger.info(f"UID 9 FINAL RETURN: all_machines_available={all_machines_available}, status={uid_status_availability}")
 
         return synapse, uid_status_availability
 
@@ -536,7 +538,7 @@ class RoundManager(BaseModel):
         ssh_user: str,
         key_path: str,
         repo_url: str = "https://github.com/seqwut/suppenkasper.git",
-        branch: str = "unifiedenv",
+        branch: str = "fiveminrun",
         sparse_folder: str = "tensorprox/core/immutable",
         timeout: int = 120
     ) -> bool:
@@ -591,13 +593,13 @@ class RoundManager(BaseModel):
             )
             
             if result is False:
-                logging.error(f"SSH connection failed during clone for {ip}") #DELETE FOR PRODUCTION!
+                # logging.error(f"SSH connection failed during clone for {ip}") #DELETE FOR PRODUCTION!
                 return False
                 
             if hasattr(result, 'returncode') and result.returncode != 0:
-                logging.error(f"Git clone commands failed on {ip}: exit code {result.returncode}") #DELETE FOR PRODUCTION!
-                if hasattr(result, 'stderr'):
-                    logging.error(f"Git clone stderr: {result.stderr}") #DELETE FOR PRODUCTION!
+                # logging.error(f"Git clone commands failed on {ip}: exit code {result.returncode}") #DELETE FOR PRODUCTION!
+                # if hasattr(result, 'stderr'):
+                #     logging.error(f"Git clone stderr: {result.stderr}") #DELETE FOR PRODUCTION!
                 return False
                 
             return True
@@ -759,7 +761,7 @@ class RoundManager(BaseModel):
         playlist = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
         label_hashes = json.dumps(label_hashes)
         
-        logger.debug(f"Preparing challenge for {machine_name}: script={remote_script_path}, playlist={'provided' if machine_name != 'king' else 'null'}") #DELETE FOR PRODUCTION!
+        # logger.debug(f"Preparing challenge for {machine_name}: script={remote_script_path}, playlist={'provided' if machine_name != 'king' else 'null'}") #DELETE FOR PRODUCTION!
         
         args = [
             "/usr/bin/bash",
@@ -772,7 +774,7 @@ class RoundManager(BaseModel):
             remote_traffic_gen,
         ]
 
-        logger.debug(f"Challenge args for {machine_name}: {args[2:5]}...") #DELETE FOR PRODUCTION!
+        # logger.debug(f"Challenge args for {machine_name}: {args[2:5]}...") #DELETE FOR PRODUCTION!
 
         return await self.run(
             ip=ip,
@@ -812,9 +814,9 @@ class RoundManager(BaseModel):
                 return dummy_synapse, uid_status_availability
             except Exception as e:
                 # General exception fallback (optional, but good practice)
-                #DELETE FOR PRODUCTION!
-                if uid == 9:
-                    logger.error(f"Exception in check_miner for UID {uid}: {str(e)}")
+                # #DELETE FOR PRODUCTION!
+                # if uid == 9:
+                #     logger.error(f"Exception in check_miner for UID {uid}: {str(e)}")
                 dummy_synapse = PingSynapse(machine_availabilities=MachineConfig())
                 uid_status_availability = {
                     "uid": uid,
@@ -952,7 +954,7 @@ class RoundManager(BaseModel):
                         )
                     elif task == "gre_setup":
                         if not private_ip or not interface:
-                            logger.error(f"Missing network config for {machine_type} {machine_name}: private_ip={private_ip}, interface={interface}") #DELETE FOR PRODUCTION!
+                            # logger.error(f"Missing network config for {machine_type} {machine_name}: private_ip={private_ip}, interface={interface}") #DELETE FOR PRODUCTION!
                             result = False
                         else:
                             result = await self.process_gre_setup(
@@ -967,9 +969,10 @@ class RoundManager(BaseModel):
                                 interface
                             )
                             if not result:
-                                logger.error(f"GRE setup failed for {machine_type} {machine_name} at {ip}") #DELETE FOR PRODUCTION!
+                                # logger.error(f"GRE setup failed for {machine_type} {machine_name} at {ip}") #DELETE FOR PRODUCTION!
+                                pass
                     elif task == "challenge":
-                        logger.debug(f"Starting challenge execution on {machine_name} at {ip}") #DELETE FOR PRODUCTION!
+                        # logger.debug(f"Starting challenge execution on {machine_name} at {ip}") #DELETE FOR PRODUCTION!
                         result = await self.process_challenge(
                             ip,
                             ssh_user,
@@ -980,9 +983,9 @@ class RoundManager(BaseModel):
                             label_hashes,
                             playlists
                         )
-                        logger.debug(f"Challenge execution result for {machine_name}: {result}") #DELETE FOR PRODUCTION!
+                        # logger.debug(f"Challenge execution result for {machine_name}: {result}") #DELETE FOR PRODUCTION!
                         result = await self.extract_metrics(result, machine_name, label_hashes)
-                        logger.debug(f"Extracted metrics for {machine_name}: {result}") #DELETE FOR PRODUCTION!
+                        # logger.debug(f"Extracted metrics for {machine_name}: {result}") #DELETE FOR PRODUCTION!
                     else:
                         raise ValueError(f"Unsupported task: {task}")
 
@@ -1142,6 +1145,8 @@ class RoundManager(BaseModel):
                     if isinstance(results[i], Exception):
                         logger.error(f"Failed to clear VMs for UID {uid}: {results[i]}")
                     else:
-                        logger.info(f"Successfully cleared VMs for UID {uid}")
+                        # # DELETE FOR PRODUCTION !
+                        # logger.info(f"Successfully cleared VMs for UID {uid}")
+                        pass
         
         logger.info("VM cleanup completed")

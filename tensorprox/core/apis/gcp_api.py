@@ -72,13 +72,13 @@ class GCPTokenCache:
                 token, expiry = self._cache[auth_id]
                 # Return cached token if still valid (5 min buffer)
                 if expiry > time.time() + 300:
-                    #DELETE FOR PRODUCTION!
-                    logger.debug(f"Using cached token for {auth_id}")
+                    # #DELETE FOR PRODUCTION!
+                    # logger.debug(f"Using cached token for {auth_id}")
                     return token
             
             # Generate new token
-            #DELETE FOR PRODUCTION!
-            logger.info(f"Generating new token for {auth_id}")
+            # #DELETE FOR PRODUCTION!
+            # logger.info(f"Generating new token for {auth_id}")
             token = await self._generate_token(config)
             
             # Cache for 55 minutes (tokens valid for 60)
@@ -128,9 +128,9 @@ class GCPTokenCache:
             ) as response:
                 data = await response.json()
                 if "access_token" not in data:
-                    #DELETE FOR PRODUCTION!
-                    if "error" in data:
-                        raise Exception(f"GCP OAuth2 failed: {data.get('error_description', data.get('error'))}")
+                    # #DELETE FOR PRODUCTION!
+                    # if "error" in data:
+                    #     raise Exception(f"GCP OAuth2 failed: {data.get('error_description', data.get('error'))}")
                     raise Exception("GCP OAuth2 response missing access_token")
                 return data["access_token"]
     
@@ -473,7 +473,8 @@ async def delete_instance(
     async with session.delete(delete_url, headers=headers) as del_response:
         if del_response.status == 200:
             operation = await del_response.json()
-            logger.info(f"Initiated deletion of VM: {vm_name}")
+            # # DELETE FOR PRODUCTION !
+            # logger.info(f"Initiated deletion of VM: {vm_name}")
             return operation
         else:
             logger.error(f"Failed to delete VM {vm_name}: {await del_response.text()}")
@@ -493,8 +494,8 @@ async def provision_gcp_vms_for_uid(
         Tuple of (king_machine, traffic_generators, moat_ip)
     """
     # Clean up any existing IPs for this UID first
-    #DELETE FOR PRODUCTION!
-    logger.info(f"Cleaning up any existing static IPs for UID {uid}")
+    # #DELETE FOR PRODUCTION!
+    # logger.info(f"Cleaning up any existing static IPs for UID {uid}")
     await cleanup_all_static_ips_for_uid(uid, machine_config)
     
     # Translate generic config
@@ -567,7 +568,8 @@ async def provision_gcp_vms_for_uid(
     # Poll VMs until they're ready instead of static sleep
     await wait_for_vms_ready(token, project_id, zone, vm_names)
     
-    logger.info(f"Successfully provisioned and verified GCP VMs for UID {uid}")
+    # # DELETE FOR PRODUCTION !
+    # logger.info(f"Successfully provisioned and verified GCP VMs for UID {uid}")
     return king_machine, traffic_generators, MOAT_PRIVATE_IP
 
 
@@ -581,8 +583,8 @@ async def clear_vms(
     Now uses comprehensive cleanup to ensure all IPs are released.
     """
     # Use the comprehensive cleanup function
-    #DELETE FOR PRODUCTION!
-    logger.info(f"Running comprehensive cleanup for UID {uid}")
+    # #DELETE FOR PRODUCTION!
+    # logger.info(f"Running comprehensive cleanup for UID {uid}")
     await cleanup_all_static_ips_for_uid(uid, machine_config)
 
 
@@ -620,8 +622,8 @@ async def cleanup_all_static_ips_for_uid(
                         delete_tasks.append(delete_instance(session, delete_url, headers, name))
                 
                 if delete_tasks:
-                    #DELETE FOR PRODUCTION!
-                    logger.info(f"Deleting {len(delete_tasks)} VMs for UID {uid}")
+                    # #DELETE FOR PRODUCTION!
+                    # logger.info(f"Deleting {len(delete_tasks)} VMs for UID {uid}")
                     results = await asyncio.gather(*delete_tasks, return_exceptions=True)
                     # Wait for deletions to complete
                     for result in results:
@@ -647,8 +649,8 @@ async def cleanup_all_static_ips_for_uid(
                         )
                 
                 if ip_delete_tasks:
-                    #DELETE FOR PRODUCTION!
-                    logger.info(f"Releasing {len(ip_delete_tasks)} static IPs for UID {uid}")
+                    # #DELETE FOR PRODUCTION!
+                    # logger.info(f"Releasing {len(ip_delete_tasks)} static IPs for UID {uid}")
                     # Execute all IP deletions in parallel
                     responses = await asyncio.gather(*ip_delete_tasks, return_exceptions=True)
                     
@@ -658,11 +660,12 @@ async def cleanup_all_static_ips_for_uid(
                             if hasattr(response, 'status') and response.status == 200:
                                 operation = await response.json()
                                 await gcp_wait_for_operation(session, operation["selfLink"], headers)
-                                #DELETE FOR PRODUCTION!
-                                logger.info(f"Released static IP: {addresses[i]['name']}")
+                                # #DELETE FOR PRODUCTION!
+                                # logger.info(f"Released static IP: {addresses[i]['name']}")
                             else:
-                                #DELETE FOR PRODUCTION!
-                                logger.warning(f"Failed to release IP")
+                                # #DELETE FOR PRODUCTION!
+                                # logger.warning(f"Failed to release IP")
+                                pass
 
 
 async def gcp_wait_for_operation(
@@ -705,8 +708,8 @@ async def wait_for_vms_ready(
     headers = {"Authorization": f"Bearer {token}"}
     start_time = time.time()
     
-    #DELETE FOR PRODUCTION!
-    logger.info(f"Polling {len(vm_names)} VMs for readiness...")
+    # #DELETE FOR PRODUCTION!
+    # logger.info(f"Polling {len(vm_names)} VMs for readiness...")
     
     async with aiohttp.ClientSession() as session:
         while True:
@@ -727,8 +730,8 @@ async def wait_for_vms_ready(
                     # Check if VM is running
                     if status != "RUNNING":
                         all_ready = False
-                        #DELETE FOR PRODUCTION!
-                        logger.debug(f"VM {vm_name} status: {status}")
+                        # #DELETE FOR PRODUCTION!
+                        # logger.debug(f"VM {vm_name} status: {status}")
                         continue
                     
                     # Check guest attributes for additional readiness (if available)
@@ -741,8 +744,8 @@ async def wait_for_vms_ready(
                 # 1. Guest OS to fully boot
                 # 2. SSH daemon to start
                 # 3. Startup script to complete (setting SSH keys)
-                #DELETE FOR PRODUCTION!
-                logger.info("All VMs are RUNNING, waiting 45s for full SSH readiness...")
+                # #DELETE FOR PRODUCTION!
+                # logger.info("All VMs are RUNNING, waiting 45s for full SSH readiness...")
                 await asyncio.sleep(45)
                 return
             
