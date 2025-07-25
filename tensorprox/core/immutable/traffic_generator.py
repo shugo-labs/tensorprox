@@ -548,7 +548,7 @@ class Attack(ABC):
         Returns:
             A random IP address string.
         """
-        return f"10.{self.fake.random_int(0, 255)}.{self.fake.random_int(0, 255)}.{self.fake.random_int(2, 254)}"
+        return f"100.{self.fake.random_int(0, 255)}.{self.fake.random_int(0, 255)}.{self.fake.random_int(2, 254)}"
     
     def generate_random_mac(self) -> str:
         """Generate a random MAC address.

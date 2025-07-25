@@ -8,7 +8,7 @@ def _version_to_int(version_str: str) -> int:
     return (10000 * major) + (100 * minor) + patch
 
 #Release version
-__version__ = "0.1.2" 
+__version__ = "0.1.3" 
 __spec_version__ = _version_to_int(__version__)
 
 #Inner parameters
@@ -20,9 +20,8 @@ MAX_TGENS = 8
 
 #Timeouts
 ROUND_TIMEOUT: int = 2220 # 37 minutes
-QUERY_AVAILABILITY_TIMEOUT: int = 60 # 1 minute
+QUERY_AVAILABILITY_TIMEOUT: int = 180 # 3 minute
 INITIAL_SETUP_TIMEOUT: int = 240 # 4 minutes
-LOCKDOWN_TIMEOUT: int = 120 # 2 minutes
 GRE_SETUP_TIMEOUT: int = 360 #6 minutes
 CHALLENGE_TIMEOUT: int = CHALLENGE_DURATION + DELTA #23 minutes
 EPOCH_TIME: int = ROUND_TIMEOUT + EPSILON
@@ -36,5 +35,7 @@ RESTRICTED_USER = "valiops"
 #Temporary path for session_keys storage
 SESSION_KEY_DIR = "/var/tmp/session_keys"
 
-# Fixed overlay network IPs
-KING_OVERLAY_IP = "10.0.0.1"
+# Fixed network IPs
+KING_OVERLAY_IP = "100.0.0.1"
+MOAT_PRIVATE_IP = "10.0.0.4"
+KING_PRIVATE_IP = "10.0.0.5"

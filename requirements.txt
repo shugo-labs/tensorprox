@@ -18,3 +18,4 @@ scikit-learn==1.6.0
 ansible-vault==2.1.0
 bittensor==9.4.0
 bittensor-cli==9.4.0
+PyJWT==2.10.1

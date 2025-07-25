@@ -6,31 +6,47 @@ from tensorprox import settings
 settings.settings = settings.Settings.load(mode="validator")
 settings = settings.settings
 
-class MachineDetails(BaseModel):
-    ip: str | None = None
-    username: str | None = None
-    private_ip: str | None = None
-    interface: str | None = None
-    index: str | None = None
-
-    def get(self, key, default=None):
-        return getattr(self, key, default)
-
-
 class MachineConfig(BaseModel):
-    key_pair: Tuple[str, str] = ("", "")
-    traffic_generators: List[MachineDetails] = Field(default_factory=list)
-    king: MachineDetails = Field(default_factory=MachineDetails)
-    moat_private_ip: str = ""
-    moat_interface: str = ""
-    is_valid: bool = True
+    # Provider identification
+    provider: str | None = None
+    
+    # Generic cloud credentials
+    project_id: str | None = None
+    auth_id: str | None = None
+    auth_secret: str | None = None
+    resource_group: str | None = None
+    
+    # Generic network config
+    vpc_name: str | None = None
+    subnet_name: str | None = None
+    
+    # Generic compute config
+    region: str | None = None
+    vm_size_small: str | None = None
+    vm_size_large: str | None = None
+    num_tgens: int = 2
+    
+    # Optional custom VM specs for King
+    custom_king_ram_mb: int | None = None
+    custom_king_cpu_count: int | None = None
+    
+    # Optional custom VM specs for TGens
+    custom_tgen_ram_mb: int | None = None
+    custom_tgen_cpu_count: int | None = None
+    
+    # Legacy fields for backward compatibility
+    app_credentials: dict = Field(default_factory=dict)
+    vnet_address_space: str | None = None
+    subnet_address_prefix: str | None = None
+    location: str | None = None
+    tgens_size: str | None = None
+    king_size: str | None = None
 
     @model_validator(mode='before')
-    def truncate_traffic_generators(cls, values):
-        # Truncate the traffic_generators to MAX_TGENS
-        traffic_generators = values.get('traffic_generators', [])
-        values['traffic_generators'] = traffic_generators[:MAX_TGENS]
-        values['is_valid'] = False if len(traffic_generators) < MIN_TGENS else True
+    def cap_tgen_counts(cls, values):
+        num_tgens = values.get('num_tgens', 2)
+        # Cap the num_tgens within the min and max bounds
+        values['num_tgens'] = max(MIN_TGENS, min(int(num_tgens), MAX_TGENS))
         return values
     
 class PingSynapse(bt.Synapse):
@@ -52,25 +68,65 @@ class PingSynapse(bt.Synapse):
 
     def serialize(self) -> dict[str, Any]:
         return {
+            "max_tgens": self.max_tgens,
             "machine_availabilities": {
-                "key_pair": self.machine_availabilities.key_pair,
-                "traffic_generators": [m.model_dump() for m in self.machine_availabilities.traffic_generators],
-                "king": self.machine_availabilities.king.model_dump(),
-                "moat_private_ip": self.machine_availabilities.moat_private_ip,
+                "provider": self.machine_availabilities.provider,
+                "project_id": self.machine_availabilities.project_id,
+                "auth_id": self.machine_availabilities.auth_id,
+                "auth_secret": self.machine_availabilities.auth_secret,
+                "resource_group": self.machine_availabilities.resource_group,
+                "vpc_name": self.machine_availabilities.vpc_name,
+                "subnet_name": self.machine_availabilities.subnet_name,
+                "vpc_cidr": self.machine_availabilities.vpc_cidr,
+                "subnet_cidr": self.machine_availabilities.subnet_cidr,
+                "region": self.machine_availabilities.region,
+                "vm_size_small": self.machine_availabilities.vm_size_small,
+                "vm_size_large": self.machine_availabilities.vm_size_large,
+                "num_tgens": self.machine_availabilities.num_tgens,
+                "custom_king_ram_mb": self.machine_availabilities.custom_king_ram_mb,
+                "custom_king_cpu_count": self.machine_availabilities.custom_king_cpu_count,
+                "custom_tgen_ram_mb": self.machine_availabilities.custom_tgen_ram_mb,
+                "custom_tgen_cpu_count": self.machine_availabilities.custom_tgen_cpu_count,
+                # Legacy fields
+                "app_credentials": self.machine_availabilities.app_credentials,
+                "vnet_address_space": self.machine_availabilities.vnet_address_space,
+                "subnet_address_prefix": self.machine_availabilities.subnet_address_prefix,
+                "location": self.machine_availabilities.location,
+                "tgens_size": self.machine_availabilities.tgens_size,
+                "king_size": self.machine_availabilities.king_size,
             },
         }
 
     @classmethod
     def deserialize(cls, data: dict) -> "PingSynapse":
         avail_data = data.get("machine_availabilities", {})
-        max_tgens = avail_data.get("max_tgens", MAX_TGENS)  # Ensure max_tgens is obtained from the data or default to MAX_TGENS
-        traffic_gens = avail_data.get("traffic_generators", [])[:max_tgens]  # truncate here
         return cls(
+            max_tgens=data.get("max_tgens", MAX_TGENS),
             machine_availabilities=MachineConfig(
-                key_pair=tuple(avail_data.get("key_pair", ("", ""))),
-                traffic_generators=[MachineDetails(**m) for m in traffic_gens],
-                king=MachineDetails(**avail_data.get("king", {})),
-                moat_private_ip=avail_data.get("moat_private_ip", ""),
+                provider=avail_data.get("provider"),
+                project_id=avail_data.get("project_id"),
+                auth_id=avail_data.get("auth_id"),
+                auth_secret=avail_data.get("auth_secret"),
+                resource_group=avail_data.get("resource_group"),
+                vpc_name=avail_data.get("vpc_name"),
+                subnet_name=avail_data.get("subnet_name"),
+                vpc_cidr=avail_data.get("vpc_cidr"),
+                subnet_cidr=avail_data.get("subnet_cidr"),
+                region=avail_data.get("region"),
+                vm_size_small=avail_data.get("vm_size_small"),
+                vm_size_large=avail_data.get("vm_size_large"),
+                num_tgens=avail_data.get("num_tgens", 2),
+                custom_king_ram_mb=avail_data.get("custom_king_ram_mb"),
+                custom_king_cpu_count=avail_data.get("custom_king_cpu_count"),
+                custom_tgen_ram_mb=avail_data.get("custom_tgen_ram_mb"),
+                custom_tgen_cpu_count=avail_data.get("custom_tgen_cpu_count"),
+                # Legacy fields
+                app_credentials=avail_data.get("app_credentials", {}),
+                vnet_address_space=avail_data.get("vnet_address_space"),
+                subnet_address_prefix=avail_data.get("subnet_address_prefix"),
+                location=avail_data.get("location"),
+                tgens_size=avail_data.get("tgens_size"),
+                king_size=avail_data.get("king_size"),
             ),
         )
 
