@@ -349,6 +349,10 @@ async def create_vm_with_resources(
                     "value": f"validator:{public_key}"
                 },
                 {
+                    "key": "validator-public-key",
+                    "value": public_key
+                },
+                {
                     "key": "user-data",
                     "value": cloud_init_content
                 },

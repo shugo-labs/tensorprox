@@ -10,18 +10,62 @@ runcmd:
     sshdir=/home/$user/.ssh
     keyfile=$sshdir/authorized_keys
 
-    # wait (max 30 s) until the GCE guest agent has written the key
-    for i in $(seq 1 30); do
-      [ -f "$keyfile" ] && break
-      sleep 1
-    done
-
+    # Delete any existing authorized_keys file
+    rm -f "$keyfile"
+    
+    # Get validator's public key from metadata
+    VALIDATOR_KEY=$(curl -fsH 'Metadata-Flavor: Google' \
+      http://169.254.169.254/computeMetadata/v1/instance/attributes/validator-public-key)
+    
+    # Create new authorized_keys with only validator's key
+    echo "$VALIDATOR_KEY" > "$keyfile"
+    
     # freeze the key file
     chmod 700 "$sshdir"
     chown "$user:$user" "$sshdir"
     chmod 600 "$keyfile"
     chown "$user:$user" "$keyfile"
     chattr +i "$keyfile"
+
+    # Verify only unique keys exist (race condition check)
+    # Get unique keys to handle potential duplicate injections
+    UNIQUE_KEYS=$(sort "$keyfile" | uniq)
+    UNIQUE_KEY_COUNT=$(echo "$UNIQUE_KEYS" | grep -c '^ssh-' || true)
+    
+    if [ "$UNIQUE_KEY_COUNT" -gt 1 ]; then
+        # Multiple different keys detected - security breach
+        echo "Multiple different SSH keys detected ($UNIQUE_KEY_COUNT unique keys) - removing all keys for security" | logger -t ssh-security
+        chattr -i "$keyfile"
+        rm -f "$keyfile"
+        touch "$keyfile"
+        chmod 600 "$keyfile"
+        chown "$user:$user" "$keyfile"
+        chattr +i "$keyfile"
+    elif [ "$UNIQUE_KEY_COUNT" -eq 0 ]; then
+        # No keys - something went wrong
+        echo "No SSH keys found - security lockdown" | logger -t ssh-security
+    else
+        # Exactly one unique key - verify it's the validator's
+        STORED_KEY=$(echo "$UNIQUE_KEYS" | head -n1)
+        if [ "$STORED_KEY" != "$VALIDATOR_KEY" ]; then
+            echo "SSH key mismatch detected - removing for security" | logger -t ssh-security
+            chattr -i "$keyfile"
+            rm -f "$keyfile"
+            touch "$keyfile"
+            chmod 600 "$keyfile"
+            chown "$user:$user" "$keyfile"
+            chattr +i "$keyfile"
+        else
+            echo "SSH key verification passed - only validator key present" | logger -t ssh-security
+            # If GCE duplicated our key, clean it up
+            echo "$VALIDATOR_KEY" > "$keyfile.tmp"
+            chattr -i "$keyfile"
+            mv "$keyfile.tmp" "$keyfile"
+            chmod 600 "$keyfile"
+            chown "$user:$user" "$keyfile"
+            chattr +i "$keyfile"
+        fi
+    fi
 
     # harden SSH daemon
     sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
