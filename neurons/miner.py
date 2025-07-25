@@ -207,7 +207,7 @@ class Miner(BaseMinerNeuron):
             
             # Respond with new PingSynapse 
             synapse.machine_availabilities = machine_config
-            logger.debug(f"⏩ Forwarding Ping synapse with machine details to validator {synapse.dendrite.hotkey} : {synapse}.")
+            logger.debug(f"⏩ Forwarding Ping synapse with machine details to validator {synapse.dendrite.hotkey} .")
             return synapse
 
         except Exception as e:
