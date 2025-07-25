@@ -746,7 +746,7 @@ async def wait_for_vms_ready(
                 # 3. Startup script to complete (setting SSH keys)
                 # #DELETE FOR PRODUCTION!
                 # logger.info("All VMs are RUNNING, waiting 45s for full SSH readiness...")
-                await asyncio.sleep(45)
+                await asyncio.sleep(75)
                 return
             
             # Check timeout
