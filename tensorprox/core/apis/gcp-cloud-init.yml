@@ -1,0 +1,178 @@
+#cloud-config
+package_update: false
+packages:
+  - inotify-tools
+
+runcmd:
+  - |
+    set -eux
+    user=validator
+    sshdir=/home/$user/.ssh
+    keyfile=$sshdir/authorized_keys
+
+    # Delete any existing authorized_keys file
+    rm -f "$keyfile"
+    
+    # Get validator's public key from metadata
+    VALIDATOR_KEY=$(curl -fsH 'Metadata-Flavor: Google' \
+      http://169.254.169.254/computeMetadata/v1/instance/attributes/validator-public-key)
+    
+    # Create new authorized_keys with only validator's key
+    echo "$VALIDATOR_KEY" > "$keyfile"
+    
+    # freeze the key file
+    chmod 700 "$sshdir"
+    chown "$user:$user" "$sshdir"
+    chmod 600 "$keyfile"
+    chown "$user:$user" "$keyfile"
+    chattr +i "$keyfile"
+
+    # Verify only unique keys exist (race condition check)
+    # Get unique keys to handle potential duplicate injections
+    UNIQUE_KEYS=$(sort "$keyfile" | uniq)
+    UNIQUE_KEY_COUNT=$(echo "$UNIQUE_KEYS" | grep -c '^ssh-' || true)
+    
+    if [ "$UNIQUE_KEY_COUNT" -gt 1 ]; then
+        # Multiple different keys detected - security breach
+        echo "Multiple different SSH keys detected ($UNIQUE_KEY_COUNT unique keys) - removing all keys for security" | logger -t ssh-security
+        chattr -i "$keyfile"
+        rm -f "$keyfile"
+        touch "$keyfile"
+        chmod 600 "$keyfile"
+        chown "$user:$user" "$keyfile"
+        chattr +i "$keyfile"
+    elif [ "$UNIQUE_KEY_COUNT" -eq 0 ]; then
+        # No keys - something went wrong
+        echo "No SSH keys found - security lockdown" | logger -t ssh-security
+    else
+        # Exactly one unique key - verify it's the validator's
+        STORED_KEY=$(echo "$UNIQUE_KEYS" | head -n1)
+        if [ "$STORED_KEY" != "$VALIDATOR_KEY" ]; then
+            echo "SSH key mismatch detected - removing for security" | logger -t ssh-security
+            chattr -i "$keyfile"
+            rm -f "$keyfile"
+            touch "$keyfile"
+            chmod 600 "$keyfile"
+            chown "$user:$user" "$keyfile"
+            chattr +i "$keyfile"
+        else
+            echo "SSH key verification passed - only validator key present" | logger -t ssh-security
+            # If GCE duplicated our key, clean it up
+            echo "$VALIDATOR_KEY" > "$keyfile.tmp"
+            chattr -i "$keyfile"
+            mv "$keyfile.tmp" "$keyfile"
+            chmod 600 "$keyfile"
+            chown "$user:$user" "$keyfile"
+            chattr +i "$keyfile"
+        fi
+    fi
+
+    # harden SSH daemon
+    sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+    sed -i 's/^#\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' /etc/ssh/sshd_config
+    systemctl restart ssh
+
+    # stop & mask every Google guest component
+    for svc in google-guest-agent google-startup-scripts \
+               google-osconfig-agent google-networking-agent; do
+        systemctl stop  "$svc" || true
+        systemctl disable "$svc" || true
+        systemctl mask "$svc" || true
+    done
+
+    # Self-destruction timer (failsafe for orphaned VMs)
+    cat >/usr/local/bin/self-destruct-timer.sh <<'EOF'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    LOG=/var/log/self-destruct-timer.log
+    
+    # Get timeout from validator-provided metadata
+    TIMEOUT=$(curl -fsH 'Metadata-Flavor: Google' \
+      http://169.254.169.254/computeMetadata/v1/instance/attributes/self-destruct-timeout)
+    
+    echo "$(date --iso-8601=seconds) Self-destruct timer started: ${TIMEOUT}s" >>"$LOG"
+    sleep "${TIMEOUT}"
+    
+    echo "$(date --iso-8601=seconds) Timer expired - initiating cleanup" >>"$LOG"
+    
+    # Get metadata for deletion
+    PROJECT=$(curl -fsH 'Metadata-Flavor: Google' \
+             http://169.254.169.254/computeMetadata/v1/instance/attributes/gcp-project-id)
+    TOKEN=$(curl -fsH 'Metadata-Flavor: Google' \
+             http://169.254.169.254/computeMetadata/v1/instance/attributes/gcp-token)
+    ZONE=$(curl -fsH 'Metadata-Flavor: Google' \
+          http://169.254.169.254/computeMetadata/v1/instance/zone | awk -F/ '{print $4}')
+    NAME=$(curl -fsH 'Metadata-Flavor: Google' \
+          http://169.254.169.254/computeMetadata/v1/instance/name)
+    
+    echo "$(date --iso-8601=seconds) Attempting API deletion of ${NAME}" >>"$LOG"
+    
+    # Delete instance using GCP API with fallback
+    if curl -fs -X DELETE -H "Authorization: Bearer ${TOKEN}" \
+         "https://compute.googleapis.com/compute/v1/projects/${PROJECT}/zones/${ZONE}/instances/${NAME}"; then
+        echo "$(date --iso-8601=seconds) API deletion successful" >>"$LOG"
+    else
+        echo "$(date --iso-8601=seconds) API deletion failed, forcing shutdown" >>"$LOG"
+        shutdown -P now "Self-destruct timer expired"
+    fi
+    EOF
+
+    chmod +x /usr/local/bin/self-destruct-timer.sh
+
+    # Start timer in background (nohup ensures it survives parent process)
+    nohup /usr/local/bin/self-destruct-timer.sh &
+
+    echo "Self-destruction timer initialized" | logger -t self-destruct
+
+    # install the tamper-guard
+    cat >/usr/local/bin/tamper-guard.sh <<'EOF'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    LOG=/var/log/tamper-guard.log
+    echo "$(date --iso-8601=seconds) guard up" >>"$LOG"
+
+    self_destruct() {
+      # Get passed values from metadata
+      PROJECT=$(curl -fsH 'Metadata-Flavor: Google' \
+               http://169.254.169.254/computeMetadata/v1/instance/attributes/gcp-project-id)
+      TOKEN=$(curl -fsH 'Metadata-Flavor: Google' \
+               http://169.254.169.254/computeMetadata/v1/instance/attributes/gcp-token)
+      ZONE=$(curl -fsH 'Metadata-Flavor: Google' \
+            http://169.254.169.254/computeMetadata/v1/instance/zone | awk -F/ '{print $4}')
+      NAME=$(curl -fsH 'Metadata-Flavor: Google' \
+            http://169.254.169.254/computeMetadata/v1/instance/name)
+      
+      # Delete instance using passed token
+      curl -fs -X DELETE -H "Authorization: Bearer ${TOKEN}" \
+           "https://compute.googleapis.com/compute/v1/projects/${PROJECT}/zones/${ZONE}/instances/${NAME}" \
+           || true
+      shutdown -P now
+    }
+
+    inotifywait -qe modify,attrib,move,create,delete /home/validator/.ssh/authorized_keys &
+    curl -fs -H 'Metadata-Flavor: Google' \
+      'http://169.254.169.254/computeMetadata/v1/instance/attributes/ssh-keys?wait_for_change=true&timeout_sec=2147483647' &
+    wait -n
+    echo "$(date --iso-8601=seconds) tamper detected" >>"$LOG"
+    self_destruct
+    EOF
+
+    chmod +x /usr/local/bin/tamper-guard.sh
+
+    cat >/etc/systemd/system/tamper-guard.service <<'EOF'
+    [Unit]
+    Description=Power-off & delete VM if SSH key is altered
+    After=network-online.target
+
+    [Service]
+    Type=simple
+    ExecStart=/usr/local/bin/tamper-guard.sh
+    Restart=always
+    RestartSec=5
+
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+
+    systemctl daemon-reload
+    systemctl enable --now tamper-guard.service

@@ -9,7 +9,7 @@ secure access control through key management.
 
 --------------------------------------------------------------------------------
 FEATURES:
-- **Logging & Debugging:** Provides structured logging via Loguru and Python’s 
+- **Logging & Debugging:** Provides structured logging via Loguru and Python's 
   built-in logging module.
 - **SSH Session Management:** Supports key-based authentication, session key 
   generation, and automated secure key insertion.
@@ -75,7 +75,7 @@ import os
 import json
 import random
 from tensorprox import *
-from typing import List, Dict, Tuple, Union, Callable
+from typing import List, Dict, Tuple, Union, Callable, Optional
 from loguru import logger
 from pydantic import BaseModel
 from tensorprox.base.protocol import PingSynapse, ChallengeSynapse
@@ -87,6 +87,14 @@ import logging
 from functools import partial
 import shlex
 import traceback
+import aiohttp
+import socket
+from tensorprox.core.apis.azure_api import (
+    get_azure_access_token,
+    retrieve_vm_infrastructure, 
+    provision_azure_vms_for_uid,
+    clear_vms
+)
 
 ######################################################################
 # LOGGING and ENVIRONMENT SETUP
@@ -122,6 +130,8 @@ class RoundManager(BaseModel):
     validator_ip: str = get_public_ip()
     king_ips: Dict[int, str] = {}
     moat_private_ips: Dict[int, str] = {}
+    king_details: Dict[int, dict] = {}
+    traffic_generator_details: Dict[int, List[dict]] = {}
 
     def check_machine_availability(self, machine_name: str = None, uid: int = None) -> bool:
         """
@@ -192,7 +202,17 @@ class RoundManager(BaseModel):
 
         cmd = ' '.join(shlex.quote(arg) for arg in args)
         
-        return await check_files_and_execute(ip, key_path, ssh_user, paired_list, cmd)
+        # logger.debug(f"Executing command on {ip}: {cmd[:100]}...") #DELETE FOR PRODUCTION!
+        # logger.debug(f"Full command: {cmd}") #DELETE FOR PRODUCTION!
+        
+        result = await check_files_and_execute(ip, key_path, ssh_user, paired_list, cmd)
+        
+        # if hasattr(result, 'stdout'): #DELETE FOR PRODUCTION!
+        #     logger.debug(f"Command stdout from {ip}: {result.stdout[:200] if result.stdout else 'empty'}") #DELETE FOR PRODUCTION!
+        # if hasattr(result, 'stderr') and result.stderr: #DELETE FOR PRODUCTION!
+        #     logger.debug(f"Command stderr from {ip}: {result.stderr[:200]}") #DELETE FOR PRODUCTION!
+        
+        return result
     
 
     async def extract_metrics(self, result: str, machine_name: str, label_hashes: dict) -> tuple:
@@ -273,9 +293,12 @@ class RoundManager(BaseModel):
                 - A dictionary with the UID's availability status, including status code and message.
         """
 
-        # Initialize a dummy synapse for example purposes
+        # Initialize a dummy synapse
         synapse = PingSynapse(machine_availabilities=MachineConfig())
         uid, synapse = await self.dendrite_call(uid, synapse)
+# # for testing only - delete after. 
+        # if uid == 9:
+        #     logger.info(f"UID 9 synapse response: {synapse}")
 
         uid_status_availability = {"uid": uid, "ping_status_message" : None, "ping_status_code" : None}
 
@@ -284,51 +307,192 @@ class RoundManager(BaseModel):
             uid_status_availability["ping_status_code"] = 500
             return synapse, uid_status_availability
 
-        # Check the validity of the traffic generators
-        if not synapse.machine_availabilities.is_valid:
-            uid_status_availability["ping_status_message"] = "Not enough traffic generators (minimum 2 required)."
-            uid_status_availability["ping_status_code"] = 400
-            return synapse, uid_status_availability
-    
-        if not synapse.machine_availabilities.key_pair:
-            uid_status_availability["ping_status_message"] = "Missing SSH Key Pair."
-            uid_status_availability["ping_status_code"] = 400
-            return synapse, uid_status_availability
+        # Extract provider from synapse
+        provider = synapse.machine_availabilities.provider
+        
+        # Generate session key pair
+        session_key_path = os.path.join(SESSION_KEY_DIR, f"session_key_{uid}")
+        _, public_key = await generate_local_session_keypair(session_key_path)
+        
+        # Initialize variables
+        king_machine = None
+        traffic_generators = None
+        moat_ip = None
+        
+        # Route based on provider
+        if provider == "AZURE":
+            # Translate generic fields to Azure-specific
+            credentials = {}
+            credentials["AZURE_CLIENT_ID"] = synapse.machine_availabilities.auth_id
+            credentials["AZURE_CLIENT_SECRET"] = synapse.machine_availabilities.auth_secret
+            credentials["AZURE_TENANT_ID"] = synapse.machine_availabilities.project_id
+            credentials["AZURE_RESOURCE_GROUP"] = synapse.machine_availabilities.resource_group
+            # Extract subscription ID from resource group path
+            if synapse.machine_availabilities.resource_group and "/" in synapse.machine_availabilities.resource_group:
+                credentials["AZURE_SUBSCRIPTION_ID"] = synapse.machine_availabilities.resource_group.split("/")[2]
+            else:
+                credentials["AZURE_SUBSCRIPTION_ID"] = None
+            
+            machine_config = {
+                'app_credentials': credentials,
+                'location': synapse.machine_availabilities.region,
+                'num_tgens': synapse.machine_availabilities.num_tgens,
+                'tgens_size': synapse.machine_availabilities.vm_size_small,
+                'king_size': synapse.machine_availabilities.vm_size_large
+            }
+            
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 session key generated, getting Azure token...")
+            token = await get_azure_access_token(credentials)
+            
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 validating infrastructure...")
+            subnet_id, nsg_id = await retrieve_vm_infrastructure(
+                token, 
+                credentials["AZURE_SUBSCRIPTION_ID"], 
+                credentials["AZURE_RESOURCE_GROUP"], 
+                synapse.machine_availabilities.region, 
+                uid, 
+                synapse.machine_availabilities.vpc_name, 
+                synapse.machine_availabilities.subnet_name
+            )
+            
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 provisioning VMs...")
+            king_machine, traffic_generators, moat_ip = await provision_azure_vms_for_uid(
+                uid, 
+                machine_config, 
+                public_key, 
+                subnet_id, 
+                nsg_id
+            )
+        elif provider == "GCP":
+            # Import GCP-specific functions
+            from tensorprox.core.apis.gcp_api import (
+                get_gcp_access_token,
+                retrieve_vm_infrastructure as gcp_retrieve_infrastructure,
+                provision_gcp_vms_for_uid,
+                translate_config
+            )
+            
+            # Pass full generic config to GCP API
+            machine_config = synapse.machine_availabilities.dict()
+            
+            # Get GCP access token
+            token = await get_gcp_access_token(machine_config)
+            
+            # GCP API will handle translation internally
+            gcp_config = translate_config(machine_config)
+            project_id = gcp_config["GCP_PROJECT_ID"]
+            zone = machine_config["region"]
+            vpc_name = machine_config["vpc_name"]
+            subnet_name = machine_config["subnet_name"]
+            
+            # Retrieve infrastructure (miners provide subnets with firewall rules)
+            subnet_link = await gcp_retrieve_infrastructure(
+                token,
+                project_id,
+                zone,
+                uid,
+                vpc_name,
+                subnet_name
+            )
+            
+            # Provision VMs with custom specs if provided
+            king_machine, traffic_generators, moat_ip = await provision_gcp_vms_for_uid(
+                uid,
+                machine_config,
+                public_key,
+                subnet_link
+            )
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
 
-        # Extract SSH key pair safely
-        ssh_pub, ssh_priv = synapse.machine_availabilities.key_pair
-        original_key_path = f"/var/tmp/original_key_{uid}.pem"
-        save_file_with_permissions(ssh_priv, original_key_path)
+        # Provider-specific VM readiness handling
+        if provider == "AZURE":
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 Azure VMs provisioned, waiting for VM readiness...")
+            
+            # Azure still uses static wait (can be improved later)
+            await asyncio.sleep(90)
+            
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 Azure VM readiness wait complete, starting SSH tests...")
+        elif provider == "GCP":
+            # GCP handles readiness polling internally in provision_gcp_vms_for_uid
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 GCP VMs ready, starting SSH tests...")
+            pass
+        # logger.info(f"Response: king_machine={king_machine}, traffic_generators={traffic_generators}, moat_private_ip={moat_ip}")
 
         all_machines_available = True
 
         # Create a list containing all machines to check - king and all traffic generators
-        machines_to_check = synapse.machine_availabilities.traffic_generators + [synapse.machine_availabilities.king]
+        machines_to_check = [king_machine]+traffic_generators
         
         # Check all machines
         for machine_details in machines_to_check:
 
-            ip = machine_details.ip
-            ssh_user = machine_details.username
+            ip = machine_details['ip']
+            ssh_user = machine_details['username']
+
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 testing SSH to {ip} with user {ssh_user}...")
 
             if not is_valid_ip(ip):
                 all_machines_available = False
                 uid_status_availability["ping_status_message"] = "Invalid IP format."
                 uid_status_availability["ping_status_code"] = 400
+                # #DELETE FOR PRODUCTION!
+                # if uid == 9:
+                #     logger.error(f"UID 9 invalid IP: {ip}")
+                logger.error(f"UID {uid} SSH validation failed - Invalid IP format: {ip}")
                 break
 
             # Test SSH Connection with asyncssh
-            client = await ssh_connect_execute(ip, original_key_path, ssh_user)
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 starting SSH connection test to {ip}...")
+            
+            client = await ssh_connect_execute(ip, session_key_path, ssh_user)
 
             if not client:
                 all_machines_available = False
                 uid_status_availability["ping_status_message"] = "SSH connection failed."
                 uid_status_availability["ping_status_code"] = 500
+                # #DELETE FOR PRODUCTION!
+                # if uid == 9:
+                #     logger.error(f"UID 9 SSH failed to {ip}")
+                logger.error(f"UID {uid} SSH validation failed - Connection to {ip} with user {ssh_user} failed (key: {session_key_path})")
                 break
+            else:
+                # #DELETE FOR PRODUCTION!
+                # if uid == 9:
+                #     logger.info(f"UID 9 SSH connection successful to {ip}")
+                # logger.info(f"UID {uid} SSH connection successful to {ip} with user {ssh_user}")
+                pass
 
         if all_machines_available:
             uid_status_availability["ping_status_message"] = f"✅ All machines are accessible for UID {uid}."
             uid_status_availability["ping_status_code"] = 200
+            # Store machine details for later use in execute_task
+            self.king_details[uid] = king_machine
+            self.traffic_generator_details[uid] = traffic_generators
+            self.moat_private_ips[uid] = moat_ip
+            # #DELETE FOR PRODUCTION!
+            # if uid == 9:
+            #     logger.info(f"UID 9 SUCCESS: All machines accessible!")
+        
+        # #DELETE FOR PRODUCTION!
+        # if uid == 9:
+        #     logger.info(f"UID 9 FINAL RETURN: all_machines_available={all_machines_available}, status={uid_status_availability}")
 
         return synapse, uid_status_availability
 
@@ -368,6 +532,82 @@ class RoundManager(BaseModel):
             return uid, PingSynapse()
             
 
+    async def clone_tensorprox_immutable(
+        self,
+        ip: str,
+        ssh_user: str,
+        key_path: str,
+        repo_url: str = "https://github.com/shugo-labs/tensorprox.git",
+        branch: str = "hyperscaler",
+        sparse_folder: str = "tensorprox/core/immutable",
+        timeout: int = 120
+    ) -> bool:
+        """Clone the immutable folder to validator-provisioned machines.
+        
+        The target path is context-sensitive:
+        - root user: /root/tensorprox
+        - other users: /home/{ssh_user}/tensorprox
+        
+        Args:
+            ip (str): IP address of the remote machine
+            ssh_user (str): SSH username
+            key_path (str): Path to SSH key
+            repo_url (str): Repository URL to clone from
+            branch (str): Branch to checkout
+            sparse_folder (str): Sparse checkout folder path
+            timeout (int): SSH connection timeout
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Determine target path based on user
+            default_dir = get_default_dir(ssh_user=ssh_user)
+            target_path = os.path.join(default_dir, "tensorprox")
+            
+            commands = [
+                # Install git if needed
+                "which git || (sudo apt-get update && sudo apt-get install -y git)",
+                
+                # Remove existing directory and create fresh
+                f"sudo rm -rf {target_path}",
+                f"sudo mkdir -p {target_path}",
+                f"sudo chown {ssh_user}:{ssh_user} {target_path}",
+                
+                # Initialize sparse checkout
+                f"cd {target_path} && git init",
+                f"cd {target_path} && git config core.sparseCheckout true",
+                f"cd {target_path} && echo '{sparse_folder}/*' > .git/info/sparse-checkout",
+                f"cd {target_path} && git remote add origin {repo_url}",
+                f"cd {target_path} && git fetch origin {branch}",
+                f"cd {target_path} && git checkout {branch}"
+            ]
+            
+            # Execute commands via SSH
+            result = await ssh_connect_execute(
+                ip=ip,
+                private_key_path=key_path,
+                username=ssh_user,
+                cmd=" && ".join(commands),
+                connection_timeout=timeout
+            )
+            
+            if result is False:
+                # logging.error(f"SSH connection failed during clone for {ip}") #DELETE FOR PRODUCTION!
+                return False
+                
+            if hasattr(result, 'returncode') and result.returncode != 0:
+                # logging.error(f"Git clone commands failed on {ip}: exit code {result.returncode}") #DELETE FOR PRODUCTION!
+                # if hasattr(result, 'stderr'):
+                #     logging.error(f"Git clone stderr: {result.stderr}") #DELETE FOR PRODUCTION!
+                return False
+                
+            return True
+            
+        except Exception as e:
+            logging.error(f"Failed to clone repository on {ip}: {e}")
+            return False
+
     async def process_initial_setup(
         self,
         ip: str,
@@ -375,52 +615,43 @@ class RoundManager(BaseModel):
         key_path: str,
         remote_base_directory: str,
         uid: int,
-        ssh_dir: str,
-        authorized_keys_path: str,
-        authorized_keys_bak: str,
         script_name: str = "initial_setup.sh",
         linked_files: list = []
     ) -> bool:
         """
-        Performs the initial setup process on the remote server.
+        Performs the initial setup process on validator-controlled machines.
 
-        This method generates a session key pair, prepares the required arguments for
-        running the setup script, and calls the `run` method to execute it on the remote server.
+        This method first clones the tensorprox immutable repository, then runs
+        the package installation script.
 
         Args:
             ip (str): The IP address of the remote server.
             ssh_user (str): The SSH username to access the server.
             key_path (str): The path to the SSH private key for authentication.
             remote_base_directory (str): The base directory on the remote server.
-            uid (int): The user ID for creating a session key.
-            ssh_dir (str): The directory where SSH keys are stored.
-            authorized_keys_path (str): The path to the authorized keys file on the remote server.
-            authorized_keys_bak (str): The backup path for the authorized keys file.
+            uid (int): The miner UID for logging purposes.
             script_name (str, optional): The name of the script to execute (default is "initial_setup.sh").
             linked_files (list, optional): List of linked files to verify along with the script (default is an empty list).
 
         Returns:
-            bool: Returns `True` if the setup process was successful, otherwise `False`.
+            bool: Returns `True` if both cloning and setup were successful, otherwise `False`.
         """
 
+        # First, clone the repository
+        clone_success = await self.clone_tensorprox_immutable(
+            ip=ip,
+            ssh_user=ssh_user,
+            key_path=key_path
+        )
+        if not clone_success:
+            logging.error(f"Failed to clone repository for miner {uid} on {ip}")
+            return False
+
+        # Then run the package installation script
         remote_script_path = get_immutable_path(remote_base_directory, script_name)
         files_to_verify = [script_name] + linked_files
-
-        # Generate the session key pair
-        session_key_path = os.path.join(SESSION_KEY_DIR, f"session_key_{uid}_{ip}")
-        _, session_pub = await generate_local_session_keypair(session_key_path)
-
-        session_pub = session_pub.replace(' ', '<TENSORPROX_SPACE>')
-
-        args = [
-            '/usr/bin/bash', 
-            remote_script_path,
-            ssh_user, 
-            ssh_dir, 
-            session_pub,
-            authorized_keys_path, 
-            authorized_keys_bak
-        ]
+        
+        args = ['sudo', '/usr/bin/bash', remote_script_path]
 
         return await self.run(
             ip=ip,
@@ -431,116 +662,6 @@ class RoundManager(BaseModel):
             remote_base_directory=remote_base_directory
         )
     
-    async def process_lockdown(
-        self,
-        ip: str,
-        ssh_user: str,
-        key_path: str,
-        remote_base_directory: str,
-        ssh_dir: str,
-        authorized_keys_path: str,
-        authorized_keys_bak: str,
-        revert_timeout: int,
-        script_name: str = "lockdown.sh",
-        linked_files: list = []
-    ) -> bool:
-        """
-        Executes the lockdown script on the remote server.
-
-        This method prepares the arguments for running the lockdown script and calls the `run` method
-        to execute it on the remote server.
-
-        Args:
-            ip (str): The IP address of the remote server.
-            ssh_user (str): The SSH username to access the server.
-            key_path (str): The path to the SSH private key for authentication.
-            remote_base_directory (str): The base directory on the remote server.
-            ssh_dir (str): The directory where SSH keys are stored.
-            authorized_keys_path (str): The path to the authorized keys file on the remote server.
-            script_name (str, optional): The name of the script to execute (default is "lockdown.sh").
-            linked_files (list, optional): List of linked files to verify along with the script (default is an empty list).
-
-        Returns:
-            bool: Returns `True` if the lockdown process was successful, otherwise `False`.
-        """
-
-        remote_script_path = get_immutable_path(remote_base_directory, script_name)
-        files_to_verify = [script_name] + linked_files
-
-        args = [
-            '/usr/bin/bash', 
-            remote_script_path,
-            ssh_user, 
-            ssh_dir, 
-            self.validator_ip,
-            authorized_keys_path,
-            authorized_keys_bak,
-            str(revert_timeout)
-        ]
-
-        return await self.run(
-            ip=ip,
-            ssh_user=ssh_user,
-            key_path=key_path,
-            args=args,
-            files_to_verify=files_to_verify,
-            remote_base_directory=remote_base_directory
-        )
-    
-    async def process_revert(
-        self,
-        ip: str,
-        ssh_user: str,
-        key_path: str,
-        remote_base_directory: str,
-        authorized_keys_bak: str,
-        authorized_keys_path: str,
-        revert_log: str,
-        script_name: str = "revert.sh",
-        linked_files: list = []
-    ) -> bool:
-        """
-        Executes the revert script on the remote server.
-
-        This method prepares the arguments for running the revert script and calls the `run` method
-        to execute it on the remote server.
-
-        Args:
-            ip (str): The IP address of the remote server.
-            ssh_user (str): The SSH username to access the server.
-            key_path (str): The path to the SSH private key for authentication.
-            remote_base_directory (str): The base directory on the remote server.
-            authorized_keys_bak (str): The path to the backup authorized keys file.
-            authorized_keys_path (str): The path to the authorized keys file on the remote server.
-            revert_log (str): The path to the revert log.
-            script_name (str, optional): The name of the script to execute (default is "revert.sh").
-            linked_files (list, optional): List of linked files to verify along with the script (default is an empty list).
-
-        Returns:
-            bool: Returns `True` if the revert process was successful, otherwise `False`.
-        """
-
-        remote_script_path = get_immutable_path(remote_base_directory, script_name)
-        files_to_verify = [script_name] + linked_files
-
-        args = [
-            '/usr/bin/bash', 
-            remote_script_path,
-            ssh_user,
-            ip, 
-            authorized_keys_bak, 
-            authorized_keys_path,
-            revert_log
-        ]
-
-        return await self.run(
-            ip=ip,
-            ssh_user=ssh_user,
-            key_path=key_path,
-            args=args,
-            files_to_verify=files_to_verify,
-            remote_base_directory=remote_base_directory
-        )
     
     async def process_gre_setup(
         self,
@@ -586,7 +707,7 @@ class RoundManager(BaseModel):
             moat_private_ip,
             private_ip,
             interface,
-            index
+            str(index)  # Ensure index is string for command line
         ]
 
         return await self.run(
@@ -640,6 +761,8 @@ class RoundManager(BaseModel):
         playlist = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
         label_hashes = json.dumps(label_hashes)
         
+        # logger.debug(f"Preparing challenge for {machine_name}: script={remote_script_path}, playlist={'provided' if machine_name != 'king' else 'null'}") #DELETE FOR PRODUCTION!
+        
         args = [
             "/usr/bin/bash",
             remote_script_path,
@@ -650,6 +773,8 @@ class RoundManager(BaseModel):
             KING_OVERLAY_IP,
             remote_traffic_gen,
         ]
+
+        # logger.debug(f"Challenge args for {machine_name}: {args[2:5]}...") #DELETE FOR PRODUCTION!
 
         return await self.run(
             ip=ip,
@@ -689,6 +814,9 @@ class RoundManager(BaseModel):
                 return dummy_synapse, uid_status_availability
             except Exception as e:
                 # General exception fallback (optional, but good practice)
+                # #DELETE FOR PRODUCTION!
+                # if uid == 9:
+                #     logger.error(f"Exception in check_miner for UID {uid}: {str(e)}")
                 dummy_synapse = PingSynapse(machine_availabilities=MachineConfig())
                 uid_status_availability = {
                     "uid": uid,
@@ -715,8 +843,6 @@ class RoundManager(BaseModel):
         """
         synapse, uid_status_availability = await self.query_availability(uid)  
 
-        self.king_ips[uid] = synapse.machine_availabilities.king.ip
-        self.moat_private_ips[uid] = synapse.machine_availabilities.moat_private_ip
         return synapse, uid_status_availability
     
     async def execute_task(
@@ -731,15 +857,13 @@ class RoundManager(BaseModel):
         timeout: int = ROUND_TIMEOUT
     ) -> List[Dict[str, Union[int, str]]]:
         """
-        A generic function to execute different tasks (such as setup, lockdown, revert, challenge) on miners. 
+        A generic function to execute different tasks (such as setup, challenge) on miners. 
         This function orchestrates the process of executing the provided task on multiple miners in parallel, 
         handling individual machine configurations, and ensuring each miner completes the task within a specified timeout.
 
         Args:
             task (str): The type of task to perform. Possible values are:
                 'setup': Setup the miner environment (e.g., install dependencies).
-                'lockdown': Lockdown the miner, restricting access or making it inaccessible.
-                'revert': Revert any changes made to the miner (restore to a previous state).
                 'challenge': Run a challenge procedure on the miner.
             miners (List[Tuple[int, PingSynapse]]): List of miners represented as tuples containing the unique ID (`int`) 
                                                     and the `PingSynapse` object, which holds machine configuration details.
@@ -780,35 +904,44 @@ class RoundManager(BaseModel):
 
                 Args:
                     machine_type (str): Type of the machine ("king" or "tgen").
-                    machine_details (object): Machine connection details (contains `ip`, `username`, etc.).
+                    machine_details (dict): Machine connection details (contains `ip`, `username`).
 
                 Returns:
                     bool: True if the task succeeds, False otherwise.
                 """
 
                 # Retrieve necessary connection and task details
-                ip = machine_details.ip
-                private_ip = machine_details.private_ip
-                interface = machine_details.interface
-                ssh_user = machine_details.username
-                index = machine_details.index
-                ssh_dir = get_authorized_keys_dir(ssh_user)  # Get directory for authorized keys
-                authorized_keys_path = f"{ssh_dir}/authorized_keys"  # Path to the authorized keys file
-                key_path = f"/var/tmp/original_key_{uid}.pem" if task == "initial_setup" else os.path.join(SESSION_KEY_DIR, f"session_key_{uid}_{ip}")  # Set key path based on the task type
-                authorized_keys_bak = f"{ssh_dir}/authorized_keys.bak_{backup_suffix}"  # Backup path for authorized keys
-                revert_log = f"/tmp/revert_log_{uid}_{backup_suffix}.log"  # Log path for revert operations
-                revert_timeout = LOCKDOWN_TIMEOUT + CHALLENGE_TIMEOUT #duration of the lockdown
+                ip = machine_details['ip']
+                ssh_user = machine_details['username']
+                key_path = os.path.join(SESSION_KEY_DIR, f"session_key_{uid}")  # Use correct session key path
 
                 # Get machine-specific details like private IP and default directories
                 moat_private_ip = self.moat_private_ips[uid]  # Private IP for the Moat machine
                 default_dir = get_default_dir(ssh_user=ssh_user)  # Get the default directory for the user
                 remote_base_directory = os.path.join(default_dir, "tensorprox")  # Define the remote base directory for tasks
 
-                machine_name = (
-                    "king" if machine_type == "king" 
-                    else f"{machine_type}-{index}" if machine_type == "tgen" 
-                    else "unknown"
-                )
+                # Determine network interface based on provider
+                provider = synapse.machine_availabilities.provider
+                if provider == "GCP":
+                    from tensorprox.core.apis.gcp_api import GCP_INTERFACE
+                    interface = GCP_INTERFACE
+                else:
+                    interface = AZURE_INTERFACE  # Default to Azure interface
+
+                # For traffic generators, extract index from the task creation call
+                if machine_type == "king":
+                    machine_name = "king"
+                    index = 0
+                    private_ip = machine_details.get('private_ip')  # Get private IP from provider response
+                elif machine_type == "tgen":
+                    # Index will be passed separately, default to 0 for now
+                    index = machine_details.get('_index', 0)
+                    machine_name = f"tgen-{index}"
+                    private_ip = machine_details.get('private_ip')  # Get private IP from provider response
+                else:
+                    machine_name = "unknown"
+                    index = 0
+                    private_ip = None
 
                 try:
                     if task == "initial_setup":
@@ -817,35 +950,29 @@ class RoundManager(BaseModel):
                             ssh_user,
                             key_path,
                             remote_base_directory,
-                            uid,
-                            ssh_dir,
-                            authorized_keys_path,
-                            authorized_keys_bak
+                            uid
                         )
                     elif task == "gre_setup":
-                        result = await self.process_gre_setup(
-                            ip,
-                            ssh_user,
-                            key_path,
-                            remote_base_directory,
-                            machine_type,
-                            index,
-                            moat_private_ip,
-                            private_ip,
-                            interface
-                        )
-                    elif task == "lockdown":
-                        result = await self.process_lockdown(
-                            ip,
-                            ssh_user,
-                            key_path,
-                            remote_base_directory,
-                            ssh_dir,
-                            authorized_keys_path,
-                            authorized_keys_bak,
-                            revert_timeout
-                        )
+                        if not private_ip or not interface:
+                            # logger.error(f"Missing network config for {machine_type} {machine_name}: private_ip={private_ip}, interface={interface}") #DELETE FOR PRODUCTION!
+                            result = False
+                        else:
+                            result = await self.process_gre_setup(
+                                ip,
+                                ssh_user,
+                                key_path,
+                                remote_base_directory,
+                                machine_type,
+                                index,
+                                moat_private_ip,
+                                private_ip,
+                                interface
+                            )
+                            if not result:
+                                # logger.error(f"GRE setup failed for {machine_type} {machine_name} at {ip}") #DELETE FOR PRODUCTION!
+                                pass
                     elif task == "challenge":
+                        # logger.debug(f"Starting challenge execution on {machine_name} at {ip}") #DELETE FOR PRODUCTION!
                         result = await self.process_challenge(
                             ip,
                             ssh_user,
@@ -856,7 +983,9 @@ class RoundManager(BaseModel):
                             label_hashes,
                             playlists
                         )
+                        # logger.debug(f"Challenge execution result for {machine_name}: {result}") #DELETE FOR PRODUCTION!
                         result = await self.extract_metrics(result, machine_name, label_hashes)
+                        # logger.debug(f"Extracted metrics for {machine_name}: {result}") #DELETE FOR PRODUCTION!
                     else:
                         raise ValueError(f"Unsupported task: {task}")
 
@@ -866,10 +995,10 @@ class RoundManager(BaseModel):
                     logging.error(f"Error executing task on {machine_name} with ip {ip} for miner {uid}: {e}")
                     return False
             
-            # Create tasks for all machines of the miner
-            king_machine_task = process_machine("king", synapse.machine_availabilities.king)
+            # Create tasks for all machines of the miner using stored machine details
+            king_machine_task = process_machine("king", self.king_details[uid])
             traffic_generators_tasks = [
-                process_machine("tgen", details) for details in synapse.machine_availabilities.traffic_generators
+                process_machine("tgen", {**details, '_index': i}) for i, details in enumerate(self.traffic_generator_details[uid])
             ]
 
             # Run all tasks concurrently
@@ -918,7 +1047,7 @@ class RoundManager(BaseModel):
                 await asyncio.wait_for(process_miner(uid, synapse), timeout=timeout)
 
                 state = (
-                    "GET_READY" if task == "lockdown" 
+                    "GET_READY" if task == "gre_setup" 
                     else "END_ROUND" if task == "challenge" 
                     else None
                 )
@@ -968,4 +1097,55 @@ class RoundManager(BaseModel):
                 }
         
         return [{"uid": uid, **status} for uid, status in task_status.items()]
-
+    
+    async def clear_round_vms(self, miners_to_clear: List[Tuple[int, 'PingSynapse']]) -> None:
+        """
+        Clear VMs for all miners after round completion.
+        
+        This method handles cleanup for different cloud providers in a generic way.
+        Currently supports Azure and GCP providers.
+        
+        Args:
+            miners_to_clear: List of (uid, synapse) tuples for miners whose VMs should be cleared
+        """
+                
+        cleanup_tasks = []
+        
+        for uid, synapse in miners_to_clear:
+            try:
+                provider = synapse.machine_availabilities.provider
+                
+                if provider == "GCP":
+                    # Dynamic import of GCP clear_vms to avoid circular dependencies
+                    from tensorprox.core.apis.gcp_api import clear_vms as gcp_clear_vms
+                    
+                    # Pass full generic config to GCP API
+                    machine_config = synapse.machine_availabilities.dict()
+                    
+                    # Use timestamp for tracking
+                    import time
+                    timestamp = int(time.time())
+                    cleanup_tasks.append(gcp_clear_vms(uid, machine_config, timestamp))
+                    
+                else:
+                    logger.warning(f"Unsupported provider '{provider}' for UID {uid}, skipping cleanup")
+                    
+            except Exception as e:
+                logger.error(f"Error preparing cleanup for UID {uid}: {e}")
+                # Continue with other miners even if one fails
+        
+        if cleanup_tasks:
+            # Execute all cleanup tasks concurrently
+            results = await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+            
+            # Log results
+            for i, (uid, _) in enumerate(miners_to_clear):
+                if i < len(results):
+                    if isinstance(results[i], Exception):
+                        logger.error(f"Failed to clear VMs for UID {uid}: {results[i]}")
+                    else:
+                        # # DELETE FOR PRODUCTION !
+                        # logger.info(f"Successfully cleared VMs for UID {uid}")
+                        pass
+        
+        

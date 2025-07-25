@@ -355,7 +355,7 @@ Licensed under the **Creative Commons Attribution-NonCommercial 4.0 Internationa
 
 # Contact
 
-Join our [Discord](https://discord.gg/bittensor) for community support and discussions.
+Join our [Discord](https://discord.gg/ZC5a4qeFp7) for community support and discussions.
 
 ---
 

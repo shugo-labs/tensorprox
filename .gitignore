@@ -6,4 +6,6 @@ __pycache__/
 *.pyc
 *.pcap
 *.sig
-.env*
+.env
+.env.miner
+.env.validator
