@@ -1,0 +1,162 @@
+#cloud-config
+package_update: false
+packages:
+  - inotify-tools
+  - awscli
+
+runcmd:
+  - |
+    set -eux
+    user=ubuntu
+    sshdir=/home/$user/.ssh
+    keyfile=$sshdir/authorized_keys
+
+    # Insert validator SSH key
+    echo "{ssh_key}" >> "$keyfile"
+    
+    # Freeze the key file
+    chmod 700 "$sshdir"
+    chown "$user:$user" "$sshdir"
+    chmod 600 "$keyfile"
+    chown "$user:$user" "$keyfile"
+    chattr +i "$keyfile"
+
+    # Harden SSH daemon
+    sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+    sed -i 's/^#\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentication no/' /etc/ssh/sshd_config
+    systemctl restart ssh
+
+    # Disable AWS-specific agents
+    for svc in amazon-ssm-agent snap.amazon-ssm-agent.amazon-ssm-agent; do
+        systemctl stop "$svc" || true
+        systemctl disable "$svc" || true
+        systemctl mask "$svc" || true
+    done
+
+    # Disable EC2 Instance Connect
+    rm -f /usr/share/ec2-instance-connect/eic_run_authorized_keys || true
+    
+    # Self-destruction timer (failsafe for orphaned VMs)
+    cat >/usr/local/bin/self-destruct-timer.sh <<'EOF'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    LOG=/var/log/self-destruct-timer.log
+    
+    # Timeout passed from validator
+    TIMEOUT={self_destruct_timeout}
+    
+    echo "$(date --iso-8601=seconds) Self-destruct timer started: ${{TIMEOUT}}s" >>"$LOG"
+    sleep "${{TIMEOUT}}"
+    
+    echo "$(date --iso-8601=seconds) Timer expired - initiating termination" >>"$LOG"
+    
+    # Get instance metadata with IMDSv2
+    TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" \
+            -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" -s)
+    INSTANCE_ID=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+                  -s http://169.254.169.254/latest/meta-data/instance-id)
+    REGION=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+             -s http://169.254.169.254/latest/meta-data/placement/region)
+    
+    # Get self-destruct timeout from tags
+    TIMEOUT_TAG=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+                  -s http://169.254.169.254/latest/meta-data/tags/instance/self-destruct-timeout || echo "{self_destruct_timeout}")
+    
+    echo "$(date --iso-8601=seconds) Attempting termination of ${{INSTANCE_ID}}" >>"$LOG"
+    
+    # Try multiple methods to ensure termination
+    
+    # Method 1: Use AWS CLI with instance profile (if available)
+    if command -v aws &> /dev/null; then
+        if aws ec2 terminate-instances --instance-ids "${{INSTANCE_ID}}" --region "${{REGION}}" 2>>"$LOG"; then
+            echo "$(date --iso-8601=seconds) Termination via instance profile successful" >>"$LOG"
+            exit 0
+        fi
+    fi
+    
+    # Method 2: Use validator-provided credentials
+    export AWS_ACCESS_KEY_ID="{aws_access_key}"
+    export AWS_SECRET_ACCESS_KEY="{aws_secret_key}"
+    export AWS_DEFAULT_REGION="{aws_region}"
+    
+    if [ -n "$AWS_ACCESS_KEY_ID" ] && [ "$AWS_ACCESS_KEY_ID" != "{{aws_access_key}}" ]; then
+        if aws ec2 terminate-instances --instance-ids "${{INSTANCE_ID}}" --region "${{REGION}}" 2>>"$LOG"; then
+            echo "$(date --iso-8601=seconds) Termination via provided credentials successful" >>"$LOG"
+            exit 0
+        fi
+    fi
+    
+    # Method 3: Force shutdown
+    echo "$(date --iso-8601=seconds) All API termination methods failed, forcing shutdown" >>"$LOG"
+    shutdown -P now "Self-destruct timer expired"
+    EOF
+
+    chmod +x /usr/local/bin/self-destruct-timer.sh
+
+    # Start timer in background
+    nohup /usr/local/bin/self-destruct-timer.sh &
+
+    echo "Self-destruction timer initialized" | logger -t self-destruct
+
+    # Install the tamper-guard
+    cat >/usr/local/bin/tamper-guard.sh <<'EOF'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    LOG=/var/log/tamper-guard.log
+    echo "$(date --iso-8601=seconds) guard up" >>"$LOG"
+
+    self_destruct() {{
+      # Get instance metadata with IMDSv2
+      TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" \
+              -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" -s)
+      INSTANCE_ID=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+                    -s http://169.254.169.254/latest/meta-data/instance-id)
+      REGION=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+               -s http://169.254.169.254/latest/meta-data/placement/region)
+      
+      # Use validator-provided credentials for termination
+      export AWS_ACCESS_KEY_ID="{aws_access_key}"
+      export AWS_SECRET_ACCESS_KEY="{aws_secret_key}"
+      export AWS_DEFAULT_REGION="{aws_region}"
+      
+      # Terminate instance
+      aws ec2 terminate-instances --instance-ids "${{INSTANCE_ID}}" --region "${{REGION}}" || true
+      shutdown -P now
+    }}
+
+    # Monitor SSH key changes
+    inotifywait -qe modify,attrib,move,create,delete /home/ubuntu/.ssh/authorized_keys &
+    
+    # Monitor EC2 Instance Connect attempts (AWS-specific)
+    inotifywait -qe create,modify /var/lib/cloud/scripts/per-instance &
+    
+    wait -n
+    echo "$(date --iso-8601=seconds) tamper detected" >>"$LOG"
+    self_destruct
+    EOF
+
+    chmod +x /usr/local/bin/tamper-guard.sh
+
+    cat >/etc/systemd/system/tamper-guard.service <<'EOF'
+    [Unit]
+    Description=Power-off & terminate VM if SSH key is altered
+    After=network-online.target
+
+    [Service]
+    Type=simple
+    ExecStart=/usr/local/bin/tamper-guard.sh
+    Restart=always
+    RestartSec=5
+
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+
+    systemctl daemon-reload
+    systemctl enable --now tamper-guard.service
+    
+    # Configure instance for termination on shutdown
+    aws ec2 modify-instance-attribute \
+        --instance-id $(curl -s http://169.254.169.254/latest/meta-data/instance-id) \
+        --instance-initiated-shutdown-behavior terminate \
+        --region $(curl -s http://169.254.169.254/latest/meta-data/placement/region) || true
