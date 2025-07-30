@@ -408,6 +408,36 @@ class RoundManager(BaseModel):
                 public_key,
                 subnet_link
             )
+        elif provider == "AWS":
+            # Import AWS-specific functions
+            from tensorprox.core.apis.aws_api import (
+                get_aws_session,
+                retrieve_vm_infrastructure as aws_retrieve_infrastructure,
+                provision_aws_vms_for_uid
+            )
+            
+            # Pass full generic config to AWS API
+            machine_config = synapse.machine_availabilities.dict()
+            
+            # Get AWS session and signer
+            session, signer = await get_aws_session(machine_config)
+            
+            # Retrieve infrastructure
+            subnet_id, vpc_id = await aws_retrieve_infrastructure(
+                session,
+                signer,
+                machine_config,
+                uid
+            )
+            
+            # Provision VMs with custom specs if provided
+            king_machine, traffic_generators, moat_ip = await provision_aws_vms_for_uid(
+                uid,
+                machine_config,
+                public_key,
+                subnet_id,
+                vpc_id
+            )
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
@@ -428,6 +458,9 @@ class RoundManager(BaseModel):
             # #DELETE FOR PRODUCTION!
             # if uid == 9:
             #     logger.info(f"UID 9 GCP VMs ready, starting SSH tests...")
+            pass
+        elif provider == "AWS":
+            # AWS handles readiness polling internally in provision_aws_vms_for_uid
             pass
         # logger.info(f"Response: king_machine={king_machine}, traffic_generators={traffic_generators}, moat_private_ip={moat_ip}")
 
@@ -925,6 +958,9 @@ class RoundManager(BaseModel):
                 if provider == "GCP":
                     from tensorprox.core.apis.gcp_api import GCP_INTERFACE
                     interface = GCP_INTERFACE
+                elif provider == "AWS":
+                    from tensorprox.core.apis.aws_api import AWS_INTERFACE
+                    interface = AWS_INTERFACE
                 else:
                     interface = AZURE_INTERFACE  # Default to Azure interface
 
@@ -1126,6 +1162,18 @@ class RoundManager(BaseModel):
                     import time
                     timestamp = int(time.time())
                     cleanup_tasks.append(gcp_clear_vms(uid, machine_config, timestamp))
+                    
+                elif provider == "AWS":
+                    # Dynamic import of AWS clear_vms to avoid circular dependencies
+                    from tensorprox.core.apis.aws_api import clear_vms as aws_clear_vms
+                    
+                    # Pass full generic config to AWS API
+                    machine_config = synapse.machine_availabilities.dict()
+                    
+                    # Use timestamp for tracking
+                    import time
+                    timestamp = int(time.time())
+                    cleanup_tasks.append(aws_clear_vms(uid, machine_config, timestamp))
                     
                 else:
                     logger.warning(f"Unsupported provider '{provider}' for UID {uid}, skipping cleanup")

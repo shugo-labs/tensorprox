@@ -594,6 +594,7 @@ if __name__ == "__main__":
     provider_interfaces = {
         "AZURE": "eth0",
         "GCP": "ens4",
+        "AWS": "ens5",
         "LINODE": "eth0"  # For future use
     }
     moat_interface = provider_interfaces.get(config["provider"], "eth0")
