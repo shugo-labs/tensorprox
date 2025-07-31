@@ -2,7 +2,7 @@
 
 This directory contains a single, unified Terraform configuration file (`main.tf`) that creates all necessary AWS resources for TensorProx infrastructure.
 
-## Overview
+## 1. Overview
 
 The configuration creates:
 - IAM user with minimal EC2 permissions
@@ -12,14 +12,14 @@ The configuration creates:
 - CloudWatch logging and alarms
 - All necessary supporting resources
 
-## Quick Start
+## 2. Quick Start
 
-1. **Prerequisites**
+ ### 2.1 Prerequisites
    - Terraform 1.0 or later
    - AWS CLI v2 configured with credentials
    - An AWS account with appropriate permissions
 
-2. **Configuration**
+ ### 2.2 Configuration
    ```bash
    # Copy the example variables file
    cp terraform.tfvars.example terraform.tfvars
@@ -28,7 +28,7 @@ The configuration creates:
    # IMPORTANT: Set your notification_email
    ```
 
-3. **Deploy**
+### 2.3 Deploy
    ```bash
    # Initialize and deploy everything
    ./deploy.sh apply
@@ -37,10 +37,10 @@ The configuration creates:
    ./deploy.sh apply -f custom.tfvars
    ```
 
-4. **Get Environment File**
+### 2.4 Get Environment File
    The deployment automatically generates a `${project_name}.env` file with all necessary configuration for TensorProx miners.
 
-## Usage
+## 3. Usage
 
 ### Deploy Infrastructure
 ```bash
@@ -77,7 +77,7 @@ The configuration creates:
 | `vm_size_small` | King instance type | t3.small |
 | `vm_size_large` | TGen instance type | t3.large |
 
-## Environment File Format
+### Environment File Format
 
 The generated `.env` file is compatible with TensorProx miners and includes:
 - Bittensor configuration placeholders
@@ -86,16 +86,30 @@ The generated `.env` file is compatible with TensorProx miners and includes:
 - Compute specifications
 - AWS-specific settings
 
-## Security Notes
+### Security Notes
 
 1. The generated `.env` file contains sensitive credentials - keep it secure!
 2. The IAM user has minimal permissions scoped to EC2 operations
 3. All resources are tagged for easy identification
 4. Network access is controlled via security groups
 
-## Deploying EC2 Instances
+## 4. Upload an SSH Key
 
-With the generated credentials, you can deploy EC2 instances with predetermined private IPs:
+Browse to KeyPairs and upload your public SSH Key
+
+## 5. Deploying EC2 Instances
+
+With the generated credentials, you can deploy EC2 instances with the 10.0.0.4 IP for your moat:
+
+Example includes launch from local shell. Exports can be skipped if navigating in AWS native shell. 
+
+Replace:
+- `moat` → instance name
+- `e3.medium` → with desired instance type for your moat
+- `subnet-007ba1o1fb80j9d5e` → from your run.tf `.env` + replace in `subnet-id` 
+- `sg-04170bcffe7cf58f3` → from your run.tf `.env` + replace in `security-group-ids`  
+- `your_key_name_here` → name of your ssh key, uploaded to aws 
+
 
 ```bash
 # Example using AWS CLI with the generated credentials
@@ -104,13 +118,77 @@ export AWS_SECRET_ACCESS_KEY=<from-env-file>
 
 # Launch instance with specific private IP
 aws ec2 run-instances \
-  --image-id ami-xxxxxxxxx \
-  --instance-type t3.medium \
-  --subnet-id <PUBLIC_SUBNET_ID> \
-  --security-group-ids <SECURITY_GROUP_ID> \
-  --private-ip-address 10.0.0.10 \
-  --tag-specifications 'ResourceType=instance,Tags=[{Key=Project,Value=tensorprox}]'
+    --image-id $(aws ec2 describe-images --owners 099720109477 --filters "Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*" "Name=state,Values=available" --query 'Images | sort_by(@, 
+  &CreationDate) | [-1].ImageId' --output text) \
+    --instance-type e3.medium \
+    --subnet-id subnet-007ba1o1fb80j9d5e \
+    --security-group-ids sg-04170bcffe7cf58f3 \
+    --private-ip-address 10.0.0.4 \
+    --key-name your_key_name_here \
+    --tag-specifications 'ResourceType=instance,Tags=[{Key=Project,Value=tensorprox},{Key=Name,Value=moat}]' 
 ```
+standard user on aws: `ubuntu`
+
+
+### 6. System Setup
+
+```bash
+sudo apt update && sudo apt install python3-pip -y && sudo apt install python3-venv -y
+sudo apt install npm -y && sudo npm install -g pm2 
+python3 -m venv tp && source tp/bin/activate
+```
+
+---
+
+### 7. Clone Miner and Install Dependencies
+
+```bash
+git clone https://github.com/shugo-labs/tensorprox.git
+cd tensorprox
+pip install -r requirements.txt
+```
+
+---
+
+### 8. Create `.env.miner`
+
+Simply copy the relevant parts from [your Shell .env](https://github.com/shugo-labs/tensorprox/edit/hyperscaler2/assets/aws_setup.md#24-get-environment-file)
+
+```bash
+nano .env.miner // use .env.miner.example
+```
+
+copy contents from Shell .env  
+Paste
+
+---
+
+### 9. Start the Miner
+
+```bash
+pm2 start "python3 neurons/miner.py" --name miner
+```
+
+---
+
+### 10. Check Miner Status
+
+```bash
+pm2 list
+```
+
+---
+
+### 11. View Miner Logs
+
+```bash
+pm2 logs miner
+```
+
+---
+
+**Done.** You have a miner running in a controlled AWS environment, provisioned end-to-end using Terraform and PM2.
+
 
 ## Troubleshooting
 
