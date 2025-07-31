@@ -1,4 +1,4 @@
-# TensorProx AWS Unified Terraform Configuration
+# TensorProx AWS Terraform Configuration
 
 This directory contains a single, unified Terraform configuration file (`main.tf`) that creates all necessary AWS resources for TensorProx infrastructure.
 
