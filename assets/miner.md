@@ -27,9 +27,12 @@ Miners must provide access to the traffic generation and King machines via Servi
 However, they can insert machines of any size or capacity into their .env.miner files. The traffic generation automatically scales to the capability of the machines, ensuring lightweight traffic on lower-tier setups and progressively increasing load as performance scales.
 This makes it possible to get started with even modest VPS, while encouraging scale-up for higher rewards.
 
-## Set up your miner 
-tensorprox supports running a miner on these Providers: 
-[Google Cloud Platform (GCP)](https://github.com/shugo-labs/tensorprox/blob/hyperscaler2/assets/gcp_setup.md)
-[Aamazon Web Services (AWS)](https://github.com/shugo-labs/tensorprox/blob/hyperscaler2/assets/aws_setup.md)
+## 📐 Set up your miner 
+tensorprox supports running a miner on these Providers:  
+
+[Google Cloud Platform (GCP)](https://github.com/shugo-labs/tensorprox/blob/hyperscaler2/assets/gcp_setup.md)  
+
+[Amazon Web Services (AWS)](https://github.com/shugo-labs/tensorprox/blob/hyperscaler2/assets/aws_setup.md)  
+
 
 Click the respective Link to get their setup instructions. 
