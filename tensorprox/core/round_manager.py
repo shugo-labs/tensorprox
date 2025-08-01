@@ -758,18 +758,7 @@ class RoundManager(BaseModel):
         remote_traffic_gen = get_immutable_path(remote_base_directory, "traffic_generator.py")
         files_to_verify = [script_name] + linked_files
 
-        # Handle new playlist structure vs legacy structure
-        if machine_name == "king":
-            playlist = "null"
-        else:
-            # Check if this is the new playlist structure
-            if isinstance(playlists, dict) and "benign_playlist" in playlists and "attack_playlist" in playlists:
-                # New structure: use the combined playlist structure
-                playlist = json.dumps(playlists)
-            else:
-                # Legacy structure: use machine-specific playlist
-                playlist = json.dumps(playlists[machine_name]) if machine_name in playlists else "null"
-        
+        playlist = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
         label_hashes = json.dumps(label_hashes)
         
         # logger.debug(f"Preparing challenge for {machine_name}: script={remote_script_path}, playlist={'provided' if machine_name != 'king' else 'null'}") #DELETE FOR PRODUCTION!
