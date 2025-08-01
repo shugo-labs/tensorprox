@@ -32,7 +32,7 @@ if [[ "$machine_name" == tgen* ]]; then
     echo "$playlist_json" > /tmp/playlist.json
 
     # Start traffic generator with the playlist
-    # The traffic generator handles both new and legacy playlist structures
+    # The traffic generator expects the new playlist structure with separate benign and attack playlists
     sudo nohup python3 $traffic_gen_path --playlist /tmp/playlist.json --receiver-ips $king_ip --interface ipip-$machine_name > /tmp/traffic_generator.log 2>&1 &
 
     # Start continuous ping in background
