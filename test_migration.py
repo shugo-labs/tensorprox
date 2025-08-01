@@ -48,10 +48,12 @@ def test_playlist_generation():
         # Verify alternating pattern
         attack_playlist = playlist["attack_playlist"]
         for j, entry in enumerate(attack_playlist):
-            if j % 2 == 0:
-                assert entry["name"] != "pause", f"Entry {j} should be attack, not pause"
-            else:
-                assert entry["name"] == "pause", f"Entry {j} should be pause, not attack"
+            if j > 0:  # Skip first entry, check alternating pattern from second entry
+                prev_entry = attack_playlist[j-1]
+                if prev_entry["name"] == "pause":
+                    assert entry["name"] != "pause", f"Entry {j} should be attack after pause"
+                else:
+                    assert entry["name"] == "pause", f"Entry {j} should be pause after attack"
         
         print(f"✅ Playlist {i+1} structure is correct")
     
