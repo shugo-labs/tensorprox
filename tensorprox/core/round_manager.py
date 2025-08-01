@@ -758,7 +758,13 @@ class RoundManager(BaseModel):
         remote_traffic_gen = get_immutable_path(remote_base_directory, "traffic_generator.py")
         files_to_verify = [script_name] + linked_files
 
-        playlist = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
+        # Handle playlist structure
+        if machine_name == "king":
+            playlist = "null"
+        else:
+            # Use the new playlist structure - each machine gets its own complete playlist
+            playlist = json.dumps(playlists[machine_name]) if machine_name in playlists else "null"
+        
         label_hashes = json.dumps(label_hashes)
         
         # logger.debug(f"Preparing challenge for {machine_name}: script={remote_script_path}, playlist={'provided' if machine_name != 'king' else 'null'}") #DELETE FOR PRODUCTION!
