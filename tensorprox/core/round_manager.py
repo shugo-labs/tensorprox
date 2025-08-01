@@ -728,7 +728,7 @@ class RoundManager(BaseModel):
         machine_name: str,
         challenge_duration: int,
         label_hashes: Dict[str, list],
-        playlists: List[dict],
+        playlists: dict,
         script_name: str = "challenge.sh",
         linked_files: list = ["traffic_generator.py"]
     ) -> tuple:
@@ -746,7 +746,7 @@ class RoundManager(BaseModel):
             machine_name (str): The name of the machine running the challenge.
             challenge_duration (int): The duration of the challenge in seconds.
             label_hashes (Dict[str, list]): A dictionary mapping labels to their corresponding hash values.
-            playlists (List[dict]): A list of playlists to be used for the challenge.
+            playlists (dict): A dictionary containing playlists for each machine or the new structure with benign_playlist and attack_playlist.
             script_name (str, optional): The name of the script to execute (default is "challenge.sh").
             linked_files (list, optional): List of linked files to verify along with the script (default includes "traffic_generator.py" and "tcp_server.py").
 
@@ -758,7 +758,18 @@ class RoundManager(BaseModel):
         remote_traffic_gen = get_immutable_path(remote_base_directory, "traffic_generator.py")
         files_to_verify = [script_name] + linked_files
 
-        playlist = json.dumps(playlists[machine_name]) if machine_name != "king" else "null"
+        # Handle new playlist structure vs legacy structure
+        if machine_name == "king":
+            playlist = "null"
+        else:
+            # Check if this is the new playlist structure
+            if isinstance(playlists, dict) and "benign_playlist" in playlists and "attack_playlist" in playlists:
+                # New structure: use the combined playlist structure
+                playlist = json.dumps(playlists)
+            else:
+                # Legacy structure: use machine-specific playlist
+                playlist = json.dumps(playlists[machine_name]) if machine_name in playlists else "null"
+        
         label_hashes = json.dumps(label_hashes)
         
         # logger.debug(f"Preparing challenge for {machine_name}: script={remote_script_path}, playlist={'provided' if machine_name != 'king' else 'null'}") #DELETE FOR PRODUCTION!

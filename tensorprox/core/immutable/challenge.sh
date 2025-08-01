@@ -32,6 +32,7 @@ if [[ "$machine_name" == tgen* ]]; then
     echo "$playlist_json" > /tmp/playlist.json
 
     # Start traffic generator with the playlist
+    # The traffic generator handles both new and legacy playlist structures
     sudo nohup python3 $traffic_gen_path --playlist /tmp/playlist.json --receiver-ips $king_ip --interface ipip-$machine_name > /tmp/traffic_generator.log 2>&1 &
 
     # Start continuous ping in background
@@ -39,6 +40,7 @@ if [[ "$machine_name" == tgen* ]]; then
 fi
 
 # Use fast tcpdump with custom gawk processing to handle uniqueness for benign only
+# Both TCP and UDP benign traffic use the same label hash
 sudo timeout "$timeout_duration" tcpdump -A -l -i "gre-moat" "$filter_traffic" 2>/dev/null | \
 gawk -v benign_pat="$benign_pattern" -v udp_pat="$udp_flood_pattern" -v tcp_pat="$tcp_syn_flood_pattern" '
 BEGIN {

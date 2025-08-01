@@ -208,6 +208,7 @@ class Validator(BaseValidatorNeuron):
                 random_int = random.randint(1, 10000)
                 label_hashes = generate_random_hashes()
 
+                # Create independent playlists for each traffic generator
                 for i in range(MAX_TGENS):
                     role_index = random_int + i
                     role = "soft" if role_index % 2 == 0 else "aggressive"
@@ -215,6 +216,7 @@ class Validator(BaseValidatorNeuron):
                         total_seconds=CHALLENGE_DURATION,
                         label_hashes=label_hashes,
                         role=role,
+                        seed=random_int + i  # Different seed for each traffic generator
                     )
                     playlists[f"tgen-{i}"] = playlist
                 

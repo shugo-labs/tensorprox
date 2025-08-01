@@ -3127,46 +3127,34 @@ def main() -> None:
     # Load the playlist from the given JSON file
     try:
         with open(args.playlist, 'r') as file:
-            playlist = json.load(file)
+            playlist_data = json.load(file)
     except Exception as e:
         logger.error(f"Failed to load playlists file: {e}")
         sys.exit(1)
     
-    # NEW: Determine playlist structure.
-    # If any entry has a "classes" key, assume the JSON is in the new parallel benign format.
-    if isinstance(playlist, list):
-        if any("classes" in entry for entry in playlist):
-            playlist_entries = playlist  # Use as is.
-        else:
-            # Group by class_vector as before.
-            grouped_playlist = {}
-            for entry in playlist:
-                key = entry.get('class_vector')
-                if key:
-                    grouped_playlist.setdefault(key, []).append(entry)
-            playlist_entries = []
-            for key, entries in grouped_playlist.items():
-                playlist_entries.extend(entries)
-    else:
-        # If not a list, assume it's already grouped.
-        playlist_entries = []
-        for key, entries in playlist.items():
-            playlist_entries.extend(entries)
-    
     attack_classes = get_attack_classes()
-
-    # Process each entry in the playlist
-    for entry in playlist_entries:
-        # If the entry has a "classes" key, run those benign attacks in parallel.
-        if "classes" in entry:
-            benign_processes = []
-            for sub_entry in entry["classes"]:
+    
+    # Check if this is the new playlist structure with separate benign and attack playlists
+    if isinstance(playlist_data, dict) and "benign_playlist" in playlist_data and "attack_playlist" in playlist_data:
+        # New structure: separate benign and attack playlists
+        logger.info("Processing new playlist structure with separate benign and attack playlists")
+        
+        # Start benign traffic processes (continuous for full duration)
+        benign_playlist = playlist_data["benign_playlist"]
+        attack_playlist = playlist_data["attack_playlist"]
+        
+        # Start benign traffic processes in parallel
+        benign_processes = []
+        if "classes" in benign_playlist:
+            for sub_entry in benign_playlist["classes"]:
                 attack_class = attack_classes.get(sub_entry["class_vector"].lower())
                 if not attack_class:
                     logger.error(f"Error: Traffic type '{sub_entry['class_vector']}' is not recognized.")
                     continue
-                logger.info(f"Starting parallel benign traffic generation for: {entry['name']} "
-                            f"({sub_entry['class_vector']}) with duration: {sub_entry.get('duration', 10)} seconds")
+                
+                logger.info(f"Starting continuous benign traffic: {sub_entry['class_vector']} "
+                            f"for {sub_entry.get('duration', 10)} seconds")
+                
                 p = Process(target=run_attack_instance, args=(
                     attack_class,
                     target_ips,
@@ -3179,29 +3167,115 @@ def main() -> None:
                 ))
                 p.start()
                 benign_processes.append(p)
-            for p in benign_processes:
-                p.join()
+        
+        # Process attack playlist (intermittent attacks and pauses)
+        current_time = 0
+        for entry in attack_playlist:
+            if entry["name"] == "pause":
+                # Handle pause - just wait for the duration
+                pause_duration = entry.get("duration", 60)
+                logger.info(f"Pausing for {pause_duration} seconds")
+                time.sleep(pause_duration)
+                current_time += pause_duration
+            else:
+                # Handle attack
+                attack_class = attack_classes.get(entry["class_vector"].lower())
+                if not attack_class:
+                    logger.error(f"Error: Traffic type '{entry['class_vector']}' is not recognized.")
+                    continue
+                
+                logger.info(f"Starting attack: {entry['name']} ({entry['class_vector']}) "
+                            f"for {entry.get('duration', 10)} seconds")
+                
+                attack_instance = attack_class(
+                    target_ips=target_ips,
+                    interface=args.interface,
+                    duration=entry.get("duration", 10),
+                    pause_event=Event(),
+                    custom_identifier=entry.get("label_identifier"),
+                    min_port=entry.get("min_port", 1),
+                    max_port=entry.get("max_port", 65535),
+                    reserved_cores=20  # Default reserved percentage for CPU affinity
+                )
+                attack_instance.execute()
+                current_time += entry.get("duration", 10)
+        
+        # Wait for all benign processes to complete
+        for p in benign_processes:
+            p.join()
+            
+    else:
+        # Legacy playlist structure - handle as before
+        logger.info("Processing legacy playlist structure")
+        
+        # Determine playlist structure.
+        # If any entry has a "classes" key, assume the JSON is in the new parallel benign format.
+        if isinstance(playlist_data, list):
+            if any("classes" in entry for entry in playlist_data):
+                playlist_entries = playlist_data  # Use as is.
+            else:
+                # Group by class_vector as before.
+                grouped_playlist = {}
+                for entry in playlist_data:
+                    key = entry.get('class_vector')
+                    if key:
+                        grouped_playlist.setdefault(key, []).append(entry)
+                playlist_entries = []
+                for key, entries in grouped_playlist.items():
+                    playlist_entries.extend(entries)
         else:
-            # Standard single attack entry processing.
-            attack_class = attack_classes.get(entry["class_vector"].lower())
-            if not attack_class:
-                logger.error(f"Error: Traffic type '{entry['class_vector']}' is not recognized.")
-                continue
-            
-            logger.info(f"Starting traffic generation for: {entry['name']} "
-                        f"({entry['class_vector']}) with duration: {entry.get('duration', 10)} seconds")
-            
-            attack_instance = attack_class(
-                target_ips=target_ips,
-                interface=args.interface,
-                duration=entry.get("duration", 10),
-                pause_event=Event(),
-                custom_identifier=entry.get("label_identifier"),
-                min_port=entry.get("min_port", 1),
-                max_port=entry.get("max_port", 65535),
-                reserved_cores=20  # Default reserved percentage for CPU affinity
-            )
-            attack_instance.execute()
+            # If not a list, assume it's already grouped.
+            playlist_entries = []
+            for key, entries in playlist_data.items():
+                playlist_entries.extend(entries)
+        
+        # Process each entry in the playlist
+        for entry in playlist_entries:
+            # If the entry has a "classes" key, run those benign attacks in parallel.
+            if "classes" in entry:
+                benign_processes = []
+                for sub_entry in entry["classes"]:
+                    attack_class = attack_classes.get(sub_entry["class_vector"].lower())
+                    if not attack_class:
+                        logger.error(f"Error: Traffic type '{sub_entry['class_vector']}' is not recognized.")
+                        continue
+                    logger.info(f"Starting parallel benign traffic generation for: {entry['name']} "
+                                f"({sub_entry['class_vector']}) with duration: {sub_entry.get('duration', 10)} seconds")
+                    p = Process(target=run_attack_instance, args=(
+                        attack_class,
+                        target_ips,
+                        args.interface,
+                        sub_entry.get("duration", 10),
+                        sub_entry.get("label_identifier"),
+                        sub_entry.get("min_port", 1),
+                        sub_entry.get("max_port", 65535),
+                        20  # reserved_percentage default value
+                    ))
+                    p.start()
+                    benign_processes.append(p)
+                for p in benign_processes:
+                    p.join()
+            else:
+                # Standard single attack entry processing.
+                attack_class = attack_classes.get(entry["class_vector"].lower())
+                if not attack_class:
+                    logger.error(f"Error: Traffic type '{entry['class_vector']}' is not recognized.")
+                    continue
+                
+                logger.info(f"Starting traffic generation for: {entry['name']} "
+                            f"({entry['class_vector']}) with duration: {entry.get('duration', 10)} seconds")
+                
+                attack_instance = attack_class(
+                    target_ips=target_ips,
+                    interface=args.interface,
+                    duration=entry.get("duration", 10),
+                    pause_event=Event(),
+                    custom_identifier=entry.get("label_identifier"),
+                    min_port=entry.get("min_port", 1),
+                    max_port=entry.get("max_port", 65535),
+                    reserved_cores=20  # Default reserved percentage for CPU affinity
+                )
+                attack_instance.execute()
             
 if __name__ == "__main__":
     main()
