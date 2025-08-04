@@ -185,7 +185,7 @@ class Miner(BaseMinerNeuron):
         logger.debug(f"📧 Ping received from {synapse.dendrite.hotkey}, IP: {synapse.dendrite.ip}.")
 
         try:
-
+                        
             # Create new MachineConfig
             machine_config = MachineConfig(
                 provider=self.config["provider"],
@@ -205,9 +205,14 @@ class Miner(BaseMinerNeuron):
                 custom_tgen_cpu_count=self.config.get("custom_tgen_cpu_count"),
             )
             
+                        
             # Respond with new PingSynapse 
             synapse.machine_availabilities = machine_config
             logger.debug(f"⏩ Forwarding Ping synapse with machine details to validator {synapse.dendrite.hotkey} .")
+            
+            #DELETE FOR PRODUCTION!
+            logger.info(f"Synapse being sent: provider={synapse.machine_availabilities.provider}")
+            
             return synapse
 
         except Exception as e:

@@ -25,7 +25,6 @@ from tensorprox import (
 AWS_INTERFACE = "ens5"  # Default AWS network interface - used directly in this module
 AWS_IMAGE_OWNER = "099720109477"  # Canonical's AWS account ID
 AWS_DISK_SIZE_GB = 10
-AWS_INSTANCE_CONNECT_DISABLED = True  # Disable EC2 Instance Connect for confidentiality
 
 # Self-destruction timer calculation 
 NETWORK_BUFFER = 300  # 5 minutes for network delays
@@ -52,10 +51,20 @@ def translate_config(config: Dict[str, str]) -> Dict[str, str]:
     Translate generic config fields to AWS-specific fields.
     This is where the magic happens - generic becomes specific!
     """
+    region = config.get("region", "")
+    
+    # Extract actual region from availability zone if needed
+    # e.g., "us-east-1a" -> "us-east-1"
+    if region and region[-1].isalpha():
+        # Simple check: if it ends with a letter, it's likely an AZ
+        actual_region = region[:-1]
+        # logger.info(f"Extracted region '{actual_region}' from availability zone '{region}'")
+        region = actual_region
+    
     return {
         "AWS_ACCESS_KEY_ID": config.get("auth_id"),
         "AWS_SECRET_ACCESS_KEY": config.get("auth_secret"),
-        "AWS_REGION": config.get("region"),
+        "AWS_REGION": region,
         "AWS_ACCOUNT_ID": config.get("project_id"),  # Optional for most operations
         # AWS doesn't use resource groups like Azure
     }
@@ -123,7 +132,6 @@ class AWSSessionCache:
     """
     Thread-safe session cache for AWS API connections using aiohttp.
     Manages HTTP sessions and request signing for high-volume operations.
-    Designed to handle 100 miners × 255 machines efficiently.
     """
     def __init__(self):
         self._sessions = {}  # {region: aiohttp.ClientSession}
@@ -136,7 +144,7 @@ class AWSSessionCache:
         Creates new ones if they don't exist.
         """
         aws_config = translate_config(config)
-        region = aws_config["AWS_REGION"]
+        region = aws_config["AWS_REGION"]  # Already extracted in translate_config
         
         async with self._lock:
             # Create session if needed
@@ -150,7 +158,7 @@ class AWSSessionCache:
                 )
                 self._sessions[region] = aiohttp.ClientSession(
                     connector=connector,
-                    timeout=aiohttp.ClientTimeout(total=60)
+                    timeout=aiohttp.ClientTimeout(total=300)  # Match GCP's timeout approach
                 )
             
             # Create signer if needed
@@ -199,29 +207,26 @@ async def validate_existing_vpc(
     session: aiohttp.ClientSession,
     signer: AWSSignatureV4,
     region: str,
-    vpc_name: str,
-    subnet_name: str
+    vpc_id: str,
+    subnet_id: str
 ) -> Tuple[str, str]:
     """
-    Validate that VPC and subnet exist, return IDs.
+    Validate that VPC and subnet exist by ID, return them.
     
     Returns:
         Tuple of (subnet_id, vpc_id)
     """
-    # Find VPC by name tag
+    # vpc_id and subnet_id are already IDs, just validate they exist
     vpc_url = f"https://ec2.{region}.amazonaws.com/"
+    
+    # Check VPC exists
     vpc_params = {
         'Action': 'DescribeVpcs',
         'Version': '2016-11-15',
-        'Filter.1.Name': 'tag:Name',
-        'Filter.1.Value.1': vpc_name,
-        'Filter.2.Name': 'state',
-        'Filter.2.Value.1': 'available'
+        'VpcId.1': vpc_id
     }
     
-    # Convert params to URL-encoded string
-    vpc_params_str = '&'.join(f'{k}={v}' for k, v in vpc_params.items())
-    
+    vpc_params_str = '&'.join(f'{k}={quote(str(v), safe="")}' for k, v in vpc_params.items())
     headers = signer.sign_request('POST', vpc_url, 
                                  {'Content-Type': 'application/x-www-form-urlencoded'},
                                  vpc_params_str)
@@ -229,60 +234,25 @@ async def validate_existing_vpc(
     async with session.post(vpc_url, data=vpc_params_str, headers=headers) as response:
         if response.status != 200:
             error = await response.text()
-            raise Exception(f"Failed to describe VPCs: {error}")
-        
-        # Parse XML response (AWS returns XML for EC2 API)
-        text = await response.text()
-        root = ET.fromstring(text)
-        
-        # AWS EC2 API doesn't use namespaces in practice for this call
-        vpc_id = None
-        for item in root.findall('.//item'):
-            vpc_id_elem = item.find('vpcId')
-            if vpc_id_elem is not None:
-                vpc_id = vpc_id_elem.text
-                break
-        
-        if not vpc_id:
-            raise ValueError(f"VPC {vpc_name} not found")
+            raise Exception(f"VPC {vpc_id} not found: {error}")
     
-    # Find subnet by name tag
+    # Check subnet exists
     subnet_params = {
         'Action': 'DescribeSubnets',
         'Version': '2016-11-15',
-        'Filter.1.Name': 'tag:Name',
-        'Filter.1.Value.1': subnet_name,
-        'Filter.2.Name': 'vpc-id',
-        'Filter.2.Value.1': vpc_id,
-        'Filter.3.Name': 'state',
-        'Filter.3.Value.1': 'available'
+        'SubnetId.1': subnet_id
     }
     
-    subnet_params_str = '&'.join(f'{k}={v}' for k, v in subnet_params.items())
-    
-    headers = signer.sign_request('POST', vpc_url, 
+    subnet_params_str = '&'.join(f'{k}={quote(str(v), safe="")}' for k, v in subnet_params.items())
+    headers = signer.sign_request('POST', vpc_url,
                                  {'Content-Type': 'application/x-www-form-urlencoded'},
                                  subnet_params_str)
     
     async with session.post(vpc_url, data=subnet_params_str, headers=headers) as response:
         if response.status != 200:
             error = await response.text()
-            raise Exception(f"Failed to describe subnets: {error}")
-        
-        text = await response.text()
-        root = ET.fromstring(text)
-        
-        subnet_id = None
-        for item in root.findall('.//item'):
-            subnet_id_elem = item.find('subnetId')
-            if subnet_id_elem is not None:
-                subnet_id = subnet_id_elem.text
-                break
-        
-        if not subnet_id:
-            raise ValueError(f"Subnet {subnet_name} not found in VPC {vpc_name}")
+            raise Exception(f"Subnet {subnet_id} not found: {error}")
     
-    logger.info(f"Using miner-provided subnet: {subnet_name} (ID: {subnet_id}) in VPC: {vpc_name}")
     return subnet_id, vpc_id
 
 
@@ -301,10 +271,10 @@ async def retrieve_vm_infrastructure(
     """
     aws_config = translate_config(config)
     region = aws_config["AWS_REGION"]
-    vpc_name = config.get("vpc_name")
-    subnet_name = config.get("subnet_name")
+    vpc_id = config.get("vpc_name")  # This will actually contain the VPC ID
+    subnet_id = config.get("subnet_name")  # This will actually contain the subnet ID
     
-    return await validate_existing_vpc(session, signer, region, vpc_name, subnet_name)
+    return await validate_existing_vpc(session, signer, region, vpc_id, subnet_id)
 
 
 async def get_latest_ubuntu_ami(
@@ -334,7 +304,7 @@ async def get_latest_ubuntu_ami(
         'Filter.5.Value.1': 'hvm'
     }
     
-    params_str = '&'.join(f'{k}={v}' for k, v in params.items())
+    params_str = '&'.join(f'{k}={quote(str(v), safe="")}' for k, v in params.items())
     
     headers = signer.sign_request('POST', ec2_url, 
                                  {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -346,13 +316,13 @@ async def get_latest_ubuntu_ami(
             raise Exception(f"Failed to describe images: {error}")
         
         text = await response.text()
-        # Parse XML to find images
+        # Parse XML to find images with namespace-agnostic approach
         root = ET.fromstring(text)
         
         images = []
-        for item in root.findall('.//item'):
-            image_id = item.find('imageId')
-            creation_date = item.find('creationDate')
+        for item in root.findall('.//{*}item'):
+            image_id = item.find('{*}imageId')
+            creation_date = item.find('{*}creationDate')
             if image_id is not None and creation_date is not None:
                 images.append({
                     'ImageId': image_id.text,
@@ -365,54 +335,11 @@ async def get_latest_ubuntu_ami(
         # Sort by creation date and get the latest
         images.sort(key=lambda x: x['CreationDate'], reverse=True)
         
-        logger.info(f"Found latest Ubuntu AMI: {images[0]['ImageId']}")
+        # logger.info(f"Found latest Ubuntu AMI: {images[0]['ImageId']}")
         return images[0]['ImageId']
 
 
-async def create_public_ip(
-    session: aiohttp.ClientSession,
-    signer: AWSSignatureV4,
-    region: str,
-    address_name: str
-) -> Tuple[str, str]:
-    """
-    Reserve a static external IP address.
-    
-    Returns:
-        Tuple of (public_ip, allocation_id)
-    """
-    ec2_url = f"https://ec2.{region}.amazonaws.com/"
-    
-    params = {
-        'Action': 'AllocateAddress',
-        'Version': '2016-11-15',
-        'Domain': 'vpc'
-    }
-    
-    params_str = '&'.join(f'{k}={v}' for k, v in params.items())
-    
-    headers = signer.sign_request('POST', ec2_url, 
-                                 {'Content-Type': 'application/x-www-form-urlencoded'},
-                                 params_str)
-    
-    async with session.post(ec2_url, data=params_str, headers=headers) as response:
-        if response.status != 200:
-            error = await response.text()
-            raise Exception(f"Failed to allocate address: {error}")
-        
-        text = await response.text()
-        root = ET.fromstring(text)
-        
-        allocation_id = root.find('.//allocationId')
-        public_ip = root.find('.//publicIp')
-        
-        if allocation_id is None or public_ip is None:
-            raise Exception("Failed to get allocation ID or public IP")
-        
-        return public_ip.text, allocation_id.text
-
-
-async def create_vm_with_resources(
+async def create_vm(
     session: aiohttp.ClientSession,
     signer: AWSSignatureV4,
     region: str,
@@ -420,18 +347,19 @@ async def create_vm_with_resources(
     instance_type: str,
     subnet_id: str,
     private_ip: str,
-    public_key: str,
     user_data: str,
     vpc_id: str,
     uid: int,
+    security_group_id: Optional[str] = None,
     custom_ram_mb: Optional[int] = None,
     custom_cpu_count: Optional[int] = None
-) -> Tuple[str, str]:
+) -> str:
     """
-    Create VM instance with network configuration and optional custom resources.
+    Create VM instance and return the instance ID.
+    Public IP will be retrieved later during wait_for_vms_ready.
     
     Returns:
-        Tuple of (private_ip, public_ip)
+        Instance ID
     """
     # Get latest Ubuntu AMI
     ami_id = await get_latest_ubuntu_ami(session, signer, region)
@@ -439,10 +367,6 @@ async def create_vm_with_resources(
     # Handle custom instance types
     if custom_ram_mb and custom_cpu_count:
         instance_type = find_closest_instance_type(custom_cpu_count, custom_ram_mb)
-    
-    # Create public IP
-    public_ip_name = f"{vm_name}-ip"
-    public_ip, allocation_id = await create_public_ip(session, signer, region, public_ip_name)
     
     # Create instance
     ec2_url = f"https://ec2.{region}.amazonaws.com/"
@@ -455,14 +379,16 @@ async def create_vm_with_resources(
         'MinCount': '1',
         'MaxCount': '1',
         'InstanceType': instance_type,
-        'SubnetId': subnet_id,
-        'PrivateIpAddress': private_ip,
-        'UserData': base64.b64encode(user_data.encode()).decode(),
+        'UserData': base64.b64encode(user_data.encode('utf-8')).decode('ascii'),
         'BlockDeviceMapping.1.DeviceName': '/dev/sda1',
         'BlockDeviceMapping.1.Ebs.VolumeSize': str(AWS_DISK_SIZE_GB),
         'BlockDeviceMapping.1.Ebs.VolumeType': 'gp3',
         'BlockDeviceMapping.1.Ebs.DeleteOnTermination': 'true',
-        'BlockDeviceMapping.1.Ebs.Encrypted': 'true',
+        'NetworkInterface.1.DeviceIndex': '0',
+        'NetworkInterface.1.SubnetId': subnet_id,
+        'NetworkInterface.1.PrivateIpAddress': private_ip,
+        'NetworkInterface.1.AssociatePublicIpAddress': 'true',  # Auto-assign public IP
+        'NetworkInterface.1.DeleteOnTermination': 'true',
         'TagSpecification.1.ResourceType': 'instance',
         'TagSpecification.1.Tag.1.Key': 'Name',
         'TagSpecification.1.Tag.1.Value': vm_name,
@@ -473,12 +399,14 @@ async def create_vm_with_resources(
         'MetadataOptions.HttpTokens': 'required',
         'MetadataOptions.HttpEndpoint': 'enabled',
         'MetadataOptions.HttpPutResponseHopLimit': '1',
-        'MetadataOptions.InstanceMetadataTags': 'enabled',
-        'InstanceInitiatedShutdownBehavior': 'terminate',
-        'EbsOptimized': 'true'
+        'InstanceInitiatedShutdownBehavior': 'terminate'
     }
     
-    params_str = '&'.join(f'{k}={v}' for k, v in params.items())
+    # Add security group if provided
+    if security_group_id:
+        params['NetworkInterface.1.SecurityGroupId.1'] = security_group_id
+    
+    params_str = '&'.join(f'{k}={quote(str(v), safe="")}' for k, v in params.items())
     
     headers = signer.sign_request('POST', ec2_url, 
                                  {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -492,110 +420,146 @@ async def create_vm_with_resources(
         text = await response.text()
         root = ET.fromstring(text)
         
-        instance_id = root.find('.//instanceId')
-        if instance_id is None:
-            raise Exception("Failed to get instance ID")
+        # AWS RunInstances returns instancesSet with multiple items
+        # We need to find the specific instance we just created
+        instance_id_elem = root.find('.//{*}instanceId')
         
-        instance_id = instance_id.text
+        if instance_id_elem is None:
+            # logger.error(f"Failed to find instance ID in response: {text}")
+            raise Exception(f"Failed to get instance ID from response")
+        
+        instance_id = instance_id_elem.text
+        # logger.info(f"Created instance {instance_id} for {vm_name}")
     
-    # Wait for instance to be running
-    await aws_wait_for_instance_running(session, signer, region, instance_id)
-    
-    # Associate elastic IP
-    await associate_elastic_ip(session, signer, region, instance_id, allocation_id)
-    
-    return private_ip, public_ip
+    return instance_id
 
 
-async def associate_elastic_ip(
+async def wait_for_vms_ready(
     session: aiohttp.ClientSession,
     signer: AWSSignatureV4,
     region: str,
-    instance_id: str,
-    allocation_id: str
-) -> None:
-    """Associate an Elastic IP with an instance."""
-    ec2_url = f"https://ec2.{region}.amazonaws.com/"
-    
-    params = {
-        'Action': 'AssociateAddress',
-        'Version': '2016-11-15',
-        'InstanceId': instance_id,
-        'AllocationId': allocation_id
-    }
-    
-    params_str = '&'.join(f'{k}={v}' for k, v in params.items())
-    
-    headers = signer.sign_request('POST', ec2_url, 
-                                 {'Content-Type': 'application/x-www-form-urlencoded'},
-                                 params_str)
-    
-    async with session.post(ec2_url, data=params_str, headers=headers) as response:
-        if response.status != 200:
-            error = await response.text()
-            raise Exception(f"Failed to associate address: {error}")
-        
-        # No need to parse response for successful association
-        logger.info(f"Associated elastic IP with instance {instance_id}")
-
-
-async def aws_wait_for_instance_running(
-    session: aiohttp.ClientSession,
-    signer: AWSSignatureV4,
-    region: str,
-    instance_id: str,
-    timeout: int = 120
-) -> None:
+    instance_ids: List[str],
+    timeout: int = 300
+) -> List[str]:
     """
-    Wait for an instance to be in running state and pass status checks.
-    Matches GCP's wait_for_vms_ready pattern.
+    Poll VMs until they are running and have public IPs.
+    More efficient than static sleep - polls all VMs in parallel.
+    
+    Returns:
+        List of public IPs in the same order as instance_ids
     """
     ec2_url = f"https://ec2.{region}.amazonaws.com/"
     start_time = time.time()
     
-    logger.info(f"Waiting for instance {instance_id} to be ready...")
+    # logger.info(f"Polling {len(instance_ids)} VMs for readiness...")
+    
+    # Track which instances are ready
+    instance_states = {instance_id: {'running': False, 'public_ip': None, 'status_ok': False} for instance_id in instance_ids}
     
     while True:
-        # Check instance status
-        params = {
-            'Action': 'DescribeInstanceStatus',
-            'Version': '2016-11-15',
-            'InstanceId.1': instance_id,
-            'IncludeAllInstances': 'true'
-        }
+        all_ready = True
         
-        params_str = '&'.join(f'{k}={v}' for k, v in params.items())
-        
-        headers = signer.sign_request('POST', ec2_url, 
-                                     {'Content-Type': 'application/x-www-form-urlencoded'},
-                                     params_str)
-        
-        async with session.post(ec2_url, data=params_str, headers=headers) as response:
-            if response.status != 200:
-                error = await response.text()
-                raise Exception(f"Failed to describe instance status: {error}")
-            
-            text = await response.text()
-            root = ET.fromstring(text)
-            
-            # Check instance state
-            instance_state = root.find('.//instanceState/name')
-            if instance_state is not None and instance_state.text == 'running':
-                # Check system and instance status
-                system_status = root.find('.//systemStatus/status')
-                instance_status = root.find('.//instanceStatus/status')
+        # Check each instance
+        for instance_id in instance_ids:
+            if instance_states[instance_id]['running'] and instance_states[instance_id]['public_ip'] and instance_states[instance_id]['status_ok']:
+                continue
                 
-                if (system_status is not None and system_status.text == 'ok' and
-                    instance_status is not None and instance_status.text == 'ok'):
-                    # Instance is ready, wait a bit more for SSH
-                    logger.info(f"Instance {instance_id} passed status checks, waiting 45s for SSH readiness...")
-                    await asyncio.sleep(45)
-                    return
+            # Get instance details
+            params = {
+                'Action': 'DescribeInstances',
+                'Version': '2016-11-15',
+                'InstanceId.1': instance_id
+            }
+            
+            params_str = '&'.join(f'{k}={quote(str(v), safe="")}' for k, v in params.items())
+            
+            headers = signer.sign_request('POST', ec2_url, 
+                                         {'Content-Type': 'application/x-www-form-urlencoded'},
+                                         params_str)
+            
+            async with session.post(ec2_url, data=params_str, headers=headers) as response:
+                text = await response.text()
+                
+                # Handle "instance not found" gracefully - it might not be visible yet
+                if response.status != 200:
+                    if "InvalidInstanceID.NotFound" in text:
+                        # logger.debug(f"Instance {instance_id} not visible yet")
+                        all_ready = False
+                        continue
+                    else:
+                        raise Exception(f"Failed to describe instance {instance_id}: {text}")
+                
+                root = ET.fromstring(text)
+                
+                # Check instance state
+                instance_state = root.find('.//{*}instanceState/{*}name')
+                if instance_state is None or instance_state.text != 'running':
+                    # logger.debug(f"Instance {instance_id} state: {instance_state.text if instance_state is not None else 'unknown'}")
+                    all_ready = False
+                    continue
+                
+                # Get public IP from network interface association (more reliable)
+                public_ip = root.find('.//{*}instancesSet/{*}item/{*}networkInterfaceSet/{*}item/{*}association/{*}publicIp')
+                if public_ip is None or not public_ip.text:
+                    # Fallback to instance level
+                    public_ip = root.find('.//{*}instancesSet/{*}item/{*}ipAddress')
+                
+                if public_ip is None or not public_ip.text:
+                    # logger.debug(f"Instance {instance_id} has no public IP yet")
+                    all_ready = False
+                    continue
+                
+                # Instance is running with public IP
+                instance_states[instance_id]['running'] = True
+                instance_states[instance_id]['public_ip'] = public_ip.text
+                # logger.info(f"Instance {instance_id} running with public IP {public_ip.text}")
+            
+            # Now check instance status checks if instance is running
+            if instance_states[instance_id]['running'] and not instance_states[instance_id]['status_ok']:
+                status_params = {
+                    'Action': 'DescribeInstanceStatus',
+                    'Version': '2016-11-15',
+                    'InstanceId.1': instance_id
+                }
+                
+                status_params_str = '&'.join(f'{k}={quote(str(v), safe="")}' for k, v in status_params.items())
+                
+                headers = signer.sign_request('POST', ec2_url, 
+                                             {'Content-Type': 'application/x-www-form-urlencoded'},
+                                             status_params_str)
+                
+                async with session.post(ec2_url, data=status_params_str, headers=headers) as response:
+                    if response.status == 200:
+                        text = await response.text()
+                        root = ET.fromstring(text)
+                        
+                        # Check system status
+                        system_status = root.find('.//{*}systemStatus/{*}status')
+                        instance_status = root.find('.//{*}instanceStatus/{*}status')
+                        
+                        if (system_status is not None and system_status.text == 'ok' and 
+                            instance_status is not None and instance_status.text == 'ok'):
+                            instance_states[instance_id]['status_ok'] = True
+                            # logger.info(f"Instance {instance_id} passed all status checks")
+                        else:
+                            all_ready = False
+                            # logger.debug(f"Instance {instance_id} status checks: system={system_status.text if system_status is not None else 'unknown'}, instance={instance_status.text if instance_status is not None else 'unknown'}")
+                    else:
+                        all_ready = False
+        
+        if all_ready:
+            # All instances ready, wait a bit more for SSH
+            # logger.info("All AWS instances running, waiting 35s for SSH readiness...")
+            await asyncio.sleep(35)
+            
+            # Return public IPs in the same order as instance_ids
+            return [instance_states[instance_id]['public_ip'] for instance_id in instance_ids]
         
         # Check timeout
         elapsed = time.time() - start_time
         if elapsed > timeout:
-            raise TimeoutError(f"Instance {instance_id} not ready after {timeout} seconds")
+            not_ready = [id for id, state in instance_states.items() if not (state['running'] and state['public_ip'] and state['status_ok'])]
+            raise TimeoutError(f"Instances {not_ready} not ready after {timeout} seconds")
         
         # Wait before next poll
         await asyncio.sleep(5)
@@ -614,8 +578,8 @@ async def provision_aws_vms_for_uid(
     Returns:
         Tuple of (king_machine, traffic_generators, moat_ip)
     """
-    # Clean up any existing resources first
-    await cleanup_all_resources_for_uid(uid, machine_config)
+    # Clean up any existing VMs first (simplified like GCP)
+    await cleanup_all_vms_for_uid(uid, machine_config)
     
     # Get AWS session and signer
     session, signer = await get_aws_session(machine_config)
@@ -627,6 +591,12 @@ async def provision_aws_vms_for_uid(
     king_size = machine_config.get("vm_size_small", "t3.medium")
     tgen_size = machine_config.get("vm_size_large", "t3.large")
     
+    # Get security group ID from resource_group field (AWS-specific usage)
+    security_group_id = machine_config.get("resource_group", "")
+    if not security_group_id:
+        # logger.warning("No security group ID provided in resource_group field - instances may not be accessible via SSH")
+        pass
+    
     # Get custom specs if provided
     custom_king_ram_mb = machine_config.get("custom_king_ram_mb")
     custom_king_cpu_count = machine_config.get("custom_king_cpu_count")
@@ -637,31 +607,50 @@ async def provision_aws_vms_for_uid(
     cloud_init_content = load_cloud_init_template()
     
     # Prepare user data with self-destruct timeout, SSH key, and AWS credentials
-    user_data = cloud_init_content.format(
-        ssh_key=public_key,
-        self_destruct_timeout=SELF_DESTRUCT_TIMEOUT,
-        uid=uid,
-        aws_access_key=aws_config["AWS_ACCESS_KEY_ID"],
-        aws_secret_key=aws_config["AWS_SECRET_ACCESS_KEY"],
-        aws_region=aws_config["AWS_REGION"]
-    )
+    try:
+        # Ensure public_key doesn't break YAML format
+        safe_public_key = public_key.strip()
+        
+        user_data = cloud_init_content.format(
+            ssh_key=safe_public_key,
+            self_destruct_timeout=SELF_DESTRUCT_TIMEOUT,
+            uid=uid,
+            aws_access_key=aws_config["AWS_ACCESS_KEY_ID"],
+            aws_secret_key=aws_config["AWS_SECRET_ACCESS_KEY"],
+            aws_region=aws_config["AWS_REGION"]
+        )
+        
+        # Validate the user_data is not empty
+        if not user_data or not user_data.strip():
+            raise ValueError("User data is empty after formatting")
+            
+    except (KeyError, ValueError) as e:
+        # logger.error(f"Cloud-init template error: {e}")
+        # Fallback to minimal cloud-init
+        user_data = f"""#cloud-config
+users:
+  - name: ubuntu
+    ssh_authorized_keys:
+      - {public_key.strip()}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+"""
     
     # Create King VM
     king_name = f"king-uid-{uid}-{int(time.time())}"
-    king_private_ip, king_public_ip = await create_vm_with_resources(
+    king_instance_id = await create_vm(
         session, signer, region,
         king_name, king_size,
         subnet_id, KING_PRIVATE_IP,
-        public_key, user_data,
+        user_data,
         vpc_id, uid,
+        security_group_id,
         custom_king_ram_mb, custom_king_cpu_count
     )
     
     king_machine = {
-        "private_ip": king_private_ip,
-        "public_ip": king_public_ip,
+        "instance_id": king_instance_id,
+        "private_ip": KING_PRIVATE_IP,
         "name": king_name,
-        "ip": king_public_ip,
         "username": "ubuntu"  # AWS Ubuntu default user
     }
     
@@ -671,25 +660,39 @@ async def provision_aws_vms_for_uid(
         tgen_name = f"tgen-{i}-uid-{uid}-{int(time.time())}"
         tgen_private_ip_assigned = f"10.0.0.{6 + i}"
         
-        tgen_private_ip, tgen_public_ip = await create_vm_with_resources(
+        tgen_instance_id = await create_vm(
             session, signer, region,
             tgen_name, tgen_size,
             subnet_id, tgen_private_ip_assigned,
-            public_key, user_data,
+            user_data,
             vpc_id, uid,
+            security_group_id,
             custom_tgen_ram_mb, custom_tgen_cpu_count
         )
         
         traffic_generators.append({
-            "private_ip": tgen_private_ip,
-            "public_ip": tgen_public_ip,
+            "instance_id": tgen_instance_id,
+            "private_ip": tgen_private_ip_assigned,
             "name": tgen_name,
-            "ip": tgen_public_ip,
             "username": "ubuntu",
             "_index": i
         })
     
-    logger.info(f"Successfully provisioned AWS VMs for UID {uid}")
+    # Collect all instance IDs for polling
+    instance_ids = [king_machine["instance_id"]] + [tg["instance_id"] for tg in traffic_generators]
+    
+    # Poll VMs until they're ready instead of static sleep
+    public_ips = await wait_for_vms_ready(session, signer, region, instance_ids)
+    
+    # Update machines with public IPs
+    king_machine["public_ip"] = public_ips[0]
+    king_machine["ip"] = public_ips[0]
+    
+    for i, tg in enumerate(traffic_generators):
+        tg["public_ip"] = public_ips[i + 1]
+        tg["ip"] = public_ips[i + 1]
+    
+    # logger.info(f"Successfully provisioned AWS VMs for UID {uid}")
     return king_machine, traffic_generators, MOAT_PRIVATE_IP
 
 
@@ -699,18 +702,18 @@ async def clear_vms(
     timestamp: int
 ) -> None:
     """
-    Delete VMs and associated resources for a UID.
+    Delete VMs for a UID.
     """
-    await cleanup_all_resources_for_uid(uid, machine_config)
+    await cleanup_all_vms_for_uid(uid, machine_config)
 
 
-async def cleanup_all_resources_for_uid(
+async def cleanup_all_vms_for_uid(
     uid: int,
     machine_config: Dict
 ) -> None:
     """
-    Aggressively clean up ALL resources associated with king/tgen VMs for a UID.
-    This includes instances and elastic IPs.
+    Clean up ALL VMs associated with king/tgen for a UID.
+    Simplified like GCP - just terminate instances.
     """
     # Get AWS session and signer
     session, signer = await get_aws_session(machine_config)
@@ -733,7 +736,7 @@ async def cleanup_all_resources_for_uid(
         'Filter.3.Value.4': 'stopped'
     }
     
-    params_str = '&'.join(f'{k}={v}' for k, v in params.items())
+    params_str = '&'.join(f'{k}={quote(str(v), safe="")}' for k, v in params.items())
     
     headers = signer.sign_request('POST', ec2_url, 
                                  {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -748,24 +751,16 @@ async def cleanup_all_resources_for_uid(
         root = ET.fromstring(text)
     
         instance_ids = []
-        allocation_ids = []
         
-        # Parse instances from XML
-        for reservation in root.findall('.//item'):
-            for instance in reservation.findall('.//instancesSet/item'):
-                instance_id = instance.find('instanceId')
-                if instance_id is not None:
-                    instance_ids.append(instance_id.text)
-                
-                # Collect elastic IP allocation IDs
-                for interface in instance.findall('.//networkInterfaceSet/item'):
-                    alloc_id = interface.find('.//association/allocationId')
-                    if alloc_id is not None:
-                        allocation_ids.append(alloc_id.text)
+        # Parse instances from XML - simplified iteration
+        for instance in root.findall('.//{*}instancesSet/{*}item'):
+            instance_id = instance.find('{*}instanceId')
+            if instance_id is not None:
+                instance_ids.append(instance_id.text)
         
         # Terminate instances
         if instance_ids:
-            logger.info(f"Terminating {len(instance_ids)} instances for UID {uid}")
+            # logger.info(f"Terminating {len(instance_ids)} instances for UID {uid}")
             
             # Terminate all instances in one call
             terminate_params = {
@@ -777,7 +772,7 @@ async def cleanup_all_resources_for_uid(
             for idx, instance_id in enumerate(instance_ids):
                 terminate_params[f'InstanceId.{idx + 1}'] = instance_id
             
-            terminate_params_str = '&'.join(f'{k}={v}' for k, v in terminate_params.items())
+            terminate_params_str = '&'.join(f'{k}={quote(str(v), safe="")}' for k, v in terminate_params.items())
             
             headers = signer.sign_request('POST', ec2_url, 
                                          {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -786,48 +781,7 @@ async def cleanup_all_resources_for_uid(
             async with session.post(ec2_url, data=terminate_params_str, headers=headers) as response:
                 if response.status != 200:
                     error = await response.text()
-                    logger.error(f"Failed to terminate instances: {error}")
-            
-            # Wait for termination (simplified - just sleep)
-            logger.info("Waiting for instances to terminate...")
-            await asyncio.sleep(60)
-        
-        # Release elastic IPs
-        if allocation_ids:
-            async def release_ip(alloc_id):
-                try:
-                    release_params = {
-                        'Action': 'ReleaseAddress',
-                        'Version': '2016-11-15',
-                        'AllocationId': alloc_id
-                    }
-                    
-                    release_params_str = '&'.join(f'{k}={v}' for k, v in release_params.items())
-                    
-                    headers = signer.sign_request('POST', ec2_url, 
-                                                 {'Content-Type': 'application/x-www-form-urlencoded'},
-                                                 release_params_str)
-                    
-                    async with session.post(ec2_url, data=release_params_str, headers=headers) as response:
-                        if response.status == 200:
-                            logger.info(f"Released elastic IP: {alloc_id}")
-                            return True
-                        else:
-                            error = await response.text()
-                            logger.warning(f"Failed to release elastic IP {alloc_id}: {error}")
-                            return False
-                except Exception as e:
-                    logger.warning(f"Failed to release elastic IP {alloc_id}: {e}")
-                    return False
-            
-            # Use asyncio.gather for parallel releases
-            results = await asyncio.gather(
-                *[release_ip(aid) for aid in allocation_ids],
-                return_exceptions=True
-            )
-            
-            success_count = sum(1 for r in results if r is True)
-            logger.info(f"Released {success_count}/{len(allocation_ids)} elastic IPs")
+                    # logger.error(f"Failed to terminate instances: {error}")
 
 
 def find_closest_instance_type(cpu_count: int, ram_mb: int) -> str:
@@ -882,6 +836,5 @@ def find_closest_instance_type(cpu_count: int, ram_mb: int) -> str:
         else:
             best_match = "c5.4xlarge"
     
-    #DELETE FOR PRODUCTION!
-    logger.info(f"Selected instance type {best_match} for {cpu_count} CPUs and {ram_gb}GB RAM")
+    # logger.info(f"Selected instance type {best_match} for {cpu_count} CPUs and {ram_gb}GB RAM")
     return best_match
