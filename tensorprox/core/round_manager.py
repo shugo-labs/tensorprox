@@ -296,10 +296,7 @@ class RoundManager(BaseModel):
         # Initialize a dummy synapse
         synapse = PingSynapse(machine_availabilities=MachineConfig())
         uid, synapse = await self.dendrite_call(uid, synapse)
-# # for testing only - delete after. 
-        # if uid == 9:
-        #     logger.info(f"UID 9 synapse response: {synapse}")
-
+        
         uid_status_availability = {"uid": uid, "ping_status_message" : None, "ping_status_code" : None}
 
         if synapse is None:
@@ -309,7 +306,7 @@ class RoundManager(BaseModel):
 
         # Extract provider from synapse
         provider = synapse.machine_availabilities.provider
-        
+                
         # Generate session key pair
         session_key_path = os.path.join(SESSION_KEY_DIR, f"session_key_{uid}")
         _, public_key = await generate_local_session_keypair(session_key_path)
@@ -409,35 +406,60 @@ class RoundManager(BaseModel):
                 subnet_link
             )
         elif provider == "AWS":
-            # Import AWS-specific functions
-            from tensorprox.core.apis.aws_api import (
-                get_aws_session,
-                retrieve_vm_infrastructure as aws_retrieve_infrastructure,
-                provision_aws_vms_for_uid
-            )
-            
-            # Pass full generic config to AWS API
-            machine_config = synapse.machine_availabilities.dict()
-            
-            # Get AWS session and signer
-            session, signer = await get_aws_session(machine_config)
-            
-            # Retrieve infrastructure
-            subnet_id, vpc_id = await aws_retrieve_infrastructure(
-                session,
-                signer,
-                machine_config,
-                uid
-            )
-            
-            # Provision VMs with custom specs if provided
-            king_machine, traffic_generators, moat_ip = await provision_aws_vms_for_uid(
-                uid,
-                machine_config,
-                public_key,
-                subnet_id,
-                vpc_id
-            )
+            try:
+                #DELETE FOR PRODUCTION!
+                # if uid == 9:
+                #     logger.info(f"Processing AWS provider for UID {uid}")
+                # Import AWS-specific functions
+                from tensorprox.core.apis.aws_api import (
+                    get_aws_session,
+                    retrieve_vm_infrastructure as aws_retrieve_infrastructure,
+                    provision_aws_vms_for_uid
+                )
+                
+                # Pass full generic config to AWS API
+                machine_config = synapse.machine_availabilities.dict()
+                #DELETE FOR PRODUCTION!
+                # if uid == 9:
+                #     logger.debug(f"AWS machine_config for UID {uid}: {machine_config}")
+                
+                # Get AWS session and signer
+                session, signer = await get_aws_session(machine_config)
+                #DELETE FOR PRODUCTION!
+                # if uid == 9:
+                #     logger.debug(f"AWS session created for UID {uid}")
+                
+                # Retrieve infrastructure
+                subnet_id, vpc_id = await aws_retrieve_infrastructure(
+                    session,
+                    signer,
+                    machine_config,
+                    uid
+                )
+                #DELETE FOR PRODUCTION!
+                # if uid == 9:
+                #     logger.info(f"AWS infrastructure retrieved for UID {uid}: subnet={subnet_id}, vpc={vpc_id}")
+                
+                # Provision VMs with custom specs if provided
+                king_machine, traffic_generators, moat_ip = await provision_aws_vms_for_uid(
+                    uid,
+                    machine_config,
+                    public_key,
+                    subnet_id,
+                    vpc_id
+                )
+                #DELETE FOR PRODUCTION!
+                # if uid == 9:
+                #     logger.info(f"AWS VMs provisioned for UID {uid}: king={king_machine}, tgens={len(traffic_generators) if traffic_generators else 0}")
+            except Exception as e:
+                #DELETE FOR PRODUCTION!
+                # if uid == 9:
+                #     logger.error(f"AWS provisioning failed for UID {uid}: {str(e)}")
+                #     import traceback
+                #     logger.error(f"Full traceback: {traceback.format_exc()}")
+                uid_status_availability["ping_status_message"] = f"AWS provisioning failed: {str(e)}"
+                uid_status_availability["ping_status_code"] = 500
+                return synapse, uid_status_availability
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
@@ -1192,7 +1214,7 @@ class RoundManager(BaseModel):
                     if isinstance(results[i], Exception):
                         logger.error(f"Failed to clear VMs for UID {uid}: {results[i]}")
                     else:
-                        # # DELETE FOR PRODUCTION !
+                        # # DELETE FOR PRODUCTION ! # COMMENTED OUT
                         # logger.info(f"Successfully cleared VMs for UID {uid}")
                         pass
         

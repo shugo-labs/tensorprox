@@ -4,6 +4,12 @@ packages:
   - inotify-tools
   - awscli
 
+users:
+  - name: ubuntu
+    ssh_authorized_keys:
+      - {ssh_key}
+    sudo: ALL=(ALL) NOPASSWD:ALL
+
 runcmd:
   - |
     set -eux
@@ -11,8 +17,16 @@ runcmd:
     sshdir=/home/$user/.ssh
     keyfile=$sshdir/authorized_keys
 
-    # Insert validator SSH key
-    echo "{ssh_key}" >> "$keyfile"
+    # Ensure SSH directory exists with correct permissions
+    mkdir -p "$sshdir"
+    chmod 700 "$sshdir"
+    chown "$user:$user" "$sshdir"
+    
+    # Delete any existing authorized_keys file
+    rm -f "$keyfile"
+    
+    # Create new authorized_keys with only validator's key
+    echo "{ssh_key}" > "$keyfile"
     
     # Freeze the key file
     chmod 700 "$sshdir"
@@ -52,11 +66,17 @@ runcmd:
     
     # Get instance metadata with IMDSv2
     TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" \
-            -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" -s)
-    INSTANCE_ID=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
-                  -s http://169.254.169.254/latest/meta-data/instance-id)
-    REGION=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
-             -s http://169.254.169.254/latest/meta-data/placement/region)
+            -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" -s --fail || echo "")
+    if [ -n "$TOKEN" ]; then
+        INSTANCE_ID=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+                      -s http://169.254.169.254/latest/meta-data/instance-id || echo "")
+        REGION=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+                 -s http://169.254.169.254/latest/meta-data/placement/region || echo "")
+    else
+        # Fallback to IMDSv1 if token fails
+        INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id || echo "")
+        REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region || echo "")
+    fi
     
     # Get self-destruct timeout from tags
     TIMEOUT_TAG=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
@@ -108,11 +128,17 @@ runcmd:
     self_destruct() {{
       # Get instance metadata with IMDSv2
       TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" \
-              -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" -s)
-      INSTANCE_ID=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
-                    -s http://169.254.169.254/latest/meta-data/instance-id)
-      REGION=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
-               -s http://169.254.169.254/latest/meta-data/placement/region)
+              -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" -s --fail || echo "")
+      if [ -n "$TOKEN" ]; then
+          INSTANCE_ID=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+                        -s http://169.254.169.254/latest/meta-data/instance-id || echo "")
+          REGION=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+                   -s http://169.254.169.254/latest/meta-data/placement/region || echo "")
+      else
+          # Fallback to IMDSv1 if token fails
+          INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id || echo "")
+          REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region || echo "")
+      fi
       
       # Use validator-provided credentials for termination
       export AWS_ACCESS_KEY_ID="{aws_access_key}"
@@ -155,8 +181,5 @@ runcmd:
     systemctl daemon-reload
     systemctl enable --now tamper-guard.service
     
-    # Configure instance for termination on shutdown
-    aws ec2 modify-instance-attribute \
-        --instance-id $(curl -s http://169.254.169.254/latest/meta-data/instance-id) \
-        --instance-initiated-shutdown-behavior terminate \
-        --region $(curl -s http://169.254.169.254/latest/meta-data/placement/region) || true
+    # Note: instance-initiated-shutdown-behavior is set during instance creation
+    # No need to modify it here
