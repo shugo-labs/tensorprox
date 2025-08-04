@@ -283,9 +283,14 @@ def get_attack_classes() -> Dict[str, list]:
 
 def create_random_playlist(total_seconds, label_hashes, role=None, seed=None):
     """
-    Create a random playlist totaling a specified duration, either for an 'attacker' or 'benign' role.
-    Generates a playlist consisting of random activities ('pause' or a class type) with durations summing up to the specified total duration.
-
+    Create a random playlist totaling a specified duration with separate benign and attack playlists.
+    
+    The new structure provides:
+    - A benign playlist that runs continuously for the full challenge duration with both TCP and UDP traffic in parallel
+    - An attack playlist that contains intermittent attacks and pauses (60-180 seconds each) in alternating pattern
+    
+    Each traffic generator gets independent attack sequences while maintaining the same benign traffic structure.
+    
     Args:
         total_seconds (int): The total duration of the playlist in seconds.
         label_hashes (dict): Dictionary of labels and corresponding lists of random hashes.
@@ -293,75 +298,84 @@ def create_random_playlist(total_seconds, label_hashes, role=None, seed=None):
         seed (int, optional): The seed for the random number generator. If None, the seed is not set.
 
     Returns:
-        list: A list of dictionaries, each containing 'name', 'class_vector', 'label_identifier', and 'duration'.
+        dict: A dictionary containing 'benign_playlist' and 'attack_playlist' with their respective structures.
     """
 
     if seed is not None:
         random.seed(seed)
 
     type_class_map = get_attack_classes()
-    playlist = []
-    current_total = 0
     attack_labels = [key for key in type_class_map.keys() if key != "BENIGN"]
-    benign_labels = ["BENIGN"]
-
-    # Role-specific weight calculation using a dictionary
-    weights = {
-        "aggressive": (0.8, 0.2),
-        "soft": (0.2, 0.8)
-    }.get(role, (0.5, 0.5))  # Default to (0.5, 0.5) if machine is hybrid
-
-    attack_weight, benign_weight = weights
-
-    # Calculate individual weights
-    attack_weight_per_label = attack_weight / len(attack_labels)
-    combined_labels = attack_labels + benign_labels
-    weights = [attack_weight_per_label] * len(attack_labels) + [benign_weight]
-
-    while current_total < total_seconds:
-        
-        # Select label based on role-specific weight distribution
-        name = random.choices(combined_labels, weights, k=1)[0]
-        # Determine the duration for this step (ensuring we don't exceed total_seconds)
-        duration = min(random.randint(60, 180), total_seconds - current_total)
-
-        # If role is "Benign" and label "BENIGN" is chosen, output a grouped unit with two class_vectors.
-        if role == "soft" and name == "BENIGN":
+    
+    # Create the new playlist structure
+    # Use the same label hash for both TCP and UDP benign traffic
+    benign_hash = random.choice(label_hashes["BENIGN"])
+    
+    playlist = {
+        "benign_playlist": {
+            "name": "BENIGN",
+            "duration": total_seconds,  # Full challenge duration
+            "classes": [
+                {
+                    "class_vector": "tcp_traffic",
+                    "label_identifier": benign_hash,  # Same hash for TCP
+                    "duration": total_seconds  # Full duration for TCP
+                },
+                {
+                    "class_vector": "udp_traffic", 
+                    "label_identifier": benign_hash,  # Same hash for UDP
+                    "duration": total_seconds  # Full duration for UDP
+                }
+            ]
+        },
+        "attack_playlist": []
+    }
+    
+    # Generate attack playlist with alternating attacks and pauses
+    # Each traffic generator will have different attack sequences due to different seeds
+    current_time = 0
+    
+    # Start with either attack or pause (random choice)
+    start_with_attack = random.choice([True, False])
+    is_attack_turn = start_with_attack
+    
+    while current_time < total_seconds:
+        if is_attack_turn:
+            # Add attack
+            attack_type = random.choice(attack_labels)
+            class_vector = random.choice(type_class_map[attack_type])
+            label_identifier = random.choice(label_hashes[attack_type])
             
-            benign_unit = {
-                "name": "BENIGN",
-                "classes": [
-                    {
-                        "class_vector": "tcp_traffic",
-                        "label_identifier": random.choice(label_hashes["BENIGN"]),
-                        "duration": duration
-                    },
-                    {
-                        "class_vector": "udp_traffic",
-                        "label_identifier": random.choice(label_hashes["BENIGN"]),
-                        "duration": duration
-                    }
-                ]
-            }
-
-            playlist.append(benign_unit)
-
-        else :
-
-            # For all other cases, use the existing logic
-            # Note: For non-"pause" labels, select the class_vector and label_identifier
-            class_vector = random.choice(type_class_map[name]) if name != "pause" else None
-            label_identifier = random.choice(label_hashes[name]) if name != "pause" else None
-
-            # Add activity to the playlist
-            playlist.append({
-                "name": name, 
-                "class_vector": class_vector,
-                "label_identifier": label_identifier, 
-                "duration": duration
-            })
-
-        current_total += duration
+            # Random duration between 60-180 seconds
+            duration = min(random.randint(60, 180), total_seconds - current_time)
+            
+            if duration > 0:
+                attack_entry = {
+                    "name": attack_type,
+                    "class_vector": class_vector,
+                    "label_identifier": label_identifier,
+                    "duration": duration
+                }
+                playlist["attack_playlist"].append(attack_entry)
+                current_time += duration
+            
+            # Next will be pause
+            is_attack_turn = False
+        else:
+            # Add pause
+            pause_duration = min(random.randint(60, 180), total_seconds - current_time)
+            if pause_duration > 0:
+                pause_entry = {
+                    "name": "pause",
+                    "class_vector": None,
+                    "label_identifier": None,
+                    "duration": pause_duration
+                }
+                playlist["attack_playlist"].append(pause_entry)
+                current_time += pause_duration
+            
+            # Next will be attack
+            is_attack_turn = True
 
     return playlist
 

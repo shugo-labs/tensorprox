@@ -17,4 +17,4 @@ done
 
 # Upgrade pip and install Python libraries quietly
 pip3 install --upgrade pip --quiet
-pip3 install faker scapy pycryptodome --quiet
+pip3 install faker scapy pycryptodome psutils --quiet

@@ -215,6 +215,7 @@ class Validator(BaseValidatorNeuron):
                         total_seconds=CHALLENGE_DURATION,
                         label_hashes=label_hashes,
                         role=role,
+                        seed=random_int + i # Different seed for each traffic generator
                     )
                     playlists[f"tgen-{i}"] = playlist
                 
