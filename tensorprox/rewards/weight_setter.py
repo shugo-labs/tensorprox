@@ -40,6 +40,10 @@ from tensorprox.utils.misc import ttl_get_block
 from tensorprox.base.loop_runner import AsyncLoopRunner
 from tensorprox import global_vars
 from tensorprox.utils.logging import WeightSetEvent, log_event
+from tensorprox.utils.weight_utils import (
+    process_weights_for_netuid,
+    convert_weights_and_uids_for_emit,
+)
 
 PAST_WEIGHTS: list[np.ndarray] = []
 WEIGHTS_HISTORY_LENGTH = 24
@@ -77,15 +81,18 @@ def set_weights(weights: np.ndarray, step: int = 0):
         averaged_weights = np.average(np.array(PAST_WEIGHTS), axis=0)
 
         # Process the raw weights to final_weights via subtensor limitations.
-        (processed_weight_uids, processed_weights) = bt.utils.weight_utils.process_weights_for_netuid(
+        (processed_weight_uids, processed_weights) = process_weights_for_netuid(
             uids=settings.METAGRAPH.uids,
             weights=averaged_weights,
             netuid=settings.NETUID,
             subtensor=settings.SUBTENSOR,
-            metagraph=settings.METAGRAPH)
+            metagraph=settings.METAGRAPH,
+            burn_uid=global_vars.BURN_UID,
+            burn_weight=global_vars.BURN_WEIGHT
+        )
 
         # Convert to uint16 weights and uids.
-        (uint_uids,uint_weights) = bt.utils.weight_utils.convert_weights_and_uids_for_emit(uids=processed_weight_uids, weights=processed_weights)
+        (uint_uids,uint_weights) = convert_weights_and_uids_for_emit(uids=processed_weight_uids, weights=processed_weights)
 
         # Create a dataframe from weights and uids and save it as a csv file, with the current step as the filename.
         if settings.LOG_WEIGHTS:

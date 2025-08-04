@@ -593,7 +593,7 @@ class RoundManager(BaseModel):
         ssh_user: str,
         key_path: str,
         repo_url: str = "https://github.com/shugo-labs/tensorprox.git",
-        branch: str = "main",
+        branch: str = "managed_traffic",
         sparse_folder: str = "tensorprox/core/immutable",
         timeout: int = 120
     ) -> bool:
@@ -819,7 +819,7 @@ class RoundManager(BaseModel):
         else:
             # Use the new playlist structure - each machine gets its own complete playlist
             playlist = json.dumps(playlists[machine_name]) if machine_name in playlists else "null"
-            
+
         label_hashes = json.dumps(label_hashes)
         
         # logger.debug(f"Preparing challenge for {machine_name}: script={remote_script_path}, playlist={'provided' if machine_name != 'king' else 'null'}") #DELETE FOR PRODUCTION!
