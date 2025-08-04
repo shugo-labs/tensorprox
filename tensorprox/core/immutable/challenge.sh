@@ -19,13 +19,6 @@ rtt_avg=1000000000
 # Define the traffic filtering
 filter_traffic="(tcp or udp) and dst host $king_ip"
 
-# Add buffer to ensure late packets are counted
-if [ "$machine_name" == "king" ]; then
-    timeout_duration=$((challenge_duration + 2))
-else
-    timeout_duration=$challenge_duration
-fi
-
 # Traffic generation for tgen machines
 if [[ "$machine_name" == tgen* ]]; then
     # Dump playlist into temporary json file
@@ -39,7 +32,7 @@ if [[ "$machine_name" == tgen* ]]; then
 fi
 
 # Use fast tcpdump with custom gawk processing to handle uniqueness for benign only
-sudo timeout "$timeout_duration" tcpdump -A -l -i "gre-moat" "$filter_traffic" 2>/dev/null | \
+sudo timeout "$challenge_duration" tcpdump -A -l -i "gre-moat" "$filter_traffic" 2>/dev/null | \
 gawk -v benign_pat="$benign_pattern" -v udp_pat="$udp_flood_pattern" -v tcp_pat="$tcp_syn_flood_pattern" '
 BEGIN {
     udp_flood = 0;
