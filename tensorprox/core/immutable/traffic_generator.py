@@ -28,6 +28,7 @@ from datetime import datetime
 from enum import Enum, auto
 from multiprocessing import Event, Process, cpu_count
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
+import psutil
 
 # Third-party imports
 from faker import Faker
@@ -41,6 +42,87 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger(__name__)
+
+def get_available_cpu_count(reserved_percentage=20) -> int:
+    """Get the number of CPU cores available for traffic generation.
+    
+    Uses percentage-based resource allocation instead of core reservation.
+    
+    Args:
+        reserved_percentage: Percentage of CPU resources to reserve for other tasks (default: 20)
+    
+    Returns:
+        Total number of CPU cores (all cores available with percentage-based limits)
+    """
+    total_cores = multiprocessing.cpu_count()
+    # All cores are available, resource limiting is done through throttling
+    return total_cores
+
+
+def get_cpu_affinity_cores(reserved_percentage=20) -> Dict[str, List[int]]:
+    """Get the CPU core numbers for percentage-based resource allocation.
+    
+    Args:
+        reserved_percentage: Percentage of CPU resources to reserve for other tasks (default: 20)
+    
+    Returns:
+        Dictionary with core lists for each traffic type:
+        - 'reserved': All cores (for percentage-based resource limiting)
+        - 'benign': All cores (10% resource usage on all cores)
+        - 'attack': All cores (90% resource usage on all cores)
+    """
+    total_cores = multiprocessing.cpu_count()
+    
+    # All cores are available for all traffic types
+    # Resource limiting is done through percentage-based throttling, not core reservation
+    all_cores = list(range(total_cores))
+    
+    # Log resource allocation (will appear once per process, which is acceptable)
+    logger.debug(f"Percentage-based resource allocation - All cores available: {all_cores}")
+    
+    return {
+        'reserved': all_cores,  # All cores available, but 20% usage limit
+        'benign': all_cores,    # All cores available, but 10% usage limit  
+        'attack': all_cores     # All cores available, but 90% usage limit
+    }
+
+
+def bind_process_to_cores(process: Process, core_list: List[int]) -> None:
+    """Bind a process to specific CPU cores for exclusive use.
+    
+    Args:
+        process: The process to bind
+        core_list: List of CPU core numbers to bind to
+    """
+    try:
+        # Get the process ID
+        pid = process.pid
+        if pid is None:
+            logger.warning("Process not started yet, cannot bind to cores")
+            return
+            
+        # Set CPU affinity using psutil
+        p = psutil.Process(pid)
+        p.cpu_affinity(core_list)
+        
+        logger.info(f"Successfully bound process {pid} to cores {core_list}")
+    except Exception as e:
+        logger.error(f"Failed to bind process to cores {core_list}: {e}")
+
+
+def bind_current_process_to_cores(core_list: List[int]) -> None:
+    """Bind the current process to specific CPU cores.
+    
+    Args:
+        core_list: List of CPU core numbers to bind to
+    """
+    try:
+        # Get current process
+        p = psutil.Process()
+        p.cpu_affinity(core_list)
+        logger.info(f"Successfully bound current process to cores {core_list}")
+    except Exception as e:
+        logger.error(f"Failed to bind current process to cores {core_list}: {e}")
 
 
 class TrafficType(Enum):
@@ -465,7 +547,8 @@ class Attack(ABC):
         pause_event: Optional[Event] = None, 
         min_port: Optional[int] = None, 
         max_port: Optional[int] = None,
-        custom_identifier: Optional[str] = None  # <--- New parameter
+        custom_identifier: Optional[str] = None,  # <--- New parameter
+        reserved_cores: int = 1  # <--- New parameter for CPU affinity
     ):
         """Initialize the attack.
         
@@ -477,6 +560,7 @@ class Attack(ABC):
             min_port: Optional minimum port number constraint.
             max_port: Optional maximum port number constraint.
             custom_identifier: Optional user-supplied identifier prefix to override defaults.
+            reserved_cores: Number of cores to reserve for packet counting.
         """
         # Validate and convert inputs
         self.target_ips = target_ips if isinstance(target_ips, list) else [target_ips]
@@ -494,6 +578,9 @@ class Attack(ABC):
 
         # Store user override identifier (None if not provided)
         self.custom_identifier = custom_identifier
+        
+        # Store reserved cores for CPU affinity
+        self.reserved_cores = reserved_cores
         
         # Initialize helper instances
         self.fake = Faker()
@@ -607,6 +694,52 @@ class Attack(ABC):
         """
         return PortStrategy.choose_port(self.min_port, self.max_port)
     
+    def bind_process_to_appropriate_cores(self, process: Process) -> None:
+        """Bind a process to the appropriate CPU cores based on traffic type.
+        
+        Args:
+            process: The process to bind to CPU cores
+        """
+        # Get CPU affinity configuration
+        affinity_cores = get_cpu_affinity_cores(20)  # 20% reserved for other tasks
+        
+        # Determine which cores to use based on traffic type
+        if self.traffic_type == TrafficType.BENIGN:
+            core_list = affinity_cores['benign']
+            logger.info(f"Binding benign traffic process (10% resource allocation) to cores {core_list}")
+        else:  # TrafficType.ATTACK
+            core_list = affinity_cores['attack']
+            logger.info(f"Binding attack traffic process (90% resource allocation) to cores {core_list}")
+        
+        # Bind the process to the cores
+        bind_process_to_cores(process, core_list)
+    
+    def bind_current_process_to_appropriate_cores(self) -> None:
+        """Bind the current process to the appropriate CPU cores based on traffic type."""
+        # Get CPU affinity configuration
+        affinity_cores = get_cpu_affinity_cores(20)  # 20% reserved for other tasks
+        
+        # Determine which cores to use based on traffic type
+        if self.traffic_type == TrafficType.BENIGN:
+            core_list = affinity_cores['benign']
+            logger.info(f"Binding current benign traffic process (10% resource allocation) to cores {core_list}")
+        else:  # TrafficType.ATTACK
+            core_list = affinity_cores['attack']
+            logger.info(f"Binding current attack traffic process (90% resource allocation) to cores {core_list}")
+        
+        # Bind the current process to the cores
+        bind_current_process_to_cores(core_list)
+    
+    async def attack_throttle(self) -> None:
+        """Throttle attack processes to use only 90% of CPU resources, leaving 10% for monitoring."""
+        # More aggressive throttling to reduce CPU usage from 100% to ~90%
+        if random.random() < 0.30:  # 30% chance to sleep
+            await asyncio.sleep(random.uniform(0.01, 0.03))  # 10-30ms sleep
+        elif random.random() < 0.20:  # 20% chance for longer sleep
+            await asyncio.sleep(random.uniform(0.03, 0.08))  # 30-80ms sleep
+        elif random.random() < 0.10:  # 10% chance for even longer sleep
+            await asyncio.sleep(random.uniform(0.08, 0.15))  # 80-150ms sleep
+    
     @abstractmethod
     def run(self) -> None:
         """Run the attack.
@@ -668,6 +801,9 @@ class Attack(ABC):
                 self.traffic_shaper.setup_shaping(self.packet_loss, self.jitter)
             self.start_time = time.time()
             
+            # Bind current process to appropriate CPU cores
+            self.bind_current_process_to_appropriate_cores()
+            
             logger.info(f"Executing attack: {self.__class__.__name__} targeting {self.target_ips}")
             try:
                 self.run()  # Run the subclass-specific logic
@@ -701,13 +837,24 @@ class TCPAttack(Attack):
     
     def start_flood(self) -> None:
         """Start a flood attack using multiple processes."""
-        num_processes = cpu_count()
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(20)  # 20% reserved for other tasks
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores)
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             rate = random.randint(5000, 20000) // num_processes
             p = Process(target=self.run_flood_process, args=(rate, self.pause_event))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i]])
             processes.append(p)
         
         for p in processes:
@@ -779,8 +926,9 @@ class TCPTraffic(BenignTraffic):
 
     def __init__(self, target_ips: List[str], interface: str, duration: int, 
                  pause_event: Optional[Event] = None, min_port: Optional[int] = None, 
-                 max_port: Optional[int] = None, custom_identifier: Optional[str] = None):
-        super().__init__(target_ips, interface, duration, pause_event, min_port, max_port, custom_identifier)
+                 max_port: Optional[int] = None, custom_identifier: Optional[str] = None,
+                 reserved_cores: int = 20):  # Added reserved_cores parameter for compatibility
+        super().__init__(target_ips, interface, duration, pause_event, min_port, max_port, custom_identifier, reserved_cores)
         
         # List of local IPs assigned to the client's network interface
         self.local_ips = NetworkUtils.get_local_ips(self.interface)
@@ -796,10 +944,15 @@ class TCPTraffic(BenignTraffic):
             self.start_time = time.time()
             
         total_duration = self.duration
-        num_processes_per_ip = max(5, multiprocessing.cpu_count() // 2 // len(self.target_ips))
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(20)  # 20% reserved for other tasks
+        benign_cores = affinity_cores['benign']
+        # Reduce number of processes to lower CPU usage
+        num_processes_per_ip = max(1, min(3, len(benign_cores) // len(self.target_ips)))
         processes = []
 
         # Create processes for each target IP
+        process_index = 0
         for target_ip in self.target_ips:
             for _ in range(num_processes_per_ip):
                 logger.debug(f"Starting process for target {target_ip}")
@@ -808,7 +961,11 @@ class TCPTraffic(BenignTraffic):
                     args=(total_duration, self.pause_event, target_ip)
                 )
                 p.start()
+                # Bind this process to all available cores (percentage-based resource allocation)
+                bind_process_to_cores(p, benign_cores)
+                logger.info(f"TCP Process {p.pid} bound to all cores {benign_cores} with 10% resource limit (process {process_index + 1}/{num_processes_per_ip * len(self.target_ips)})")
                 processes.append(p)
+                process_index += 1
 
         for p in processes:
             p.join()
@@ -839,7 +996,7 @@ class TCPTraffic(BenignTraffic):
                                             pause_event: Event, interface: str) -> None:
         """Simulate both standard load phases and random bursts over an extended period."""
         regions = ['NA', 'EU', 'ASIA', 'SA', 'AF', 'OCEANIA']
-        semaphore = asyncio.Semaphore(100)  # Limit to 100 concurrent connections
+        semaphore = asyncio.Semaphore(20)  # Reduced from 100 to 20 concurrent connections
         tasks = []
 
         async def limited_simulation(task: asyncio.Task) -> None:
@@ -848,28 +1005,31 @@ class TCPTraffic(BenignTraffic):
 
         while time.time() - self.start_time < total_duration:
             region = random.choice(regions)
-            if random.random() < 0.05:
+            if random.random() < 0.02:  # Reduced from 0.05 to 0.02 (2% chance)
                 # Simulate burst traffic
                 tasks.append(asyncio.create_task(self.burst_traffic(target_ip, region, pause_event)))
             else:
                 # Simulate standard load phases
                 remaining_time = self.start_time + total_duration - time.time()
-                phase_duration = min(random.randint(1800, 3600), remaining_time)
+                phase_duration = min(random.randint(300, 600), remaining_time)  # Reduced from 1800-3600 to 300-600
                 tasks.append(asyncio.create_task(
                     self.manage_load_phases(target_ip, phase_duration, pause_event)
                 ))
 
-            # Occasionally initiate TCP client simulations
-            if random.random() < 0.1:
+            # Occasionally initiate TCP client simulations (reduced frequency)
+            if random.random() < 0.05:  # Reduced from 0.1 to 0.05 (5% chance)
                 target_port = self.choose_port_strategy()
                 tasks.append(asyncio.create_task(
                     self.simulate_tcp_client(target_ip, target_port, pause_event, interface)
                 ))
 
             # Limit the number of concurrent tasks to prevent overload
-            if len(tasks) > 1000:
+            if len(tasks) > 50:  # Reduced from 1000 to 50
                 done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                 tasks = list(pending)
+
+            # Add CPU throttling - sleep between iterations
+            await asyncio.sleep(0.1)  # 100ms delay between iterations
 
         # Wait for all remaining tasks to complete
         if tasks:
@@ -942,7 +1102,7 @@ class TCPTraffic(BenignTraffic):
                                   pause_event: Event, target_ip: str) -> None:
         """Simulate real-world load by sending TCP packets with raw sockets."""
         start_time = time.time()
-        packet_interval = 0.01  # Interval between packets to limit rate
+        packet_interval = 0.1  # Increased interval to reduce CPU usage (10 packets per second)
         
         # Create a raw socket for sending packets
         sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
@@ -977,12 +1137,14 @@ class TCPTraffic(BenignTraffic):
 
                 await asyncio.sleep(packet_interval)
 
-                if random.random() < 0.02:
-                    idle_time = random.uniform(0.01, 0.2)
+                # Add more frequent idle periods to reduce CPU usage
+                if random.random() < 0.3:  # 30% chance of idle time
+                    idle_time = random.uniform(0.1, 0.5)
                     await asyncio.sleep(idle_time)
 
-                if random.randint(0, 10000) < 1:
-                    pause_time = random.uniform(0.5, 2)
+                # More frequent pause periods
+                if random.randint(0, 1000) < 5:  # 0.5% chance
+                    pause_time = random.uniform(1, 3)
                     logger.info(f"Pausing traffic for {pause_time:.2f} seconds for natural idle period...")
                     await asyncio.sleep(pause_time)
         finally:
@@ -1094,10 +1256,14 @@ class UDPTraffic(BenignTraffic):
             
         total_duration = self.duration
         # Update: Use 50% of available CPU cores per target IP
-        num_processes_per_ip = max(1, (multiprocessing.cpu_count() // 2) // len(self.target_ips))
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(20)  # 20% reserved for other tasks
+        benign_cores = affinity_cores['benign']
+        num_processes_per_ip = max(1, len(benign_cores) // 2 // len(self.target_ips))
         processes = []
         
         # Create and start processes for each target IP
+        process_index = 0
         for target_ip in self.target_ips:
             for _ in range(num_processes_per_ip):
                 p = multiprocessing.Process(
@@ -1105,7 +1271,11 @@ class UDPTraffic(BenignTraffic):
                     args=(total_duration, self.pause_event, target_ip)
                 )
                 p.start()
+                # Bind this process to all available cores (percentage-based resource allocation)
+                bind_process_to_cores(p, benign_cores)
+                logger.info(f"UDP Process {p.pid} bound to all cores {benign_cores} with 10% resource limit (process {process_index + 1}/{num_processes_per_ip * len(self.target_ips)})")
                 processes.append(p)
+                process_index += 1
         
         for p in processes:
             p.join()
@@ -1219,12 +1389,14 @@ class UDPTraffic(BenignTraffic):
                 except OSError as e:
                     logger.error(f"Error sending UDP packet: {e}")
                 
-                if random.random() < 0.02:
-                    idle_time = random.uniform(0.01, 0.2)
+                # Add more frequent idle periods to reduce CPU usage
+                if random.random() < 0.3:  # 30% chance of idle time
+                    idle_time = random.uniform(0.1, 0.5)
                     await asyncio.sleep(idle_time)
                 
-                if random.randint(0, 10000) < 1:
-                    pause_time = random.uniform(0.5, 2)
+                # More frequent pause periods
+                if random.randint(0, 1000) < 5:  # 0.5% chance
+                    pause_time = random.uniform(1, 3)
                     logger.info(f"Pausing UDP traffic for {pause_time:.2f} seconds for natural idle period...")
                     await asyncio.sleep(pause_time)
         finally:
@@ -1271,11 +1443,14 @@ class TCPVariableWindowSYNFlood(TCPAttack):
                 payload, window_size=window_size, flags=flags
             )
             
-            tasks = [self.async_send_packet(sock, packet) for _ in range(3000)]
+            tasks = [self.async_send_packet(sock, packet) for _ in range(1500)]  # Reduced from 3000 to 1500
             await asyncio.gather(*tasks)
             
             base_interval = 1.0 / rate
             await asyncio.sleep(random.uniform(0.8 * base_interval, 1.2 * base_interval))
+            
+            # Throttle attack to leave resources for monitoring
+            await self.attack_throttle()
 
 
 class TCPSYNFloodReflection(TCPAttack):
@@ -1284,12 +1459,23 @@ class TCPSYNFloodReflection(TCPAttack):
     def run(self) -> None:
         logger.info("Starting TCP Amplified SYN Flood Reflection Attack")
         reflection_ips = [self.generate_random_ip() for _ in range(10)]
-        num_processes = cpu_count()
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(20)  # 20% reserved for other tasks
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores)
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             p = Process(target=self.run_flood_process, args=(reflection_ips, self.pause_event))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i % len(attack_cores)]])
             processes.append(p)
             
         for p in processes:
@@ -1323,6 +1509,9 @@ class TCPSYNFloodReflection(TCPAttack):
             tasks = [self.async_send_packet(sock, packet) for _ in range(100)]
             await asyncio.gather(*tasks)
             await asyncio.sleep(0.000001)
+            
+            # Throttle attack to leave resources for monitoring
+            await self.attack_throttle()
 
 
 class TCPAsyncSlowSYNFlood(TCPAttack):
@@ -1331,12 +1520,23 @@ class TCPAsyncSlowSYNFlood(TCPAttack):
     def run(self) -> None:
         logger.info("Starting TCP Async Slow SYN Flood Attack")
         reflection_ips = [self.generate_random_ip() for _ in range(10)]
-        num_processes = multiprocessing.cpu_count() * 8
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores) * 8
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             p = Process(target=self.run_flood_process, args=(reflection_ips, self.pause_event))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i % len(attack_cores)]])
             processes.append(p)
             
         for p in processes:
@@ -1386,12 +1586,23 @@ class TCPBatchSYNFlood(TCPAttack):
     
     def run(self) -> None:
         logger.info("Starting TCP Batch SYN Flood Attack")
-        num_processes = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores) * 2
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             p = Process(target=self.run_flood_process, args=(self.pause_event,))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i % len(attack_cores)]])
             processes.append(p)
             
         for p in processes:
@@ -1554,13 +1765,24 @@ class TCPAdaptiveFlood(TCPAttack):
     
     def run(self) -> None:
         logger.info("Starting TCP Adaptive Flood Attack")
-        num_processes = cpu_count()
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores)
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             rate = random.randint(5000, 20000) // num_processes
             p = Process(target=self.run_flood_process, args=(rate, self.pause_event))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i % len(attack_cores)]])
             processes.append(p)
             
         for p in processes:
@@ -1602,13 +1824,24 @@ class TCPBatchFlood(TCPAttack):
     
     def run(self) -> None:
         logger.info("Starting TCP Batch Flood Attack")
-        num_processes = cpu_count()
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores)
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             rate = random.randint(5000, 20000) // num_processes
             p = Process(target=self.run_flood_process, args=(rate, self.pause_event))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i % len(attack_cores)]])
             processes.append(p)
             
         for p in processes:
@@ -1731,12 +1964,23 @@ class UDPMalformedPacket(UDPAttack):
     
     def run(self) -> None:
         logger.info("Starting UDP Malformed Packet Flood Attack")
-        num_processes = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores) * 2
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             p = Process(target=self.run_process, args=(self.pause_event,))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i % len(attack_cores)]])
             processes.append(p)
             
         for p in processes:
@@ -1791,12 +2035,23 @@ class UDPMultiProtocolAmplificationAttack(UDPAttack):
     
     def run(self) -> None:
         logger.info("Starting UDP Multiprotocol Amplification Attack")
-        num_processes = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores) * 2
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             p = Process(target=self.run_process, args=(self.pause_event,))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i % len(attack_cores)]])
             processes.append(p)
             
         for p in processes:
@@ -1807,7 +2062,10 @@ class UDPMultiProtocolAmplificationAttack(UDPAttack):
     
     async def run_attack(self, pause_event: Event) -> None:
         tasks = []
-        num_tasks = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_tasks = len(attack_cores) * 2
         ports = {
             "DNS": 53,
             "NTP": 123,
@@ -1851,6 +2109,9 @@ class UDPMultiProtocolAmplificationAttack(UDPAttack):
                     continue
                 
                 await asyncio.sleep(0.00001)
+                
+                # Throttle attack to leave resources for monitoring
+                await self.attack_throttle()
         finally:
             sock.close()
 
@@ -1881,9 +2142,12 @@ class UDPAdaptivePayloadFlood(UDPAttack):
                     continue
                     
                 try:
-                    for _ in range(100):
+                    for _ in range(50):  # Reduced from 100 to 50
                         sock.sendto(packet_bytes, (target_ip, port))
                     await asyncio.sleep(1.0 / rate)
+                    
+                    # Throttle attack to leave resources for monitoring
+                    await self.attack_throttle()
                 except OSError as e:
                     logger.error(f"Error sending packet: {e}")
                     break
@@ -1892,7 +2156,10 @@ class UDPAdaptivePayloadFlood(UDPAttack):
     
     async def run_attack(self) -> None:
         tasks = []
-        num_tasks = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_tasks = len(attack_cores) * 2
         
         for _ in range(num_tasks):
             rate = random.randint(20000, 50000)
@@ -1961,7 +2228,10 @@ class UDPCompressedEncryptedFlood(UDPAttack):
     
     async def run_attack(self) -> None:
         tasks = []
-        num_tasks = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_tasks = len(attack_cores) * 2
         
         for _ in range(num_tasks):
             rate = random.randint(20000, 50000)
@@ -1994,12 +2264,23 @@ class UDPMaxRandomizedFlood(UDPAttack):
         self.start_flood()
     
     def start_flood(self) -> None:
-        num_processes = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores) * 2
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             p = Process(target=self.run_process, args=(self.pause_event,))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i % len(attack_cores)]])
             processes.append(p)
             
         for p in processes:
@@ -2010,7 +2291,10 @@ class UDPMaxRandomizedFlood(UDPAttack):
     
     async def run_attack(self, pause_event: Event) -> None:
         tasks = []
-        num_tasks = cpu_count() * 4
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_tasks = len(attack_cores) * 4
         
         for _ in range(num_tasks):
             rate = random.randint(50000, 100000)
@@ -2078,12 +2362,23 @@ class UDPAndTCPFlood(Attack):
     
     def run(self) -> None:
         logger.info("Starting UDP and TCP Flood Attack")
-        num_processes = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores) * 2
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             p = Process(target=self.run_process, args=(self.pause_event,))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i % len(attack_cores)]])
             processes.append(p)
             
         for p in processes:
@@ -2094,7 +2389,10 @@ class UDPAndTCPFlood(Attack):
     
     async def run_attack(self, pause_event: Event) -> None:
         tasks = []
-        num_tasks = cpu_count() * 4
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_tasks = len(attack_cores) * 4
         
         for _ in range(num_tasks):
             tasks.append(asyncio.create_task(self.send_packet_batch(pause_event)))
@@ -2175,12 +2473,23 @@ class UDPSingleIPFlood(UDPAttack):
     
     def run(self) -> None:
         logger.info("Starting UDP Single IP Flood Attack")
-        num_processes = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores) * 2
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             p = Process(target=self.run_process, args=(self.pause_event,))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i % len(attack_cores)]])
             processes.append(p)
             
         for p in processes:
@@ -2191,7 +2500,10 @@ class UDPSingleIPFlood(UDPAttack):
     
     async def run_attack(self, pause_event: Event) -> None:
         tasks = []
-        num_tasks = cpu_count() * 4
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_tasks = len(attack_cores) * 4
         
         for _ in range(num_tasks):
             tasks.append(asyncio.create_task(self.send_packet_batch(pause_event)))
@@ -2241,12 +2553,23 @@ class UDPIpPacket(UDPAttack):
     
     def run(self) -> None:
         logger.info("Starting UDP IP Packet Flood Attack")
-        num_processes = cpu_count()
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores)
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             p = Process(target=self.run_process, args=(self.pause_event,))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i % len(attack_cores)]])
             processes.append(p)
             
         for p in processes:
@@ -2340,7 +2663,10 @@ class UDPReflectionAttack(UDPAttack):
     
     async def run_attack(self) -> None:
         tasks = []
-        num_tasks = cpu_count()
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_tasks = len(attack_cores)
         
         for _ in range(num_tasks):
             rate = random.randint(5000, 20000)
@@ -2367,12 +2693,23 @@ class UDPMemcachedAmplificationAttack(UDPAttack):
     
     def run(self) -> None:
         logger.info("Starting UDP Memcached Amplification Attack")
-        num_processes = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores) * 2
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             p = Process(target=self.run_process, args=(self.pause_event,))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i % len(attack_cores)]])
             processes.append(p)
             
         for p in processes:
@@ -2383,7 +2720,10 @@ class UDPMemcachedAmplificationAttack(UDPAttack):
     
     async def run_attack(self, pause_event: Event) -> None:
         tasks = []
-        num_tasks = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_tasks = len(attack_cores) * 2
         port = 11211  # Standard Memcached port
         
         for _ in range(num_tasks):
@@ -2458,12 +2798,23 @@ class UDPHybridFlood(UDPAttack):
     
     def run(self) -> None:
         logger.info("Starting UDP Hybrid Flood Attack")
-        num_processes = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores) * 2
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             p = Process(target=self.run_process, args=(self.pause_event,))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i % len(attack_cores)]])
             processes.append(p)
             
         for p in processes:
@@ -2474,7 +2825,10 @@ class UDPHybridFlood(UDPAttack):
     
     async def run_attack(self, pause_event: Event) -> None:
         tasks = []
-        num_tasks = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_tasks = len(attack_cores) * 2
         
         for _ in range(num_tasks):
             rate = random.randint(20000, 50000)
@@ -2483,7 +2837,7 @@ class UDPHybridFlood(UDPAttack):
             tasks.append(asyncio.create_task(
                 self.send_packet_batch(self.target_ip, port, payload, rate, pause_event)
             ))
-            
+        
         await asyncio.gather(*tasks, return_exceptions=True)
     
     async def send_packet_batch(self, target_ip: str, port: int, payload: Union[str, bytes], 
@@ -2525,12 +2879,23 @@ class UDPDynamicPayloadFlood(UDPAttack):
     
     def run(self) -> None:
         logger.info("Starting UDP Dynamic Payload Flood Attack")
-        num_processes = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores) * 2
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             p = Process(target=self.run_process, args=(self.pause_event,))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i % len(attack_cores)]])
             processes.append(p)
             
         for p in processes:
@@ -2541,7 +2906,10 @@ class UDPDynamicPayloadFlood(UDPAttack):
     
     async def run_attack(self, pause_event: Event) -> None:
         tasks = []
-        num_tasks = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_tasks = len(attack_cores) * 2
         
         for _ in range(num_tasks):
             rate = random.randint(20000, 50000)
@@ -2600,12 +2968,23 @@ class UDPEncryptedPayloadFlood(UDPAttack):
     
     def run(self) -> None:
         logger.info("Starting UDP Encrypted Payload Flood Attack")
-        num_processes = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_processes = len(attack_cores) * 2
+        
+        if num_processes == 0:
+            logger.warning("No attack cores available, using at least 1 process")
+            num_processes = 1
+        
         processes = []
         
-        for _ in range(num_processes):
+        for i in range(num_processes):
             p = Process(target=self.run_process, args=(self.pause_event,))
             p.start()
+            # Bind this process to the appropriate attack core
+            if i < len(attack_cores):
+                bind_process_to_cores(p, [attack_cores[i % len(attack_cores)]])
             processes.append(p)
             
         for p in processes:
@@ -2616,7 +2995,10 @@ class UDPEncryptedPayloadFlood(UDPAttack):
     
     async def run_attack(self, pause_event: Event) -> None:
         tasks = []
-        num_tasks = cpu_count() * 2
+        # Use our core splitting instead of all available cores
+        affinity_cores = get_cpu_affinity_cores(self.reserved_cores)
+        attack_cores = affinity_cores['attack']
+        num_tasks = len(attack_cores) * 2
         
         for _ in range(num_tasks):
             rate = random.randint(20000, 50000)
@@ -2690,16 +3072,31 @@ def get_attack_classes() -> Dict[str, Type[Attack]]:
 
 
 # NEW helper: Run an attack instance in a new process (used for parallel benign attacks)
-def run_attack_instance(attack_class, target_ips, interface, duration, label_identifier, min_port, max_port):
-    attack_instance = attack_class(
-        target_ips=target_ips,
-        interface=interface,
-        duration=duration,
-        pause_event=Event(),
-        custom_identifier=label_identifier,
-        min_port=min_port,
-        max_port=max_port
-    )
+def run_attack_instance(attack_class, target_ips, interface, duration, label_identifier, min_port, max_port, reserved_percentage=20):
+    # Create the attack instance with the required parameters
+    try:
+        attack_instance = attack_class(
+            target_ips=target_ips,
+            interface=interface,
+            duration=duration,
+            pause_event=Event(),
+            custom_identifier=label_identifier,
+            min_port=min_port,
+            max_port=max_port,
+            reserved_cores=reserved_percentage
+        )
+    except TypeError:
+        # If the class doesn't accept reserved_cores parameter, create without it
+        attack_instance = attack_class(
+            target_ips=target_ips,
+            interface=interface,
+            duration=duration,
+            pause_event=Event(),
+            custom_identifier=label_identifier,
+            min_port=min_port,
+            max_port=max_port
+        )
+    
     # Mark instance as running in parallel so that traffic shaping is skipped
     attack_instance.parallel = True
     attack_instance.execute()
@@ -2728,68 +3125,67 @@ def main() -> None:
     # Load the playlist from the given JSON file
     try:
         with open(args.playlist, 'r') as file:
-            playlist = json.load(file)
+            playlist_data = json.load(file)
     except Exception as e:
         logger.error(f"Failed to load playlists file: {e}")
         sys.exit(1)
     
-    # NEW: Determine playlist structure.
-    # If any entry has a "classes" key, assume the JSON is in the new parallel benign format.
-    if isinstance(playlist, list):
-        if any("classes" in entry for entry in playlist):
-            playlist_entries = playlist  # Use as is.
-        else:
-            # Group by class_vector as before.
-            grouped_playlist = {}
-            for entry in playlist:
-                key = entry.get('class_vector')
-                if key:
-                    grouped_playlist.setdefault(key, []).append(entry)
-            playlist_entries = []
-            for key, entries in grouped_playlist.items():
-                playlist_entries.extend(entries)
-    else:
-        # If not a list, assume it's already grouped.
-        playlist_entries = []
-        for key, entries in playlist.items():
-            playlist_entries.extend(entries)
-    
     attack_classes = get_attack_classes()
-
-    # Process each entry in the playlist
-    for entry in playlist_entries:
-        # If the entry has a "classes" key, run those benign attacks in parallel.
-        if "classes" in entry:
-            benign_processes = []
-            for sub_entry in entry["classes"]:
-                attack_class = attack_classes.get(sub_entry["class_vector"].lower())
-                if not attack_class:
-                    logger.error(f"Error: Traffic type '{sub_entry['class_vector']}' is not recognized.")
-                    continue
-                logger.info(f"Starting parallel benign traffic generation for: {entry['name']} "
-                            f"({sub_entry['class_vector']}) with duration: {sub_entry.get('duration', 10)} seconds")
-                p = Process(target=run_attack_instance, args=(
-                    attack_class,
-                    target_ips,
-                    args.interface,
-                    sub_entry.get("duration", 10),
-                    sub_entry.get("label_identifier"),
-                    sub_entry.get("min_port", 1),
-                    sub_entry.get("max_port", 65535)
-                ))
-                p.start()
-                benign_processes.append(p)
-            for p in benign_processes:
-                p.join()
+    
+    # Process the new playlist structure with separate benign and attack playlists
+    if not isinstance(playlist_data, dict) or "benign_playlist" not in playlist_data or "attack_playlist" not in playlist_data:
+        logger.error("Invalid playlist structure. Expected dictionary with 'benign_playlist' and 'attack_playlist' keys.")
+        sys.exit(1)
+    
+    logger.info("Processing playlist structure with separate benign and attack playlists")
+    
+    # Start benign traffic processes (continuous for full duration)
+    benign_playlist = playlist_data["benign_playlist"]
+    attack_playlist = playlist_data["attack_playlist"]
+    
+    # Start benign traffic processes in parallel
+    benign_processes = []
+    if "classes" in benign_playlist:
+        for sub_entry in benign_playlist["classes"]:
+            attack_class = attack_classes.get(sub_entry["class_vector"].lower())
+            if not attack_class:
+                logger.error(f"Error: Traffic type '{sub_entry['class_vector']}' is not recognized.")
+                continue
+            
+            logger.info(f"Starting continuous benign traffic: {sub_entry['class_vector']} "
+                        f"for {sub_entry.get('duration', 10)} seconds")
+            
+            p = Process(target=run_attack_instance, args=(
+                attack_class,
+                target_ips,
+                args.interface,
+                sub_entry.get("duration", 10),
+                sub_entry.get("label_identifier"),
+                sub_entry.get("min_port", 1),
+                sub_entry.get("max_port", 65535),
+                20  # reserved_percentage default value
+            ))
+            p.start()
+            benign_processes.append(p)
+    
+    # Process attack playlist (intermittent attacks and pauses)
+    current_time = 0
+    for entry in attack_playlist:
+        if entry["name"] == "pause":
+            # Handle pause - just wait for the duration
+            pause_duration = entry.get("duration", 60)
+            logger.info(f"Pausing for {pause_duration} seconds")
+            time.sleep(pause_duration)
+            current_time += pause_duration
         else:
-            # Standard single attack entry processing.
+            # Handle attack
             attack_class = attack_classes.get(entry["class_vector"].lower())
             if not attack_class:
                 logger.error(f"Error: Traffic type '{entry['class_vector']}' is not recognized.")
                 continue
             
-            logger.info(f"Starting traffic generation for: {entry['name']} "
-                        f"({entry['class_vector']}) with duration: {entry.get('duration', 10)} seconds")
+            logger.info(f"Starting attack: {entry['name']} ({entry['class_vector']}) "
+                        f"for {entry.get('duration', 10)} seconds")
             
             attack_instance = attack_class(
                 target_ips=target_ips,
@@ -2798,9 +3194,15 @@ def main() -> None:
                 pause_event=Event(),
                 custom_identifier=entry.get("label_identifier"),
                 min_port=entry.get("min_port", 1),
-                max_port=entry.get("max_port", 65535)
+                max_port=entry.get("max_port", 65535),
+                reserved_cores=20  # Default reserved percentage for CPU affinity
             )
             attack_instance.execute()
-            
+            current_time += entry.get("duration", 10)
+    
+    # Wait for all benign processes to complete
+    for p in benign_processes:
+        p.join()
+
 if __name__ == "__main__":
     main()
