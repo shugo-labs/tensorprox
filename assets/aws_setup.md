@@ -1069,6 +1069,7 @@ num_tgens     = 2
    unzip terraform_1.12.2_linux_amd64.zip
    chmod +x terraform
    ./terraform version
+   export PATH=$PATH:.
    ```   
 
  ### 2.2 Configuration
