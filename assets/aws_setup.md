@@ -29,7 +29,7 @@ budget_amount      = 1000
 notification_email = "your-email@example.com"
 
 # Resource Quotas
-max_vcpus       = 8
+max_vcpus       = 16
 max_instances   = 4
 max_elastic_ips = 4
 
@@ -301,7 +301,7 @@ num_tgens     = 2
   variable "max_vcpus" {
     description = "Maximum vCPUs quota"
     type        = number
-    default     = 8
+    default     = 16
   }
   
   variable "max_instances" {
@@ -1126,7 +1126,7 @@ num_tgens     = 2
 | `zone` | Availability zone | First available |
 | `budget_amount` | Monthly budget in USD | 1000 |
 | `notification_email` | Email for alerts | Required |
-| `max_vcpus` | vCPU quota | 8 |
+| `max_vcpus` | vCPU quota | 16 |
 | `max_instances` | Instance quota | 4 |
 | `machine_type` | Default EC2 type | e3.medium |
 | `vm_size_small` | King instance type | e3.small |
