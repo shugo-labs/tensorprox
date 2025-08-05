@@ -30,9 +30,9 @@ This makes it possible to get started with even modest VPS, while encouraging sc
 ## 📐 Set up your miner 
 tensorprox supports running a miner on these Providers:  
 
-[Google Cloud Platform (GCP)](https://github.com/shugo-labs/tensorprox/blob/hyperscaler2/assets/gcp_setup.md)  
+[Google Cloud Platform (GCP)](https://github.com/shugo-labs/tensorprox/blob/main/assets/gcp_setup.md)  
 
-[Amazon Web Services (AWS)](https://github.com/shugo-labs/tensorprox/blob/hyperscaler2/assets/aws_setup.md)  
+[Amazon Web Services (AWS)](https://github.com/shugo-labs/tensorprox/blob/main/assets/aws_setup.md)  
 
 
 Click the respective Link to get their setup instructions. 
