@@ -593,7 +593,7 @@ class RoundManager(BaseModel):
         ssh_user: str,
         key_path: str,
         repo_url: str = "https://github.com/shugo-labs/tensorprox.git",
-        branch: str = "managed_traffic",
+        branch: str = "main",
         sparse_folder: str = "tensorprox/core/immutable",
         timeout: int = 120
     ) -> bool:
