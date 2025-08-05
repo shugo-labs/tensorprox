@@ -1206,7 +1206,7 @@ pip install -r requirements.txt
 
 ### 8. Create `.env.miner`
 
-Simply copy the relevant parts from [your Shell .env](https://github.com/shugo-labs/tensorprox/edit/hyperscaler2/assets/aws_setup.md#24-get-environment-file)
+Simply copy the relevant parts from [your Shell .env](https://github.com/shugo-labs/tensorprox/blob/main/assets/aws_setup.md#24-get-environment-file)
 
 ```bash
 nano .env.miner // use .env.miner.example
