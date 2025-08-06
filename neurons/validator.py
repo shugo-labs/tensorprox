@@ -579,18 +579,33 @@ def run_auto_update():
                     
                 logger.info(f"Setup return code: {setup_result.returncode}")
 
-                time.sleep(5)  # Give time for wandb service to shut down
-
+                # Enhanced wandb cleanup - wait longer and kill any remaining wandb processes
+                logger.info("Cleaning up wandb services before restart...")
+                
+                # Kill any existing wandb processes to prevent service conflicts
+                kill_wandb_cmd = "pkill -f wandb || true"
+                subprocess.run(kill_wandb_cmd, shell=True, capture_output=True)
+                
+                # Wait longer for wandb services to fully shut down
+                time.sleep(15)  # Increased from 5 to 15 seconds
+                
+                # Additional cleanup: remove wandb lock files if they exist
+                wandb_lock_cleanup = f"rm -rf {current_home}/.wandb/wandb-*.lock 2>/dev/null || true"
+                subprocess.run(wandb_lock_cleanup, shell=True, capture_output=True)
+                
                 # Force PM2 restart to ensure new code is loaded
                 logger.info("Restarting PM2 process...")
                 
-                # Use the current HOME environment variable
-                restart_cmd = f"export HOME={current_home} && source {venv_path}/bin/activate && pm2 restart {settings.PM_PROCESS_NAME} --update-env"
+                # Use the current HOME environment variable and add WANDB_DISABLED temporarily
+                restart_cmd = f"export HOME={current_home} && export WANDB_DISABLED=true && source {venv_path}/bin/activate && pm2 restart {settings.PM_PROCESS_NAME} --update-env"
                 restart_result = subprocess.run(restart_cmd, shell=True, executable='/bin/bash', capture_output=True, text=True)
                 
                 logger.info(f"PM2 restart stdout: {restart_result.stdout}")
                 if restart_result.stderr:
                     logger.error(f"PM2 restart stderr: {restart_result.stderr}")
+                
+                # Wait a bit more after restart to ensure process is stable
+                time.sleep(10)
                 
                 logger.info("Auto-update completed successfully - repository was updated.")
         else:
