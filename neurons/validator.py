@@ -579,7 +579,7 @@ def run_auto_update():
                     
                 logger.info(f"Setup return code: {setup_result.returncode}")
 
-                time.sleep(20)
+                time.sleep(5)  # Give time for wandb service to shut down
 
                 # Force PM2 restart to ensure new code is loaded
                 logger.info("Restarting PM2 process...")
