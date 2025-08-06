@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     NEURON_FORWARD_MAX_TIME: int = Field(240, env="NEURON_FORWARD_MAX_TIME")
 
     #Process manager parameters.
-    PM2_PROCESS_NAME: str = Field("tp_validator", env="PM2_PROCESS_NAME")
+    PM_PROCESS_NAME: str = Field("tp_validator", env="PM_PROCESS_NAME")
     VENV_NAME: str = Field("tp_venv", env="VENV_NAME")
     
     TASK_QUEUE_LENGTH_THRESHOLD: int = Field(10, env="TASK_QUEUE_LENGTH_THRESHOLD")

@@ -586,7 +586,7 @@ def run_auto_update():
                 logger.info("Restarting PM2 process...")
                 
                 # Use the current HOME environment variable
-                restart_cmd = f"export HOME={current_home} && source {venv_path}/bin/activate && pm2 restart {settings.PM2_PROCESS_NAME} --update-env"
+                restart_cmd = f"export HOME={current_home} && source {venv_path}/bin/activate && pm2 restart {settings.PM_PROCESS_NAME} --update-env"
                 restart_result = subprocess.run(restart_cmd, shell=True, executable='/bin/bash', capture_output=True, text=True)
                 
                 logger.info(f"PM2 restart stdout: {restart_result.stdout}")
