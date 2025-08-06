@@ -511,15 +511,12 @@ async def auto_update_loop():
     """Background task that periodically checks for updates and applies them."""
     while not validator_instance.should_exit:
         try:
-            if not settings.DISABLE_AUTO_UPDATE:
-                logger.debug("Checking for auto-updates...")
-                # Run the auto-update in a thread pool to avoid blocking
-                update_result = await asyncio.get_running_loop().run_in_executor(
-                    executor, 
-                    run_auto_update
-                )
-            else:
-                logger.debug("Auto-update is disabled")
+            logger.debug("Checking for auto-updates...")
+            # Run the auto-update in a thread pool to avoid blocking
+            update_result = await asyncio.get_running_loop().run_in_executor(
+                executor, 
+                run_auto_update
+            )
         except Exception as e:
             logger.error(f"Error during auto-update check: {e}")
         
@@ -634,7 +631,11 @@ async def main():
     asyncio.create_task(weight_setter.start())
     asyncio.create_task(task_scorer.start())
     asyncio.create_task(validator_instance.periodic_epoch_check())
-    asyncio.create_task(auto_update_loop())
+
+    if not settings.DISABLE_AUTO_UPDATE:
+        asyncio.create_task(auto_update_loop())
+    else :
+        logger.info("Auto-update is disabled.")
     
     try:
 
