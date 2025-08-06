@@ -578,7 +578,9 @@ def run_auto_update():
                     logger.error(f"Setup stderr: {setup_result.stderr}")
                     
                 logger.info(f"Setup return code: {setup_result.returncode}")
-                                
+
+                time.sleep(20)
+
                 # Force PM2 restart to ensure new code is loaded
                 logger.info("Restarting PM2 process...")
                 
