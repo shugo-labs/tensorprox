@@ -4,4 +4,4 @@ from tensorprox.rewards.reward import ChallengeRewardEvent
 reward_events: list[ChallengeRewardEvent] = []
 BURN_UID = 0
 BURN_WEIGHT = 1
-BAG_UID = 10
+BAG_UID = 98
