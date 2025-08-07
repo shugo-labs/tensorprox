@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     NEURON_QUERY_UNIQUE_IPS: bool = Field(False, env="NEURON_QUERY_UNIQUE_IPS")
     NEURON_FORWARD_MAX_TIME: int = Field(240, env="NEURON_FORWARD_MAX_TIME")
 
+    #Process manager parameters.
+    PM_PROCESS_NAME: str = Field("tp_validator", env="PM_PROCESS_NAME")
+    VENV_NAME: str = Field("tp_venv", env="VENV_NAME")
+    
     TASK_QUEUE_LENGTH_THRESHOLD: int = Field(10, env="TASK_QUEUE_LENGTH_THRESHOLD")
     SCORING_QUEUE_LENGTH_THRESHOLD: int = Field(10, env="SCORING_QUEUE_LENGTH_THRESHOLD")
 
@@ -65,7 +69,10 @@ class Settings(BaseSettings):
     AXON_PORT: Optional[int] = Field(None, env="AXON_PORT")
     HOTKEY: Optional[str] = Field(None, env="HOTKEY")
     SUBTENSOR_NETWORK: Optional[str] = Field(None, env="SUBTENSOR_NETWORK")
-
+    DISABLE_AUTO_UPDATE: bool = Field(False, env="DISABLE_AUTO_UPDATE")
+    AUTO_UPDATE_INTERVAL: int = Field(900, env="AUTO_UPDATE_INTERVAL")  # 15 minutes default
+    DISABLE_AUTO_RESTART: bool = Field(False, env="DISABLE_AUTO_RESTART")  # Disable auto-restart after updates
+    
     # Class variables for singleton.
     _instance: Optional["Settings"] = None
     _instance_mode: Optional[str] = None
