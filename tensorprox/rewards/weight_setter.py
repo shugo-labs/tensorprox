@@ -98,6 +98,7 @@ def set_weights(weights: np.ndarray, step: int = 0):
         if settings.LOG_WEIGHTS:
             try:
                 logger.debug(f"Lengths... UIDS: {len(uint_uids)}, WEIGHTS: {len(processed_weights.flatten())}, RAW_WEIGHTS: {len(weights.flatten())}, UINT_WEIGHTS: {len(uint_weights)}")
+                
                 weights_df = pd.DataFrame(
                     {
                         "step": step,
@@ -118,7 +119,6 @@ def set_weights(weights: np.ndarray, step: int = 0):
         if settings.NEURON_DISABLE_SET_WEIGHTS:
             logger.debug(f"Set weights disabled: {settings.NEURON_DISABLE_SET_WEIGHTS}")
             return
-
 
         # Set the weights on chain via our subtensor connection.
         result = settings.SUBTENSOR.set_weights(
@@ -159,7 +159,7 @@ class WeightSetter(AsyncLoopRunner):
     previous_event_count: int = 0
 
     # Define window size for the sliding window approach
-    window_size: int = 14 
+    window_size: int = 0
     
     # Store the sliding window of reward events
     reward_events_window: list = []
@@ -187,9 +187,9 @@ class WeightSetter(AsyncLoopRunner):
         
         try:
             logger.info("Reward setting loop running")
-            if not global_vars.reward_events or len(global_vars.reward_events) == 0:
-                logger.warning("No reward events in queue, skipping weight setting...")
-                return
+            # if not global_vars.reward_events or len(global_vars.reward_events) == 0:
+            #     logger.warning("No reward events in queue, skipping weight setting...")
+            #     return
 
             current_event_count = len(global_vars.reward_events)
             
@@ -199,9 +199,9 @@ class WeightSetter(AsyncLoopRunner):
                 self.previous_event_count = current_event_count
                 return
                 
-            # If event count hasn't changed, no need to set weights
-            if current_event_count == self.previous_event_count:
-                return
+            # # If event count hasn't changed, no need to set weights
+            # if current_event_count == self.previous_event_count:
+            #     return
 
             logger.info(f"Setting weights based on {self.window_size} most recent events (total events: {current_event_count})")
 
@@ -210,17 +210,20 @@ class WeightSetter(AsyncLoopRunner):
 
             reward_dict = {uid: 0 for uid in range(settings.SUBNET_NEURON_SIZE)}
 
-            miner_rewards: dict[dict[int, float]] = {uid: {"reward": 0, "count": 0} for uid in range(settings.SUBNET_NEURON_SIZE)}
+            miner_rewards: dict[int, dict[str, float]] = {
+                uid: {"reward": 0.0, "count": 0} if uid != global_vars.BAG_UID else {"reward": 1.0, "count": 1}
+                for uid in range(settings.SUBNET_NEURON_SIZE)
+            }
             
-            for reward_event in window_events:
-                await asyncio.sleep(0.01)
+            # for reward_event in window_events:
+            #     await asyncio.sleep(0.01)
 
-                # give each uid the reward they received
-                for uid, reward in zip(reward_event.uids, reward_event.rewards):
-                    miner_rewards[uid]["reward"] += reward
-                    miner_rewards[uid]["count"] += 1
-
-
+            #     # give each uid the reward they received
+            #     for uid, reward in zip(reward_event.uids, reward_event.rewards):
+            #         miner_rewards[uid]["reward"] += reward
+            #         miner_rewards[uid]["count"] += 1
+                
+            # Calculate the total rewards for each miner
             # Calculate the average reward per UID
             for uid, reward_data in miner_rewards.items():
                 reward_dict[uid] = reward_data["reward"] / max(1, reward_data["count"])
