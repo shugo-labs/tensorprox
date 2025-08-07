@@ -61,6 +61,8 @@ import random
 import time
 import hashlib
 import traceback
+import subprocess
+import pwd
 
 executor = ThreadPoolExecutor(max_workers=1)
 
@@ -215,10 +217,9 @@ class Validator(BaseValidatorNeuron):
                         total_seconds=CHALLENGE_DURATION,
                         label_hashes=label_hashes,
                         role=role,
-                        seed=random_int + i # Different seed for each traffic generator
                     )
                     playlists[f"tgen-{i}"] = playlist
-                
+                    
                 backup_suffix = start_time.strftime("%Y%m%d%H%M%S")
 
                 if subset_miners:
@@ -506,6 +507,116 @@ async def shutdown(signal=None):
     
     logger.info("Validator shutdown complete.")
 
+async def auto_update_loop():
+    """Background task that periodically checks for updates and applies them."""
+    while not validator_instance.should_exit:
+        try:
+            logger.debug("Checking for auto-updates...")
+            # Run the auto-update in a thread pool to avoid blocking
+            update_result = await asyncio.get_running_loop().run_in_executor(
+                executor, 
+                run_auto_update
+            )
+        except Exception as e:
+            logger.error(f"Error during auto-update check: {e}")
+        
+        # Wait for the next check interval, but check for shutdown periodically
+        for _ in range(settings.AUTO_UPDATE_INTERVAL):
+            if validator_instance.should_exit:
+                break
+            await asyncio.sleep(1)
+    
+    logger.info("Auto-update loop stopped")
+    
+def run_auto_update():
+    """Run auto-update for the specified neuron type."""
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        os.chdir(script_dir)
+        project_root = os.path.abspath(os.path.join(script_dir, ".."))
+        
+        # Use logger instead of print for PM2 visibility
+        logger.info(f"DEBUG: project_root = {project_root}")
+
+        current_branch = subprocess.getoutput("git rev-parse --abbrev-ref HEAD")
+        local_commit = subprocess.getoutput("git rev-parse HEAD")
+        
+        # Fetch latest changes
+        fetch_result = subprocess.run(["git", "fetch"], capture_output=True, text=True)
+        if fetch_result.returncode != 0:
+            logger.error(f"Error fetching updates: {fetch_result.stderr}")
+            return False
+            
+        remote_commit = subprocess.getoutput(f"git rev-parse origin/{current_branch}")
+
+        if local_commit != remote_commit:
+            logger.info("Local repo is not up-to-date. Updating...")
+            
+            # Reset to remote commit
+            reset_cmd = ["git", "reset", "--hard", remote_commit]
+            process = subprocess.Popen(reset_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            output, error = process.communicate()
+
+            if process.returncode != 0:
+                logger.error(f"Error in updating: {error.decode()}")
+                return False
+            else:
+                logger.info(f"Updated local repo to latest version: {remote_commit}")
+                logger.info("Reinstalling dependencies...")
+
+                # Run setup script (it will handle venv creation and activation)
+                project_root = os.path.abspath(os.path.join(script_dir, ".."))
+                project_parent = os.path.abspath(os.path.join(project_root, ".."))
+                venv_path = f"{project_parent}/{settings.VENV_NAME}"
+                current_home = os.environ.get('HOME', os.path.expanduser('~'))
+
+                setup_cmd = f"export HOME={current_home} && source {venv_path}/bin/activate && cd {project_root} && pip install --no-cache-dir -r requirements.txt"
+                setup_result = subprocess.run(setup_cmd, shell=True, executable='/bin/bash', capture_output=True, text=True)
+                
+                logger.info(f"Setup stdout: {setup_result.stdout}")
+                if setup_result.stderr:
+                    logger.error(f"Setup stderr: {setup_result.stderr}")
+                    
+                logger.info(f"Setup return code: {setup_result.returncode}")
+
+                # Enhanced wandb cleanup - wait longer and kill any remaining wandb processes
+                logger.info("Cleaning up wandb services before restart...")
+                
+                # Kill any existing wandb processes to prevent service conflicts
+                kill_wandb_cmd = "pkill -f wandb || true"
+                subprocess.run(kill_wandb_cmd, shell=True, capture_output=True)
+                
+                # Wait longer for wandb services to fully shut down
+                time.sleep(15)  # Increased from 5 to 15 seconds
+                
+                # Additional cleanup: remove wandb lock files if they exist
+                wandb_lock_cleanup = f"rm -rf {current_home}/.wandb/wandb-*.lock 2>/dev/null || true"
+                subprocess.run(wandb_lock_cleanup, shell=True, capture_output=True)
+                
+                # Force PM2 restart to ensure new code is loaded
+                logger.info("Restarting PM2 process...")
+                
+                # Use the current HOME environment variable and add WANDB_DISABLED temporarily
+                restart_cmd = f"export HOME={current_home} && export WANDB_DISABLED=true && source {venv_path}/bin/activate && pm2 restart {settings.PM_PROCESS_NAME} --update-env"
+                restart_result = subprocess.run(restart_cmd, shell=True, executable='/bin/bash', capture_output=True, text=True)
+                
+                logger.info(f"PM2 restart stdout: {restart_result.stdout}")
+                if restart_result.stderr:
+                    logger.error(f"PM2 restart stderr: {restart_result.stderr}")
+                
+                # Wait a bit more after restart to ensure process is stable
+                time.sleep(10)
+                
+                logger.info("Auto-update completed successfully - repository was updated.")
+        else:
+            logger.info("No updates available : repository is already up-to-date.")
+        
+        return True
+            
+    except Exception as e:
+        logger.error(f"Error during auto-update: {e}")
+        return False
+
 ###############################################################################
 
 # Create an aiohttp app for validator
@@ -536,7 +647,12 @@ async def main():
     # Start background tasks
     asyncio.create_task(weight_setter.start())
     asyncio.create_task(task_scorer.start())
-    asyncio.create_task(validator_instance.periodic_epoch_check())  # Start the periodic epoch check
+    asyncio.create_task(validator_instance.periodic_epoch_check())
+
+    if not settings.DISABLE_AUTO_UPDATE:
+        asyncio.create_task(auto_update_loop())
+    else :
+        logger.info("Auto-update is disabled.")
     
     try:
 
