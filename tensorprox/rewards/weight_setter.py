@@ -33,7 +33,7 @@ import numpy as np
 import os
 import asyncio
 import pandas as pd
-
+from tensorprox import *
 from tensorprox import __spec_version__
 from tensorprox.settings import settings
 from tensorprox.utils.misc import ttl_get_block
@@ -87,8 +87,8 @@ def set_weights(weights: np.ndarray, step: int = 0):
             netuid=settings.NETUID,
             subtensor=settings.SUBTENSOR,
             metagraph=settings.METAGRAPH,
-            # burn_uid=global_vars.BURN_UID,
-            # burn_weight=global_vars.BURN_WEIGHT
+            # burn_uid=BURN_UID,
+            # burn_weight=BURN_WEIGHT
         )
 
         # Convert to uint16 weights and uids.
@@ -211,7 +211,7 @@ class WeightSetter(AsyncLoopRunner):
             reward_dict = {uid: 0 for uid in range(settings.SUBNET_NEURON_SIZE)}
 
             miner_rewards: dict[int, dict[str, float]] = {
-                uid: {"reward": 0.0, "count": 0} if uid != global_vars.BAG_UID else {"reward": 1.0, "count": 1}
+                uid: {"reward": 0.0, "count": 0} if uid != BAG_UID else {"reward": 1.0, "count": 1}
                 for uid in range(settings.SUBNET_NEURON_SIZE)
             }
             
