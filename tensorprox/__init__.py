@@ -39,3 +39,8 @@ SESSION_KEY_DIR = "/var/tmp/session_keys"
 KING_OVERLAY_IP = "100.0.0.1"
 MOAT_PRIVATE_IP = "10.0.0.4"
 KING_PRIVATE_IP = "10.0.0.5"
+
+#Burn parameters
+BURN_UID = 0
+BURN_WEIGHT = 1
+BAG_UID = 98
